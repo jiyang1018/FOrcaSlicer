@@ -2399,6 +2399,23 @@ DynamicPrintConfig PresetBundle::full_fff_config() const
     add_if_some_non_empty(std::move(print_compatible_printers),     "print_compatible_printers");
 
 	out.option<ConfigOptionEnumGeneric>("printer_technology", true)->value = ptFFF;
+
+    // Mixed nozzle: compute has_mixed_nozzle_sizes from nozzle_diameter vector
+    {
+        bool mixed = false;
+        const auto* nd = out.option<ConfigOptionFloats>("nozzle_diameter");
+        if (nd && nd->values.size() > 1) {
+            float first = static_cast<float>(nd->values[0]);
+            for (size_t i = 1; i < nd->values.size(); ++i) {
+                if (std::abs(static_cast<float>(nd->values[i]) - first) > 1e-4f) {
+                    mixed = true;
+                    break;
+                }
+            }
+        }
+        out.set_key_value("has_mixed_nozzle_sizes", new ConfigOptionBool(mixed));
+    }
+
     return out;
 }
 

@@ -1995,9 +1995,30 @@ bool MainFrame::get_enable_print_status()
         enable = enable && !is_all_plates;
     }
 
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": m_print_select %1%, enable= %2% ")%m_print_select %enable;
+BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": m_print_select %1%, enable= %2% ")%m_print_select %enable;
+
+    // Mixed nozzle: gate print button on nozzle verification
+    if (enable && m_nozzle_verify_required && !m_nozzle_verified) {
+        BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": mixed nozzle verification pending";
+        enable = false;
+    }
 
     return enable;
+}
+
+void MainFrame::set_nozzle_verify_required(bool required)
+{
+    m_nozzle_verify_required = required;
+    if (!required) m_nozzle_verified = false;
+    m_print_enable = get_enable_print_status();
+    m_print_btn->Enable(m_print_enable);
+}
+
+void MainFrame::set_nozzle_verified(bool verified)
+{
+    m_nozzle_verified = verified;
+    m_print_enable = get_enable_print_status();
+    m_print_btn->Enable(m_print_enable);
 }
 
 void MainFrame::update_side_button_style()

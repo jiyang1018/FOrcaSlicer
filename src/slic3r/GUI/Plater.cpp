@@ -88,6 +88,7 @@
 #include "Camera.hpp"
 #include "Mouse3DController.hpp"
 #include "Tab.hpp"
+#include "NozzleVerifyDialog.hpp"
 #include "Jobs/OrientJob.hpp"
 #include "Jobs/ArrangeJob.hpp"
 #include "Jobs/FillBedJob.hpp"
@@ -3344,6 +3345,9 @@ struct Plater::priv
     int                         m_job_prepare_state;
 
     bool                        delayed_scene_refresh;
+    // Mixed nozzle verification state
+    NozzleVerifyDialog*         m_nozzle_verify_dialog  { nullptr };
+    bool                        m_nozzle_verified        { false };
     std::string                 delayed_error_message;
 
     wxTimer                     background_process_timer;
@@ -7998,6 +8002,66 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
     if (m_slice_all && (m_cur_slice_plate < (partplate_list.get_plate_count() - 1))) {
         BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format("slicing all, finished plate %1%, will continue next.")%m_cur_slice_plate;
         return;
+    }
+
+    // Mixed nozzle: show verification dialog after slicing completes
+    {
+        const auto* nozzle_diameters = wxGetApp().preset_bundle->printers
+            .get_edited_preset().config.opt<ConfigOptionFloats>("nozzle_diameter");
+        if (nozzle_diameters && nozzle_diameters->values.size() > 1) {
+            float first = static_cast<float>(nozzle_diameters->values[0]);
+            bool has_mixed = false;
+            for (size_t i = 1; i < nozzle_diameters->values.size(); ++i) {
+                if (std::abs(static_cast<float>(nozzle_diameters->values[i]) - first) > 1e-4f) {
+                    has_mixed = true;
+                    break;
+                }
+            }
+            if (has_mixed) {
+                notification_manager->push_notification(
+                    NotificationType::CustomNotification,
+                    NotificationManager::NotificationLevel::WarningNotificationLevel,
+                    _u8L("Mixed nozzle sizes detected. Please verify that physical nozzles match the profile before printing."));
+
+                // Show NozzleVerifyDialog
+                if (m_nozzle_verify_dialog == nullptr) {
+                    std::vector<ExtruderInfo> extruders;
+                    for (size_t i = 0; i < nozzle_diameters->values.size(); ++i) {
+                        ExtruderInfo info;
+                        info.extruder_id     = static_cast<int>(i);
+                        info.nozzle_diameter = static_cast<float>(nozzle_diameters->values[i]);
+                        if (i < wxGetApp().preset_bundle->filament_presets.size())
+                            info.filament_name = wxGetApp().preset_bundle->filament_presets[i];
+                        else
+                            info.filament_name = "Filament " + std::to_string(i + 1);
+                        info.material_type  = "";
+                        info.filament_color = wxColour(200, 200, 200);
+                        extruders.push_back(info);
+                    }
+                    m_nozzle_verify_dialog = new NozzleVerifyDialog(
+                        q,
+                        extruders,
+                        [this]() {
+                            m_nozzle_verified = true;
+                            if (auto* mainframe = wxGetApp().mainframe)
+                                mainframe->set_nozzle_verified(true);
+                        }
+                    );
+                } else {
+                    m_nozzle_verify_dialog->reset_verification();
+                }
+                m_nozzle_verify_dialog->Show(true);
+
+                // Gate print button
+                if (auto* mainframe = wxGetApp().mainframe)
+                    mainframe->set_nozzle_verify_required(true);
+            } else {
+                if (m_nozzle_verify_dialog)
+                    m_nozzle_verify_dialog->Hide();
+                if (auto* mainframe = wxGetApp().mainframe)
+                    mainframe->set_nozzle_verify_required(false);
+            }
+        }
     }
 
     if (view3D->is_dragging()) // updating scene now would interfere with the gizmo dragging

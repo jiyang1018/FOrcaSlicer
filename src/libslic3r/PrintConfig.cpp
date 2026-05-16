@@ -4508,8 +4508,9 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Back"));
     def->enum_labels.push_back(L("Random"));
     def->mode = comSimple;
-    def = this->add("outer_wall_seam_position", coEnum);
-    def->label = L("Outer wall seam position");
+	// TEMP DISABLED FOR DEBUGGING
+    // def = this->add("outer_wall_seam_position", coEnum);
+    // def->label = L("Outer wall seam position");
     def->category = L("Quality");
     def->tooltip = L("Seam position for the outer wall nozzle. Independent from "
                      "the seam position above which applies to inner walls. "

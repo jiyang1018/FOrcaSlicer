@@ -2291,6 +2291,7 @@ void TabPrint::build()
     page = add_options_page(L("Strength"), "custom-gcode_strength"); // ORCA: icon only visible on placeholders
         optgroup = page->new_optgroup(L("Walls"), L"param_wall");
     optgroup->append_single_option_line("wall_loops", "strength_settings_walls#wall-loops");
+	    optgroup->append_single_option_line("outer_wall_loops");
         optgroup->append_single_option_line("alternate_extra_wall", "strength_settings_walls#alternate-extra-wall");
         optgroup->append_single_option_line("detect_thin_wall", "strength_settings_walls#detect-thin-wall");
 
@@ -2499,6 +2500,11 @@ void TabPrint::build()
         optgroup->append_single_option_line("sparse_infill_filament", "multimaterial_settings_filament_for_features#infill");
         optgroup->append_single_option_line("solid_infill_filament", "multimaterial_settings_filament_for_features#solid-infill");
         optgroup->append_single_option_line("wipe_tower_filament", "multimaterial_settings_filament_for_features#wipe-tower");
+
+        optgroup = page->new_optgroup(L("Mixed Nozzle"), L"param_wall");
+        optgroup->append_single_option_line("outer_wall_loops");
+        optgroup->append_single_option_line("outer_wall_layer_height_max");
+        optgroup->append_single_option_line("outer_wall_seam_position");
 
         optgroup = page->new_optgroup(L("Ooze prevention"), L"param_ooze_prevention");
         optgroup->append_single_option_line("ooze_prevention", "multimaterial_settings_ooze_prevention");
