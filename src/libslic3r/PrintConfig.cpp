@@ -4507,10 +4507,10 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Aligned back"));
     def->enum_labels.push_back(L("Back"));
     def->enum_labels.push_back(L("Random"));
-    def->mode = comSimple;
-	// TEMP DISABLED FOR DEBUGGING
-    // def = this->add("outer_wall_seam_position", coEnum);
-    // def->label = L("Outer wall seam position");
+	def->mode = comSimple;
+
+    def = this->add("outer_wall_seam_position", coEnum);
+    def->label = L("Outer wall seam position");
     def->category = L("Quality");
     def->tooltip = L("Seam position for the outer wall nozzle. Independent from "
                      "the seam position above which applies to inner walls. "
@@ -4528,6 +4528,8 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Random"));
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<SeamPosition>(spAligned));
+
+    def = this->add("staggered_inner_seams", coBool);
     def->label = L("Staggered inner seams");
     def->tooltip = L("This option causes the inner seams to be shifted backwards based on their depth, forming a zigzag pattern.");
     def->mode = comAdvanced;
