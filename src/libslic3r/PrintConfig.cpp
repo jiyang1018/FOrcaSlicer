@@ -2058,9 +2058,16 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("Only used as a visual help on UI.");
     def->gui_type = ConfigOptionDef::GUIType::color;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionStrings{ "#F2754E" });
-
-    def           = this->add("thumb0", coStrings);
+    def = this->add("filament_color_depth", coFloat);
+    def->label = L("Color depth");
+    def->category = L("Multi Material");
+    def->tooltip = L("Depth from the painted surface inward that this filament "
+                     "will print. 0 = full depth through the model (default). "
+                     "Minimum effective value equals the nozzle diameter.");
+    def->sidetext = "mm";
+    def->min = 0;
+    def->mode = comSimple;
+    def->set_default_value(new ConfigOptionFloat(0.f));
     def->label    = L("small thumb");
     def->tooltip  = L("first small thumb");
     def->mode     = comSimple;
@@ -3951,9 +3958,12 @@ void PrintConfigDef::init_fff_params()
     def->sidetext = "mm";	// milimeters, don't need translation
     def->mode = comAdvanced;
     def->max = 100;
-    def->set_default_value(new ConfigOptionFloats { 0.4 });
-
-    def = this->add("notes", coString);
+    def = this->add("has_mixed_nozzle_sizes", coBool);
+    def->label = L("Has mixed nozzle sizes");
+    def->tooltip = L("Automatically set to true when the printer profile contains "
+                     "extruders with different nozzle diameters. Not user-editable.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
     def->label = L("Configuration notes");
     def->tooltip = L("You can put here your personal notes. This text will be added to the G-code "
                    "header comments.");
@@ -4154,9 +4164,29 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("Number of walls of every layer.");
     def->min = 0;
     def->max = 1000;
-    def->set_default_value(new ConfigOptionInt(2));
-    
-    def = this->add("alternate_extra_wall", coBool);
+    def = this->add("outer_wall_loops", coInt);
+    def->label = L("Outer wall loops");
+    def->category = L("Strength");
+    def->tooltip = L("Number of wall loops printed by the outer-wall nozzle "
+                     "(smallest nozzle in a mixed-nozzle setup). The remaining "
+                     "wall_loops - outer_wall_loops loops are printed by the "
+                     "inner-wall nozzle. Only active when mixed nozzle sizes "
+                     "are configured.");
+    def->min = 1;
+    def->max = 1000;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(1));
+
+    def = this->add("outer_wall_layer_height_max", coFloat);
+    def->label = L("Inner wall max layer height");
+    def->category = L("Quality");
+    def->tooltip = L("Maximum layer height for the inner wall and infill nozzle. "
+                     "0 means match the outer wall layer height (1:1 mode). "
+                     "No maximum is enforced.");
+    def->sidetext = "mm";
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.f));
     def->label = L("Alternate extra wall");
     def->category = L("Strength");
     def->tooltip = L("This setting adds an extra wall to every other layer. This way the infill gets wedged vertically between the walls, resulting in stronger prints.\n\n"
@@ -4478,9 +4508,25 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Back"));
     def->enum_labels.push_back(L("Random"));
     def->mode = comSimple;
+    def = this->add("outer_wall_seam_position", coEnum);
+    def->label = L("Outer wall seam position");
+    def->category = L("Quality");
+    def->tooltip = L("Seam position for the outer wall nozzle. Independent from "
+                     "the seam position above which applies to inner walls. "
+                     "Only active when mixed nozzle sizes are configured.");
+    def->enum_keys_map = &ConfigOptionEnum<SeamPosition>::get_enum_values();
+    def->enum_values.push_back("nearest");
+    def->enum_values.push_back("aligned");
+    def->enum_values.push_back("aligned_back");
+    def->enum_values.push_back("back");
+    def->enum_values.push_back("random");
+    def->enum_labels.push_back(L("Nearest"));
+    def->enum_labels.push_back(L("Aligned"));
+    def->enum_labels.push_back(L("Aligned back"));
+    def->enum_labels.push_back(L("Back"));
+    def->enum_labels.push_back(L("Random"));
+    def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<SeamPosition>(spAligned));
-
-    def = this->add("staggered_inner_seams", coBool);
     def->label = L("Staggered inner seams");
     def->tooltip = L("This option causes the inner seams to be shifted backwards based on their depth, forming a zigzag pattern.");
     def->mode = comAdvanced;
