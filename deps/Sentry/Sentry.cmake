@@ -22,7 +22,7 @@ if (WIN32)
     -DCMAKE_SHARED_LINKER_FLAGS:STRING=/DEBUG
   )
   if (MSVC)
-    set(_sentry_cmake_generator -G "Visual Studio 17 2022")
+    set(_sentry_cmake_generator -G "Visual Studio 16 2019")
   endif()
 elseif (APPLE)
   # macOS: build shared libs so we get libsentry.dylib
