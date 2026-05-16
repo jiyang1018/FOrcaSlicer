@@ -316,6 +316,8 @@ set(lisbslic3r_sources
     pchheader.cpp
     pchheader.hpp
     PerimeterGenerator.cpp
+	NozzleLayerPlanner.cpp
+	ColorDepthProcessor.cpp
     PerimeterGenerator.hpp
     PlaceholderParser.cpp
     PlaceholderParser.hpp

@@ -330,6 +330,7 @@ set(SLIC3R_GUI_SOURCES
     GUI/PhysicalPrinterDialog.cpp
     GUI/PhysicalPrinterDialog.hpp
     GUI/Plater.cpp
+	GUI/NozzleVerifyDialog.cpp
     GUI/Plater.hpp
     GUI/PlateSettingsDialog.cpp
     GUI/PlateSettingsDialog.hpp
