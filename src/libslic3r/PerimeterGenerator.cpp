@@ -1,4 +1,5 @@
 #include "PerimeterGenerator.hpp"
+#include "NozzleLayerPlanner.hpp"
 #include "AABBTreeLines.hpp"
 #include "BridgeDetector.hpp"
 #include "ClipperUtils.hpp"
@@ -1195,6 +1196,12 @@ void PerimeterGenerator::process_classic()
         const Surface &surface = all_surfaces[surface_order[order_idx]];
         // detect how many perimeters must be generated for this island
         int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;  // 0-indexed loops
+        // Mixed nozzle: read outer wall loop count (OW).
+        // Phase 2: this value drives OW/IW toolpath split.
+        int outer_wall_loops = this->print_config->has_mixed_nozzle_sizes.value
+            ? std::max(1, this->config->outer_wall_loops.value)
+            : loop_number + 1;
+        (void)outer_wall_loops; // used in phase 2
         int sparse_infill_density = this->config->sparse_infill_density.value;
         if (this->config->alternate_extra_wall && this->layer_id % 2 == 1 && !m_spiral_vase && sparse_infill_density > 0) // add alternating extra wall
             loop_number++;

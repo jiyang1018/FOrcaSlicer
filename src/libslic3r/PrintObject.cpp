@@ -1,4 +1,5 @@
 #include "Exception.hpp"
+#include "NozzleLayerPlanner.hpp"
 #include "Print.hpp"
 #include "BoundingBox.hpp"
 #include "ClipperUtils.hpp"
@@ -300,6 +301,40 @@ void PrintObject::make_perimeters()
 
     m_print->set_status(15, L("Generating walls"));
     BOOST_LOG_TRIVIAL(info) << "Generating walls..." << log_memory_info();
+
+    // Mixed nozzle: build NozzleLayerPlanner if mixed nozzle sizes active.
+    delete m_nozzle_layer_planner;
+    m_nozzle_layer_planner = nullptr;
+    if (this->print()->config().has_mixed_nozzle_sizes.value) {
+        std::vector<float> alh_heights;
+        alh_heights.reserve(m_layers.size());
+        for (const Layer* layer : m_layers)
+            alh_heights.push_back(static_cast<float>(layer->height));
+
+        std::vector<float> overhang_angles(m_layers.size(), 0.f);
+
+        float inner_lh_max = 0.f;
+        if (this->num_printing_regions() > 0)
+            inner_lh_max = static_cast<float>(
+                this->printing_region(0).config().outer_wall_layer_height_max.value);
+
+        try {
+            m_nozzle_layer_planner = new NozzleLayerPlanner(
+                this->print()->config(),
+                this->config()
+            );
+            const auto& sync_points = m_nozzle_layer_planner->plan(
+                alh_heights, overhang_angles, inner_lh_max);
+            BOOST_LOG_TRIVIAL(info) << "NozzleLayerPlanner: computed "
+                << sync_points.size() << " sync points for mixed nozzle print";
+            (void)sync_points;
+        } catch (...) {
+            BOOST_LOG_TRIVIAL(warning) << "NozzleLayerPlanner failed - "
+                "continuing with standard slicing";
+            delete m_nozzle_layer_planner;
+            m_nozzle_layer_planner = nullptr;
+        }
+    }
 
     // Revert the typed slices into untyped slices.
     if (m_typed_slices) {

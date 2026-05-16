@@ -2,6 +2,8 @@
 #define slic3r_Print_hpp_
 
 #include "Fill/FillAdaptive.hpp"
+// Forward declaration for mixed nozzle planner
+namespace Slic3r { class NozzleLayerPlanner; }
 #include "Fill/FillLightning.hpp"
 #include "PrintBase.hpp"
 
@@ -556,6 +558,9 @@ private:
 
     std::pair<FillAdaptive::OctreePtr, FillAdaptive::OctreePtr> m_adaptive_fill_octrees;
     FillLightning::GeneratorPtr m_lightning_generator;
+    // Mixed nozzle: layer sync planner - null when not in mixed nozzle mode
+    // Using raw pointer to avoid unique_ptr in header (prevents redefinition errors)
+    NozzleLayerPlanner* m_nozzle_layer_planner { nullptr };
 
     std::vector < VolumeSlices >            firstLayerObjSliceByVolume;
     std::vector<groupedVolumeSlices>        firstLayerObjSliceByGroups;
