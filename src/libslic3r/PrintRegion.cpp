@@ -1,5 +1,6 @@
 #include "Exception.hpp"
 #include "Print.hpp"
+#include <boost/log/trivial.hpp>
 
 namespace Slic3r {
 
@@ -44,10 +45,21 @@ Flow PrintRegion::flow(const PrintObject &object, FlowRole role, double layer_he
 
     if (config_width.value == 0)
         config_width = object.config().line_width;
-    
-    // Get the configured nozzle_diameter for the extruder associated to the flow role requested.
-    // Here this->extruder(role) - 1 may underflow to MAX_INT, but then the get_at() will follback to zero'th element, so everything is all right.
+
     auto nozzle_diameter = float(print_config.nozzle_diameter.get_at(this->extruder(role) - 1));
+
+    // Mixed nozzle: re-derive width from correct nozzle diameter using the preset percentage
+    // config_width may have been resolved against nozzle 1 already; recompute using actual extruder's nozzle
+    if (print_config.has_mixed_nozzle_sizes.value &&
+        (role == frExternalPerimeter || role == frPerimeter ||
+         role == frInfill || role == frSolidInfill || role == frTopSolidInfill)) {
+        float ref_nozzle = float(print_config.nozzle_diameter.get_at(0)); // nozzle used during preset resolution
+        if (ref_nozzle > 0 && config_width.value > 0) {
+            float ratio = config_width.value / ref_nozzle;
+            config_width.value = ratio * nozzle_diameter;
+        }
+    }
+    
     return Flow::new_from_config_width(role, config_width, nozzle_diameter, float(layer_height));
 }
 

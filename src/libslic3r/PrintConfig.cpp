@@ -4134,7 +4134,7 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("wall_filament", coInt);
     def->gui_type = ConfigOptionDef::GUIType::i_enum_open;
-    def->label = L("Walls");
+    def->label = L("Outer walls");
     def->category = L("Extruders");
     def->tooltip = L("Filament to print walls.");
     def->min = 1;
@@ -4144,7 +4144,7 @@ void PrintConfigDef::init_fff_params()
     def->gui_type = ConfigOptionDef::GUIType::i_enum_open;
     def->label = L("Inner walls");
     def->category = L("Extruders");
-    def->tooltip = L("Filament to print inner walls. Only active when mixed nozzle sizes are configured.");
+    def->tooltip = L("Filament to print inner walls. When set, inner walls use a separate extruder from outer walls.");
     def->min = 1;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionInt(1));
@@ -4171,7 +4171,7 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloat(60));
 
     def = this->add("wall_loops", coInt);
-    def->label = L("Wall loops");
+    def->label = L("Overall wall loops"); 
     def->category = L("Strength");
     def->tooltip = L("Number of walls of every layer.");
 	def->min = 0;
@@ -4181,11 +4181,9 @@ void PrintConfigDef::init_fff_params()
 	def = this->add("outer_wall_loops", coInt);
     def->label = L("Outer wall loops");
     def->category = L("Strength");
-    def->tooltip = L("Number of wall loops printed by the outer-wall nozzle "
-                     "(smallest nozzle in a mixed-nozzle setup). The remaining "
-                     "wall_loops - outer_wall_loops loops are printed by the "
-                     "inner-wall nozzle. Only active when mixed nozzle sizes "
-                     "are configured.");
+    def->tooltip = L("Number of wall loops printed by the outer-wall extruder. "
+                 "The remaining wall_loops - outer_wall_loops loops are "
+                 "printed by the inner-wall extruder.");
     def->min = 1;
     def->max = 1000;
     def->mode = comSimple;

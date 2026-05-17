@@ -1905,10 +1905,6 @@ bool on_slicing = m_plater->is_background_process_slicing();
         }
     }
 
-// Mixed nozzle: gate print if verification required but not yet done
-    if (m_nozzle_verify_required && !m_nozzle_verified)
-        enable = false;
-
 BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": m_print_select %1%, enable= %2% ")%m_print_select %enable;
 
 return enable;

@@ -15,6 +15,7 @@
 #include <boost/log/trivial.hpp>
 #include <boost/algorithm/clamp.hpp>
 
+
 namespace Slic3r {
 
 Flow LayerRegion::flow(FlowRole role) const
@@ -81,7 +82,7 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
         //FIXME account for raft layers.
         (this->layer()->id() >= size_t(region_config.bottom_shell_layers.value) &&
          this->layer()->print_z >= region_config.bottom_shell_thickness - EPSILON);
-
+    
     PerimeterGenerator g(
         // input:
         &slices,
@@ -116,7 +117,7 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
     g.ext_perimeter_flow    = this->flow(frExternalPerimeter);
     g.overhang_flow         = this->bridging_flow(frPerimeter, object_config.thick_bridges);
     g.solid_infill_flow     = this->flow(frSolidInfill);
-
+    
     if (this->layer()->object()->config().wall_generator.value == PerimeterGeneratorType::Arachne && !spiral_mode)
         g.process_arachne();
     else

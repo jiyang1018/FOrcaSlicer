@@ -2790,46 +2790,33 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
             //    pNotice->set_slicing_progress_hidden();            
             //}
 
-            auto printer_config    = wxGetApp().preset_bundle->printers.get_edited_preset().config;
-            auto printer_model_opt = printer_config.option<ConfigOptionString>("printer_model");
-            if (printer_model_opt) {
-                std::string printer_model   = printer_model_opt->value;
-                bool        is_snapmaker_u1 = boost::icontains(printer_model, "Snapmaker") && boost::icontains(printer_model, "U1");
+            auto diameter_str = diameter_combo->GetValue().substr(0, 3);
+double diameter_val = std::stod(diameter_str.ToStdString());
 
-                if (is_snapmaker_u1)
-                {
-                    //check the config has flags to tips switch nozzle and all nozzle will be changed to the same type
-                    auto  notShow = wxGetApp().app_config->get("app", "sync_diameter_flags");
-                    if (notShow != "true")
-                    {
-                        RichMessageDialog dlg(static_cast<wxWindow*>(wxGetApp().mainframe),
-                                              _L("Note: Changing this will sync all other nozzles to the same diameter."),
-                                              _L("Set Nozzle Diameter"), 
-                                               wxOK);
-                        dlg.ShowCheckBox(_L("Don't show this again"), false);
-                        auto res = dlg.ShowModal();
-                        bool isCheckBox = dlg.IsCheckBoxChecked();
+// For U1: update only this nozzle's diameter in the config vector directly
+auto printer_config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+auto printer_model_opt = printer_config.option<ConfigOptionString>("printer_model");
+bool is_snapmaker_u1 = printer_model_opt &&
+    boost::icontains(printer_model_opt->value, "Snapmaker") &&
+    boost::icontains(printer_model_opt->value, "U1");
 
-                        if (wxID_OK == res)
-                            wxGetApp().app_config->set("app", "sync_diameter_flags", isCheckBox);     
-                    }
-                }
-            }
-
-            auto diameter = diameter_combo->GetValue().substr(0, 3);
-            auto preset          = wxGetApp().preset_bundle->get_similar_printer_preset({}, diameter.ToStdString());
-            if (preset == nullptr) {
-                BOOST_LOG_TRIVIAL(error) << "get the similar printer preset fail";
-                return;
-            }
-            preset->is_visible = true; // force visible
-            
-            for (size_t i = 0; i < p->m_nozzle_diameter_lists.size(); ++i) {
-                //set all nozzle use the diameter
-                p->m_nozzle_diameter_lists[i]->SetValue(diameter + "mm");
-            }
-
-            wxGetApp().get_tab(Preset::TYPE_PRINTER)->select_preset(preset->name);
+if (is_snapmaker_u1) {
+    auto* nozzle_diameters = wxGetApp().preset_bundle->printers
+        .get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+    if (nozzle_diameters && i < nozzle_diameters->size())
+        nozzle_diameters->values[i] = diameter_val;
+    wxGetApp().get_tab(Preset::TYPE_PRINTER)->update();
+} else {
+    auto preset = wxGetApp().preset_bundle->get_similar_printer_preset({}, diameter_str.ToStdString());
+    if (preset == nullptr) {
+        BOOST_LOG_TRIVIAL(error) << "get the similar printer preset fail";
+        return;
+    }
+    preset->is_visible = true;
+    for (size_t k = 0; k < p->m_nozzle_diameter_lists.size(); ++k)
+        p->m_nozzle_diameter_lists[k]->SetValue(diameter_str + "mm");
+    wxGetApp().get_tab(Preset::TYPE_PRINTER)->select_preset(preset->name);
+}
             // Do not event.Skip(): select_preset rebuilds nozzle UI and can destroy this combo; skipping would let sidebar treat this as bed-type combo and use-after-free.
         });
         

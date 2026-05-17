@@ -878,9 +878,19 @@ void Tab::decorate()
         field->set_undo_to_sys_bitmap(sys_icon);
         field->set_undo_tooltip(tt);
         field->set_undo_to_sys_tooltip(sys_tt);
+        // Mixed nozzle: override color for outer_wall_loops if > wall_loops
+        if (opt.first == "outer_wall_loops") {
+            int owl = m_config->opt_int("outer_wall_loops");
+            int wl  = m_config->opt_int("wall_loops");
+            if (owl > wl) {
+                static const wxColour error_red(0xE0, 0x20, 0x20);
+                color = &error_red;
+            }
+        }
+
         field->set_label_colour(color);
 
-        if (field->has_edit_ui())
+                if (field->has_edit_ui())
             field->set_edit_bitmap(&m_bmp_edit_value);
 
     }
@@ -888,7 +898,6 @@ void Tab::decorate()
     if (m_active_page)
         m_active_page->refresh();
 }
-
 // Update UI according to changes
 void Tab::update_changed_ui()
 {

@@ -2414,6 +2414,17 @@ DynamicPrintConfig PresetBundle::full_fff_config() const
             }
         }
         out.set_key_value("has_mixed_nozzle_sizes", new ConfigOptionBool(mixed));
+        // Clamp outer_wall_loops to wall_loops when mixed nozzle is active
+        if (mixed) {
+            const ConfigOption* wl = out.option("wall_loops");
+            const ConfigOption* owl = out.option("outer_wall_loops");
+            if (wl && owl) {
+                int wall_loops = static_cast<const ConfigOptionInt*>(wl)->value;
+                int outer_wall_loops = static_cast<const ConfigOptionInt*>(owl)->value;
+                if (outer_wall_loops > wall_loops)
+                    out.set_key_value("outer_wall_loops", new ConfigOptionInt(wall_loops));
+            }
+        }
     }
 
     return out;
