@@ -4139,8 +4139,15 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("Filament to print walls.");
     def->min = 1;
     def->mode = comAdvanced;
+	def->set_default_value(new ConfigOptionInt(1));
+    def = this->add("inner_wall_filament", coInt);
+    def->gui_type = ConfigOptionDef::GUIType::i_enum_open;
+    def->label = L("Inner walls");
+    def->category = L("Extruders");
+    def->tooltip = L("Filament to print inner walls. Only active when mixed nozzle sizes are configured.");
+    def->min = 1;
+    def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionInt(1));
-
     def = this->add("inner_wall_line_width", coFloatOrPercent);
     def->label = L("Inner wall");
     def->category = L("Quality");

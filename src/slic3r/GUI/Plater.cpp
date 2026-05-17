@@ -1019,7 +1019,8 @@ Sidebar::Sidebar(Plater *parent)
 {
     Choice::register_dynamic_list("support_filament", &dynamic_filament_list);
     Choice::register_dynamic_list("support_interface_filament", &dynamic_filament_list);
-    Choice::register_dynamic_list("wall_filament", &dynamic_filament_list_1_based);
+	Choice::register_dynamic_list("wall_filament", &dynamic_filament_list_1_based);
+    Choice::register_dynamic_list("inner_wall_filament", &dynamic_filament_list_1_based);
     Choice::register_dynamic_list("sparse_infill_filament", &dynamic_filament_list_1_based);
     Choice::register_dynamic_list("solid_infill_filament", &dynamic_filament_list_1_based);
     Choice::register_dynamic_list("wipe_tower_filament", &dynamic_filament_list);
