@@ -1,6 +1,7 @@
 #include "Plater.hpp"
 #include "libslic3r/Config.hpp"
 #include "common_func/common_func.hpp"
+#include <sstream>
 
 #include <cstddef>
 #include <algorithm>
@@ -2820,8 +2821,15 @@ if (is_snapmaker_u1) {
             // Do not event.Skip(): select_preset rebuilds nozzle UI and can destroy this combo; skipping would let sidebar treat this as bed-type combo and use-after-free.
         });
         
-        auto diam_str = wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionString>("printer_variant")->value;
-        
+        auto* nozzle_diameters = wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+        std::string diam_str;
+        if (nozzle_diameters && i < nozzle_diameters->size()) {
+            std::ostringstream oss;
+            oss << nozzle_diameters->values[i];
+            diam_str = oss.str();
+        } else {
+            diam_str = wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionString>("printer_variant")->value;
+        }
         diameter_combo->SetValue(diam_str + "mm");
 
         p->m_nozzle_diameter_lists.push_back(diameter_combo);
@@ -8023,17 +8031,12 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
                         info.filament_name = "Filament " + std::to_string(i + 1);
                     info.material_type  = "";
                     wxColour filament_color(200, 200, 200);
-                    if (i < wxGetApp().preset_bundle->filament_presets.size()) {
-                        const Preset* filament_preset = wxGetApp().preset_bundle->filaments.find_preset(
-                            wxGetApp().preset_bundle->filament_presets[i]);
-                    if (filament_preset) {
-                        const ConfigOptionStrings* colors = filament_preset->config.opt<ConfigOptionStrings>("filament_colour");
-                        if (colors && !colors->values.empty()) {
-                            std::string hex = colors->values[0];
-                            if (hex.size() == 9 && hex[0] == '#') hex = hex.substr(0, 7);
-                            filament_color = wxColour(wxString::FromUTF8(hex));
-                        }
-                    }
+                    DynamicPrintConfig full_cfg = wxGetApp().preset_bundle->full_config();
+                    const ConfigOptionStrings* colors = full_cfg.opt<ConfigOptionStrings>("filament_colour");
+                    if (colors && i < colors->values.size()) {
+                        std::string hex = colors->values[i];
+                        if (hex.size() == 9 && hex[0] == '#') hex = hex.substr(0, 7);
+                        filament_color = wxColour(wxString::FromUTF8(hex));
                     }
                     info.filament_color = filament_color;
                     extruders.push_back(info);
