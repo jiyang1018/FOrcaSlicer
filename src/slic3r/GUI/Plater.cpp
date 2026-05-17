@@ -8004,8 +8004,8 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
         return;
     }
 
-// Mixed nozzle: show verification dialog after slicing completes - TEMP DISABLED
-    if (false) {
+// Mixed nozzle: show verification dialog after slicing completes
+    if (true) {
         const auto* nozzle_diameters = wxGetApp().preset_bundle->printers
             .get_edited_preset().config.opt<ConfigOptionFloats>("nozzle_diameter");
         if (nozzle_diameters && nozzle_diameters->values.size() > 1) {
@@ -8023,40 +8023,54 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
                     NotificationManager::NotificationLevel::WarningNotificationLevel,
                     _u8L("Mixed nozzle sizes detected. Please verify that physical nozzles match the profile before printing."));
 
-                // Show NozzleVerifyDialog
-                if (m_nozzle_verify_dialog == nullptr) {
-                    std::vector<ExtruderInfo> extruders;
-                    for (size_t i = 0; i < nozzle_diameters->values.size(); ++i) {
-                        ExtruderInfo info;
-                        info.extruder_id     = static_cast<int>(i);
-                        info.nozzle_diameter = static_cast<float>(nozzle_diameters->values[i]);
-                        if (i < wxGetApp().preset_bundle->filament_presets.size())
-                            info.filament_name = wxGetApp().preset_bundle->filament_presets[i];
-                        else
-                            info.filament_name = "Filament " + std::to_string(i + 1);
-                        info.material_type  = "";
-                        info.filament_color = wxColour(200, 200, 200);
-                        extruders.push_back(info);
+				// Show NozzleVerifyDialog
+                std::vector<ExtruderInfo> extruders;
+                for (size_t i = 0; i < nozzle_diameters->values.size(); ++i) {
+                    ExtruderInfo info;
+                    info.extruder_id     = static_cast<int>(i);
+                    info.nozzle_diameter = static_cast<float>(nozzle_diameters->values[i]);
+                    if (i < wxGetApp().preset_bundle->filament_presets.size())
+                        info.filament_name = wxGetApp().preset_bundle->filament_presets[i];
+                    else
+                        info.filament_name = "Filament " + std::to_string(i + 1);
+                    info.material_type  = "";
+                    wxColour filament_color(200, 200, 200);
+                    if (i < wxGetApp().preset_bundle->filament_presets.size()) {
+                        const Preset* filament_preset = wxGetApp().preset_bundle->filaments.find_preset(
+                            wxGetApp().preset_bundle->filament_presets[i]);
+                    if (filament_preset) {
+                        const ConfigOptionStrings* colors = filament_preset->config.opt<ConfigOptionStrings>("filament_colour");
+                        if (colors && !colors->values.empty()) {
+                            std::string hex = colors->values[0];
+                            if (hex.size() == 9 && hex[0] == '#') hex = hex.substr(0, 7);
+                            filament_color = wxColour(wxString::FromUTF8(hex));
+                        }
                     }
+                    }
+                    info.filament_color = filament_color;
+                    extruders.push_back(info);
+                }
+                if (m_nozzle_verify_dialog == nullptr) {
                     m_nozzle_verify_dialog = new NozzleVerifyDialog(
                         q,
                         extruders,
-[this]() {
+                        [this]() {
                             m_nozzle_verified = true;
-                            // mainframe->set_nozzle_verified(true); // TEMP DISABLED
+                            wxGetApp().mainframe->set_nozzle_verified(true);
                         }
                     );
                 } else {
+                    m_nozzle_verify_dialog->update_extruders(extruders);
                     m_nozzle_verify_dialog->reset_verification();
                 }
                 m_nozzle_verify_dialog->Show(true);
 
                 // Gate print button
-				// mainframe->set_nozzle_verify_required(true); // TEMP DISABLED
+				wxGetApp().mainframe->set_nozzle_verify_required(true);
             } else {
                 if (m_nozzle_verify_dialog)
                     m_nozzle_verify_dialog->Hide();
-				// mainframe->set_nozzle_verify_required(false); // TEMP DISABLED
+                wxGetApp().mainframe->set_nozzle_verify_required(false);
             }
         }
     }

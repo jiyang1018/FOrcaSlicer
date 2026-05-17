@@ -36,7 +36,8 @@ public:
     // Returns true if the user has clicked Verify in this session.
     // Resets to false on each new slice.
     bool is_verified() const { return m_verified; }
-    void reset_verification()  { m_verified = false; }
+	void reset_verification()  { m_verified = false; }
+    void update_extruders(const std::vector<ExtruderInfo>& extruders);
 
 private:
     void build_ui(const std::vector<ExtruderInfo>& extruders);
@@ -45,7 +46,7 @@ private:
 
     bool                  m_verified { false };
     std::function<void()> m_on_verified;
-    wxButton*             m_verify_btn { nullptr };
+	wxButton*             m_verify_btn { nullptr };
 
     wxDECLARE_EVENT_TABLE();
 };

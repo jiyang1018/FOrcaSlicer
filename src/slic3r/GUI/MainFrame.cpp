@@ -1868,9 +1868,8 @@ bool MainFrame::get_enable_slice_status()
 {
     bool enable = true;
 
-    bool on_slicing = m_plater->is_background_process_slicing();
+bool on_slicing = m_plater->is_background_process_slicing();
     if (on_slicing) {
-        BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": on slicing, return false directly!");
         return false;
     }
     else if  (m_plater->only_gcode_mode() || m_plater->using_exported_file()) {
@@ -1906,8 +1905,13 @@ bool MainFrame::get_enable_slice_status()
         }
     }
 
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": m_slice_select %1%, enable= %2% ")%m_slice_select %enable;
-    return enable;
+// Mixed nozzle: gate print if verification required but not yet done
+    if (m_nozzle_verify_required && !m_nozzle_verified)
+        enable = false;
+
+BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": m_print_select %1%, enable= %2% ")%m_print_select %enable;
+
+return enable;
 }
 
 bool MainFrame::get_enable_print_status()
@@ -1994,6 +1998,10 @@ bool MainFrame::get_enable_print_status()
         }
         enable = enable && !is_all_plates;
     }
+
+// Mixed nozzle: gate print if verification required but not yet done
+    if (m_nozzle_verify_required && !m_nozzle_verified)
+        enable = false;
 
 BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": m_print_select %1%, enable= %2% ")%m_print_select %enable;
 
@@ -4203,6 +4211,21 @@ void SettingsDialog::on_dpi_changed(const wxRect& suggested_rect)
     Refresh();
 }
 
+
+void MainFrame::set_nozzle_verify_required(bool required)
+{
+    m_nozzle_verify_required = required;
+    m_print_enable = get_enable_print_status();
+    update_slice_print_status(eEventSliceUpdate, true, true);
+}
+
+void MainFrame::set_nozzle_verified(bool verified)
+{
+    m_nozzle_verified = verified;
+    m_nozzle_verify_required = false;
+    m_print_enable = get_enable_print_status();
+    update_slice_print_status(eEventSliceUpdate, true, true);
+}
 
 } // GUI
 } // Slic3r

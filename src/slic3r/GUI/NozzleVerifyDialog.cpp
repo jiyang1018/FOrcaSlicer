@@ -121,5 +121,17 @@ void NozzleVerifyDialog::on_close(wxCloseEvent& /*event*/)
     Hide(); // hide instead of destroy so it can be reshown
 }
 
+void NozzleVerifyDialog::update_extruders(const std::vector<ExtruderInfo>& extruders)
+{
+    if (GetSizer()) {
+        GetSizer()->Clear(true);
+        SetSizer(nullptr, true);
+    }
+    build_ui(extruders);
+    Fit();
+    Layout();
+    Refresh();
+}
+
 } // namespace GUI
 } // namespace Slic3r
