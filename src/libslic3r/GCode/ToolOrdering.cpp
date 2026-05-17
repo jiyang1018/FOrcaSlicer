@@ -553,14 +553,49 @@ void ToolOrdering::collect_extruders(const PrintObject &object, const std::vecto
 
                 if (something_nonoverriddable){
                		layer_tools.extruders.emplace_back((extruder_override == 0) ? region.config().wall_filament.value : extruder_override);
-                    if (extruder_override == 0 && region.config().inner_wall_filament.value != region.config().wall_filament.value)
-                        layer_tools.extruders.emplace_back(region.config().inner_wall_filament.value);
+                    // Option 3: only add inner_wall_filament if there are actual erPerimeter entities on this layer
+                    if (extruder_override == 0 && region.config().inner_wall_filament.value != region.config().wall_filament.value) {
+                        bool has_inner_wall = false;
+                        for (const ExtrusionEntity* ee : layerm->perimeters.entities) {
+                            const auto* coll = dynamic_cast<const ExtrusionEntityCollection*>(ee);
+                            if (coll) {
+                                for (const ExtrusionEntity* path : coll->entities) {
+                                    if (path->role() == erPerimeter) {
+                                        has_inner_wall = true;
+                                        break;
+                                    }
+                                }
+                            } else if (ee->role() == erPerimeter) {
+                                has_inner_wall = true;
+                            }
+                            if (has_inner_wall) break;
+                        }
+                        if (has_inner_wall)
+                            layer_tools.extruders.emplace_back(region.config().inner_wall_filament.value);
+                    }
                     if (layerCount == 0) {
                         firstLayerExtruders.emplace_back((extruder_override == 0) ? region.config().wall_filament.value : extruder_override);
-                        if (extruder_override == 0 && region.config().inner_wall_filament.value != region.config().wall_filament.value)
-                            firstLayerExtruders.emplace_back(region.config().inner_wall_filament.value);
+                        if (extruder_override == 0 && region.config().inner_wall_filament.value != region.config().wall_filament.value) {
+                            bool has_inner_wall = false;
+                            for (const ExtrusionEntity* ee : layerm->perimeters.entities) {
+                                const auto* coll = dynamic_cast<const ExtrusionEntityCollection*>(ee);
+                                if (coll) {
+                                    for (const ExtrusionEntity* path : coll->entities) {
+                                        if (path->role() == erPerimeter) {
+                                            has_inner_wall = true;
+                                            break;
+                                        }
+                                    }
+                                } else if (ee->role() == erPerimeter) {
+                                    has_inner_wall = true;
+                                }
+                                if (has_inner_wall) break;
+                            }
+                            if (has_inner_wall)
+                                firstLayerExtruders.emplace_back(region.config().inner_wall_filament.value);
+                        }
                     }
-                }
+                } 
 
                 layer_tools.has_object = true;
             }

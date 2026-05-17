@@ -110,7 +110,8 @@ static ExtrusionEntityCollection traverse_loops(const PerimeterGenerator &perime
                              perimeter_generator.layer_id % 2 == 1; // Only calculate overhang degree on even (from GUI POV) layers
 
     for (const PerimeterGeneratorLoop &loop : loops) {
-        bool is_external = loop.is_external();
+        const int outer_wall_loops_count = std::max(1, perimeter_generator.config->outer_wall_loops.value);
+        bool is_external = loop.depth < outer_wall_loops_count;
         bool is_small_width = loop.is_smaller_width_perimeter;
         
         ExtrusionRole role;
@@ -368,7 +369,8 @@ static ExtrusionEntityCollection traverse_extrusions(const PerimeterGenerator& p
         if (extrusion->empty())
             continue;
 
-        const bool    is_external = extrusion->inset_idx == 0;
+        const int outer_wall_loops = std::max(1, perimeter_generator.config->outer_wall_loops.value);
+        const bool    is_external = (int)extrusion->inset_idx < outer_wall_loops;
         ExtrusionRole role = is_external ? erExternalPerimeter : erPerimeter;
 
         const bool  is_contour = !extrusion->is_closed || pg_extrusion.is_contour;
