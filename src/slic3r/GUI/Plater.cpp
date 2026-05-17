@@ -8004,8 +8004,8 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
         return;
     }
 
-    // Mixed nozzle: show verification dialog after slicing completes
-    {
+// Mixed nozzle: show verification dialog after slicing completes - TEMP DISABLED
+    if (false) {
         const auto* nozzle_diameters = wxGetApp().preset_bundle->printers
             .get_edited_preset().config.opt<ConfigOptionFloats>("nozzle_diameter");
         if (nozzle_diameters && nozzle_diameters->values.size() > 1) {
@@ -8041,10 +8041,9 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
                     m_nozzle_verify_dialog = new NozzleVerifyDialog(
                         q,
                         extruders,
-                        [this]() {
+[this]() {
                             m_nozzle_verified = true;
-                            if (auto* mainframe = wxGetApp().mainframe)
-                                mainframe->set_nozzle_verified(true);
+                            // mainframe->set_nozzle_verified(true); // TEMP DISABLED
                         }
                     );
                 } else {
@@ -8053,13 +8052,11 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
                 m_nozzle_verify_dialog->Show(true);
 
                 // Gate print button
-                if (auto* mainframe = wxGetApp().mainframe)
-                    mainframe->set_nozzle_verify_required(true);
+				// mainframe->set_nozzle_verify_required(true); // TEMP DISABLED
             } else {
                 if (m_nozzle_verify_dialog)
                     m_nozzle_verify_dialog->Hide();
-                if (auto* mainframe = wxGetApp().mainframe)
-                    mainframe->set_nozzle_verify_required(false);
+				// mainframe->set_nozzle_verify_required(false); // TEMP DISABLED
             }
         }
     }

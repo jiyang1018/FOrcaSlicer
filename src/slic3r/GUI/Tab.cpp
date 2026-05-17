@@ -2174,6 +2174,7 @@ void Tab::update_frequently_changed_parameters()
 //BBS: BBS new parameter list
 void TabPrint::build()
 {
+    BOOST_LOG_TRIVIAL(info) << "TabPrint::build() starting";
     if (m_presets == nullptr)
         m_presets = &m_preset_bundle->prints;
     load_initial_data();
@@ -2291,7 +2292,7 @@ void TabPrint::build()
     page = add_options_page(L("Strength"), "custom-gcode_strength"); // ORCA: icon only visible on placeholders
         optgroup = page->new_optgroup(L("Walls"), L"param_wall");
     optgroup->append_single_option_line("wall_loops", "strength_settings_walls#wall-loops");
-	    optgroup->append_single_option_line("outer_wall_loops");
+	    //optgroup->append_single_option_line("outer_wall_loops");
         optgroup->append_single_option_line("alternate_extra_wall", "strength_settings_walls#alternate-extra-wall");
         optgroup->append_single_option_line("detect_thin_wall", "strength_settings_walls#detect-thin-wall");
 
@@ -2608,7 +2609,8 @@ optgroup->append_single_option_line("skirt_loops", "others_settings_skirt#loops"
     //     option.opt.full_width = true;
     //     optgroup->append_single_option_line(option);
 
-    //     build_preset_description_line(optgroup.get());
+//     build_preset_description_line(optgroup.get());
+    BOOST_LOG_TRIVIAL(info) << "TabPrint::build() completed";
 }
 
 // Reload current config (aka presets->edited_preset->config) into the UI fields.
@@ -2645,7 +2647,12 @@ void TabPrint::toggle_options()
         m_config_manipulation.set_is_BBL_Printer(is_BBL_printer);
     }
 
-    m_config_manipulation.toggle_print_fff_options(m_config, m_type < Preset::TYPE_COUNT);
+	m_config_manipulation.toggle_print_fff_options(m_config, m_type < Preset::TYPE_COUNT);
+
+    // Mixed nozzle: always show our new fields regardless of toggle_print_fff_options
+    toggle_option("outer_wall_loops", true);
+    toggle_option("outer_wall_layer_height_max", true);
+    toggle_option("outer_wall_seam_position", true);
 
     Field *field = m_active_page->get_field("support_style");
     auto   support_type = m_config->opt_enum<SupportType>("support_type");

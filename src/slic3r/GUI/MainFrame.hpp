@@ -401,11 +401,11 @@ public:
     SideButton* m_print_option_btn{ nullptr };
     mutable bool          m_slice_enable{ true };
     mutable bool          m_print_enable{ true };
-    // Mixed nozzle: verification gate for print button
-    bool                  m_nozzle_verify_required{ false };
-    bool                  m_nozzle_verified{ false };
-    void set_nozzle_verify_required(bool required);
-    void set_nozzle_verified(bool verified);
+	// Mixed nozzle: verification gate - TEMP DISABLED
+    // bool                  m_nozzle_verify_required{ false };
+    // bool                  m_nozzle_verified{ false };
+    // void set_nozzle_verify_required(bool required);
+    // void set_nozzle_verified(bool verified);
     bool get_enable_slice_status();
     bool get_enable_print_status();
     //BBS
