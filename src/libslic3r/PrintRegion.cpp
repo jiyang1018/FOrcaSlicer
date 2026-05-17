@@ -7,8 +7,10 @@ namespace Slic3r {
 unsigned int PrintRegion::extruder(FlowRole role) const
 {
     size_t extruder = 0;
-    if (role == frPerimeter || role == frExternalPerimeter)
+	if (role == frExternalPerimeter)
         extruder = m_config.wall_filament;
+    else if (role == frPerimeter)
+        extruder = m_config.inner_wall_filament;
     else if (role == frInfill)
         extruder = m_config.sparse_infill_filament;
     else if (role == frSolidInfill || role == frTopSolidInfill)
@@ -70,8 +72,10 @@ void PrintRegion::collect_object_printing_extruders(const PrintConfig &print_con
     	int i = std::max(0, extruder_id - 1);
         object_extruders.emplace_back((i >= num_extruders) ? 0 : i);
     };
-    if (region_config.wall_loops.value > 0 || has_brim)
+    if (region_config.wall_loops.value > 0 || has_brim) {
     	emplace_extruder(region_config.wall_filament);
+    	emplace_extruder(region_config.inner_wall_filament);
+    }
     if (region_config.sparse_infill_density.value > 0)
     	emplace_extruder(region_config.sparse_infill_filament);
     if (region_config.top_shell_layers.value > 0 || region_config.bottom_shell_layers.value > 0)

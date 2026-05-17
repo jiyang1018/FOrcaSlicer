@@ -179,8 +179,32 @@ unsigned int LayerTools::extruder(const ExtrusionEntityCollection &extrusions, c
                 extruder = region.config().solid_infill_filament;
             else
                 extruder = region.config().sparse_infill_filament;
-        } else
-            extruder = region.config().wall_filament.value;
+} else {
+            // Mixed nozzle: use inner_wall_filament for inner perimeters
+            // Check if collection contains any external perimeter = outer wall
+            ExtrusionRole role = erPerimeter;
+            for (const ExtrusionEntity* ee : extrusions.entities) {
+                if (ee->role() == erExternalPerimeter) {
+                    role = erExternalPerimeter;
+                    break;
+                }
+                const auto* coll = dynamic_cast<const ExtrusionEntityCollection*>(ee);
+                if (coll) {
+                    for (const ExtrusionEntity* inner : coll->entities) {
+                        if (inner->role() == erExternalPerimeter) {
+                            role = erExternalPerimeter;
+                            break;
+                        }
+                    }
+                }
+                if (role == erExternalPerimeter) break;
+            }                                                 
+            
+            if (role == erPerimeter && region.config().inner_wall_filament.value > 0)
+                extruder = region.config().inner_wall_filament.value;
+            else
+                extruder = region.config().wall_filament.value;
+        }
     } else
         extruder = this->extruder_override;
 
@@ -529,8 +553,12 @@ void ToolOrdering::collect_extruders(const PrintObject &object, const std::vecto
 
                 if (something_nonoverriddable){
                		layer_tools.extruders.emplace_back((extruder_override == 0) ? region.config().wall_filament.value : extruder_override);
+                    if (extruder_override == 0 && region.config().inner_wall_filament.value != region.config().wall_filament.value)
+                        layer_tools.extruders.emplace_back(region.config().inner_wall_filament.value);
                     if (layerCount == 0) {
                         firstLayerExtruders.emplace_back((extruder_override == 0) ? region.config().wall_filament.value : extruder_override);
+                        if (extruder_override == 0 && region.config().inner_wall_filament.value != region.config().wall_filament.value)
+                            firstLayerExtruders.emplace_back(region.config().inner_wall_filament.value);
                     }
                 }
 

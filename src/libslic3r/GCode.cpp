@@ -4199,6 +4199,46 @@ LayerResult GCode::process_layer(const Print& print,
                             printing_extruders.emplace_back(correct_extruder_id);
 
                         // Now we must add this extrusion into the by_extruder map, once for each extruder that will print it:
+                        // Mixed nozzle: split perimeter collections by role (outer=wall_filament, inner=inner_wall_filament)
+                        bool did_mixed_split = false;
+                        if (entity_type == ObjectByExtruder::Island::Region::PERIMETERS &&
+                            !is_anything_overridden &&
+                            region.config().inner_wall_filament.value != region.config().wall_filament.value &&
+                            extrusions->can_sort()) {
+                            unsigned int outer_ext = (unsigned int)(region.config().wall_filament.value - 1);
+                            unsigned int inner_ext = (unsigned int)(region.config().inner_wall_filament.value - 1);
+                            if (!layer_tools.has_extruder(outer_ext)) outer_ext = layer_tools.extruders.back();
+                            if (!layer_tools.has_extruder(inner_ext)) inner_ext = layer_tools.extruders.back();
+                            // Find island index once
+                            size_t island_idx = n_slices;
+                            for (size_t i = 0; i < n_slices; ++i) {
+                                if (point_inside_surface(slices_test_order[i], extrusions->first_point())) {
+                                    island_idx = slices_test_order[i];
+                                    break;
+                                }
+                            }
+                            // Push outer wall entities to outer extruder
+                            auto& outer_islands = object_islands_by_extruder(by_extruder, outer_ext, &layer_to_print - layers.data(), layers.size(), n_slices + 1);
+                            if (outer_islands[island_idx].by_region.empty())
+                                outer_islands[island_idx].by_region.assign(print.num_print_regions(), ObjectByExtruder::Island::Region());
+                            // Push inner wall entities to inner extruder
+                            auto& inner_islands = object_islands_by_extruder(by_extruder, inner_ext, &layer_to_print - layers.data(), layers.size(), n_slices + 1);
+                            if (inner_islands[island_idx].by_region.empty())
+                                inner_islands[island_idx].by_region.assign(print.num_print_regions(), ObjectByExtruder::Island::Region());
+                            bool has_outer = false, has_inner = false;
+                            for (const ExtrusionEntity* path : extrusions->entities) {
+                                if (path->role() == erExternalPerimeter) {
+                                    outer_islands[island_idx].by_region[region.print_region_id()].perimeters.push_back(const_cast<ExtrusionEntity*>(path));
+                                    has_outer = true;
+                                } else {
+                                    inner_islands[island_idx].by_region[region.print_region_id()].perimeters.push_back(const_cast<ExtrusionEntity*>(path));
+                                    has_inner = true;
+                                }
+                            }
+                            if (has_outer || has_inner)
+                                did_mixed_split = true;
+                        }
+                        if (!did_mixed_split) {
                         for (unsigned int extruder : printing_extruders) {
                             std::vector<ObjectByExtruder::Island>& islands = object_islands_by_extruder(by_extruder, extruder,
                                                                                                         &layer_to_print - layers.data(),
@@ -4218,6 +4258,7 @@ LayerResult GCode::process_layer(const Print& print,
                                 }
                             }
                         }
+                        } // end !did_mixed_split
                     }
                 }
             } // for regions
