@@ -1196,8 +1196,20 @@ void PerimeterGenerator::process_classic()
     std::vector<size_t> surface_order = chain_expolygons(surface_exp);
     for (size_t order_idx = 0; order_idx < surface_order.size(); order_idx++) {
         const Surface &surface = all_surfaces[surface_order[order_idx]];
+
         // detect how many perimeters must be generated for this island
         int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;  // 0-indexed loops
+        // BBS: color patch -- if this region is a color patch shell, limit loops to color_patch_loops
+        if (this->color_patch_regions != nullptr) {
+            // find which extruder this region belongs to (wall_filament is 1-based)
+            const int wall_ext = this->config->wall_filament.value - 1; // 0-based
+            if (wall_ext >= 0 && wall_ext < (int)this->color_patch_regions->size() &&
+                !(*this->color_patch_regions)[wall_ext].empty()) {
+                const int patch_loops = this->print_config->color_patch_loops.get_at(wall_ext);
+                if (patch_loops > 0)
+                    loop_number = patch_loops - 1; // 0-indexed
+            }
+        }
         // Mixed nozzle: read outer wall loop count (OW).
         // Phase 2: this value drives OW/IW toolpath split.
         int outer_wall_loops = this->print_config->has_mixed_nozzle_sizes.value

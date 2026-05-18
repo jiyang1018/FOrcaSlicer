@@ -156,6 +156,11 @@ public:
     // BBS
     ExPolygons              loverhangs;
     BoundingBox             loverhangs_bbox;
+
+    // BBS: color patch shell regions per extruder (0-based).
+    // Populated by apply_mm_segmentation() for layers with painted faces.
+    // Used by PerimeterGenerator to emit color shell loops.
+    std::vector<ExPolygons> color_patch_regions;
     size_t                  region_count() const { return m_regions.size(); }
     const LayerRegion*      get_region(int idx) const { return m_regions[idx]; }
     LayerRegion*            get_region(int idx) { return m_regions[idx]; }

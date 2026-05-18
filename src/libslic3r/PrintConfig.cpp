@@ -2152,11 +2152,12 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionFloats { 1.75 });
 	
 	def = this->add("color_patch_loops", coInts);
-    def->label = L("Color patch loops");
-    def->category = L("Multi Material");
-    def->tooltip = L("Number of outer wall loops printed in this filament's color when used as a color patch. "
-                     "Remaining loops are printed by the inner-wall extruder.");
-    def->min = 1;
+     def->label = L("Color patch loops");
+     def->category = L("Multi Material");
+     def->tooltip = L("Number of outer wall loops printed in this filament's color when used as a color patch. "
+                      "Remaining loops are printed by the inner-wall extruder.");
+     def->min = 1;
+     def->set_default_value(new ConfigOptionInts(1, 1));
     def->max = 100;
     def->mode = comSimple;
     def->set_default_value(new ConfigOptionInts({1}));

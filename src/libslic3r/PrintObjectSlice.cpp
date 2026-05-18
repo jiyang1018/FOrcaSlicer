@@ -945,11 +945,48 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                         int        target_region_id = it_target_region->region->print_object_region_id();
                         ExPolygons stolen           = intersection_ex(parent_layer_region.slices.surfaces, segmented.expolygons);
                         if (!stolen.empty()) {
+                            // BBS: color patch ¡ª shrink stolen region to shell strip only (N loops wide)
+                            const size_t ext_idx = size_t(extruder_id - 1);
+                            const int patch_loops = print_object.print()->config().color_patch_loops.get_at(ext_idx);
+                            ExPolygons shell_strip = stolen;
+                            if (patch_loops > 0) {
+                                // compute the inner boundary after N loop offsets
+                                // use the parent region's ext_perimeter spacing as loop width
+                                // approximate: use 0.4mm scaled as default shell width per loop
+                                // TODO: use actual flow spacing from region config
+                                // use ext_perimeter spacing: nozzle diameter * 1.0 as approximation
+                                const double nozzle_d = print_object.print()->config().nozzle_diameter.get_at(ext_idx);
+                                const coord_t loop_width = scaled<coord_t>(nozzle_d * 1.2);
+                                ExPolygons inner = offset_ex(stolen, -float(patch_loops) * loop_width);
+                            // shell strip = stolen minus inner core
+                            shell_strip = inner.empty() ? stolen : diff_ex(stolen, inner);
+                            // clip shell strip to only the outer model boundary facing part
+                            // outer boundary = shrink parent region by loop_width, then diff with parent
+                            // anything in shell_strip that is NOT in the outer boundary strip gets removed
+                            // keep only shell strip parts that border empty space (actual model surface)
+                            // = intersect shell strip with zone within loop_width outside model boundary
+                            // expanded model catches everything within loop_width of any surface edge
+                            // keep only shell strip parts on actual model surface
+                            // lslices = full pre-segmentation model, has correct outer AND inner hole contours
+                            // use raw_slices (pre-segmentation) so inner hole boundaries are intact
+                            ExPolygons parent_expolys = parent_layer_region.raw_slices.empty()
+                                ? to_expolygons(to_polygons(parent_layer_region.slices.surfaces))
+                                : parent_layer_region.raw_slices;
+                            ExPolygons parent_inner = offset_ex(parent_expolys, -float(loop_width));
+                            ExPolygons outer_boundary_strip = diff_ex(parent_expolys, parent_inner);
+                            shell_strip = intersection_ex(shell_strip, outer_boundary_strip);
+                            }
+
+                            // save full stolen region for reference
+                            if (layer.color_patch_regions.size() <= ext_idx)
+                                layer.color_patch_regions.resize(ext_idx + 1);
+                            append(layer.color_patch_regions[ext_idx], shell_strip);
+
                             ByRegion &dst = by_region[target_region_id];
                             if (dst.expolygons.empty()) {
-                                dst.expolygons = std::move(stolen);
+                                dst.expolygons = std::move(shell_strip);
                             } else {
-                                append(dst.expolygons, std::move(stolen));
+                                append(dst.expolygons, std::move(shell_strip));
                                 dst.needs_merge = true;
                             }
                         }
@@ -971,10 +1008,10 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                         // (because of preprocessing of the input regions in multi-material segmentation). Therefore, subtraction from
                         // layerm.region() could produce a huge number of small unprintable regions for the model's base extruder.
                         // This could, on some models, produce bulges with the model's base color (#7109).
-                        if (!mine.empty()) {
+						if (!mine.empty()) {
                             mine = opening(union_ex(mine), scaled<float>(5. * EPSILON), scaled<float>(5. * EPSILON));
                         }
-
+                                                
                         if (!mine.empty()) {
                             ByRegion &dst = by_region[parent_print_region.print_object_region_id()];
                             if (dst.expolygons.empty()) {
@@ -983,6 +1020,35 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                                 append(dst.expolygons, union_ex(mine));
                                 dst.needs_merge = true;
                             }
+                        }
+                    }
+                }
+
+                // BBS: color patch -- before finalizing, add inner cores back to base regions
+                // Inner core = full segmented region minus the shell strip assigned to painted region
+                // Must run after all parent_layer_region_idx iterations so color_patch_regions is fully populated
+                if (!layer.color_patch_regions.empty()) {
+                    for (int region_id = 0; region_id < layer.region_count(); ++region_id) {
+                        ByRegion &base_dst = by_region[region_id];
+                        // find which extruder this region uses
+                        const LayerRegion &lr = *layer.get_region(region_id);
+                        const int self_ext = lr.region().config().wall_filament.value; // 1-based
+                        for (size_t cp_idx = 0; cp_idx < layer.color_patch_regions.size(); ++cp_idx) {
+                            if (layer.color_patch_regions[cp_idx].empty()) continue;
+                            const int cp_ext = (int)cp_idx + 1; // 1-based
+                            if (cp_ext == self_ext) continue; // skip self
+                            const ByExtruder &seg = by_extruder[cp_idx];
+                            if (!seg.bbox.defined) continue;
+                            ExPolygons inner_core = diff_ex(seg.expolygons, layer.color_patch_regions[cp_idx]);
+                            if (inner_core.empty()) continue;
+                            // only add to the base region (extruder 1 / region 0 typically)
+                            // check overlap with this region's existing geometry
+                            if (base_dst.expolygons.empty()) continue;
+                            // add inner core -- use union to merge cleanly
+                            // expand inner core slightly to close gap with shell strip
+                            ExPolygons inner_core_expanded = offset_ex(inner_core, scaled<float>(0.01));
+                            append(base_dst.expolygons, inner_core_expanded);
+                            base_dst.needs_merge = true;
                         }
                     }
                 }

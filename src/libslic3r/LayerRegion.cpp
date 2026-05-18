@@ -114,6 +114,8 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
         g.upper_slices_same_region = &this->layer()->upper_layer->get_region(region_id)->slices;
 
     g.layer_id              = (int)this->layer()->id();
+    // BBS: pass color patch regions so process_classic can emit color shell loops
+    g.color_patch_regions   = this->layer()->color_patch_regions.empty() ? nullptr : &this->layer()->color_patch_regions;
     g.ext_perimeter_flow    = this->flow(frExternalPerimeter);
     g.overhang_flow         = this->bridging_flow(frPerimeter, object_config.thick_bridges);
     g.solid_infill_flow     = this->flow(frSolidInfill);
