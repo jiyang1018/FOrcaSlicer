@@ -2150,7 +2150,16 @@ void PrintConfigDef::init_fff_params()
     def->sidetext = "mm";	// milimeters, don't need translation
     def->min = 0;
     def->set_default_value(new ConfigOptionFloats { 1.75 });
-
+	
+	def = this->add("color_patch_loops", coInts);
+    def->label = L("Color patch loops");
+    def->category = L("Multi Material");
+    def->tooltip = L("Number of outer wall loops printed in this filament's color when used as a color patch. "
+                     "Remaining loops are printed by the inner-wall extruder.");
+    def->min = 1;
+    def->max = 100;
+    def->mode = comSimple;
+    def->set_default_value(new ConfigOptionInts({1}));
     /*
         Large format printers with print volumes in the order of 1m^3 generally use pellets for printing.
         The overall tech is very similar to FDM printing. 
@@ -6310,6 +6319,7 @@ void PrintConfigDef::init_filament_option_keys()
         "retract_before_wipe", "retract_restart_extra", "retraction_minimum_travel", "wipe", "wipe_distance",
         "retract_when_changing_layer", "retract_length_toolchange", "retract_restart_extra_toolchange", "filament_colour",
         "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut"/*,"filament_seam_gap"*/
+		,"color_patch_loops"
     };
 
     m_filament_retract_keys = {
