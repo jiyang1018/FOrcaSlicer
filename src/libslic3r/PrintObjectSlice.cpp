@@ -948,34 +948,28 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                             // BBS: color patch ¡ª shrink stolen region to shell strip only (N loops wide)
                             const size_t ext_idx = size_t(extruder_id - 1);
                             const int patch_loops = print_object.print()->config().color_patch_loops.get_at(ext_idx);
-                            ExPolygons shell_strip = stolen;
-                            if (patch_loops > 0) {
-                                // compute the inner boundary after N loop offsets
-                                // use the parent region's ext_perimeter spacing as loop width
-                                // approximate: use 0.4mm scaled as default shell width per loop
-                                // TODO: use actual flow spacing from region config
-                                // use ext_perimeter spacing: nozzle diameter * 1.0 as approximation
-                                const double nozzle_d = print_object.print()->config().nozzle_diameter.get_at(ext_idx);
-                                const coord_t loop_width = scaled<coord_t>(nozzle_d * 1.2);
-                                ExPolygons inner = offset_ex(stolen, -float(patch_loops) * loop_width);
-                            // shell strip = stolen minus inner core
-                            shell_strip = inner.empty() ? stolen : diff_ex(stolen, inner);
-                            // clip shell strip to only the outer model boundary facing part
-                            // outer boundary = shrink parent region by loop_width, then diff with parent
-                            // anything in shell_strip that is NOT in the outer boundary strip gets removed
-                            // keep only shell strip parts that border empty space (actual model surface)
-                            // = intersect shell strip with zone within loop_width outside model boundary
-                            // expanded model catches everything within loop_width of any surface edge
-                            // keep only shell strip parts on actual model surface
-                            // lslices = full pre-segmentation model, has correct outer AND inner hole contours
-                            // use raw_slices (pre-segmentation) so inner hole boundaries are intact
-                            ExPolygons parent_expolys = parent_layer_region.raw_slices.empty()
-                                ? to_expolygons(to_polygons(parent_layer_region.slices.surfaces))
-                                : parent_layer_region.raw_slices;
-                            ExPolygons parent_inner = offset_ex(parent_expolys, -float(loop_width));
-                            ExPolygons outer_boundary_strip = diff_ex(parent_expolys, parent_inner);
-                            shell_strip = intersection_ex(shell_strip, outer_boundary_strip);
-                            }
+						ExPolygons shell_strip = stolen;
+						if (patch_loops > 0) {
+							const double nozzle_d = print_object.print()->config().nozzle_diameter.get_at(ext_idx);
+							const coord_t loop_width = scaled<coord_t>(nozzle_d * 1.2);
+
+							// Step 1: build full model cross-section from all region slices
+							// (layer.lslices is not yet populated at this point in the pipeline)
+							ExPolygons full_model;
+							for (int r = 0; r < layer.region_count(); ++r)
+								append(full_model, to_expolygons(layer.get_region(r)->slices.surfaces));
+							full_model = union_ex(full_model);
+
+							// Erode full model to get a boundary strip along all surfaces
+							// (works for both convex outer edges and concave hole edges)
+							ExPolygons full_model_eroded = offset_ex(full_model, -float(patch_loops) * loop_width);
+							ExPolygons boundary_strip = diff_ex(full_model, full_model_eroded);
+
+							// Expand stolen slightly to capture shared corners between
+							// adjacent painted faces of the same extruder
+							ExPolygons stolen_expanded = offset_ex(stolen, float(loop_width) * 1.0f);
+							shell_strip = intersection_ex(boundary_strip, stolen_expanded);
+						}
 
                             // save full stolen region for reference
                             if (layer.color_patch_regions.size() <= ext_idx)
@@ -1026,7 +1020,13 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
 
                 // BBS: color patch -- before finalizing, add inner cores back to base regions
                 // Inner core = full segmented region minus the shell strip assigned to painted region
-                // Must run after all parent_layer_region_idx iterations so color_patch_regions is fully populated
+                // Merge color_patch_regions per extruder so adjacent painted faces
+                // produce a single continuous shell_strip rather than two separate
+                // regions with a seam between them.
+                for (size_t cp_idx = 0; cp_idx < layer.color_patch_regions.size(); ++cp_idx) {
+                    if (layer.color_patch_regions[cp_idx].size() > 1)
+                        layer.color_patch_regions[cp_idx] = union_ex(layer.color_patch_regions[cp_idx]);
+                }
                 if (!layer.color_patch_regions.empty()) {
                     for (int region_id = 0; region_id < layer.region_count(); ++region_id) {
                         ByRegion &base_dst = by_region[region_id];

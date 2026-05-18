@@ -2157,10 +2157,9 @@ void PrintConfigDef::init_fff_params()
      def->tooltip = L("Number of outer wall loops printed in this filament's color when used as a color patch. "
                       "Remaining loops are printed by the inner-wall extruder.");
      def->min = 1;
-     def->set_default_value(new ConfigOptionInts(1, 1));
-    def->max = 100;
-    def->mode = comSimple;
-    def->set_default_value(new ConfigOptionInts({1}));
+     def->max = 100;
+     def->mode = comSimple;
+     def->set_default_value(new ConfigOptionInts({1, 1, 1, 1}));
     /*
         Large format printers with print volumes in the order of 1m^3 generally use pellets for printing.
         The overall tech is very similar to FDM printing. 
