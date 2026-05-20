@@ -133,7 +133,10 @@ bool GLGizmoMmuSegmentation::on_init()
     m_desc["pointer"]              = _L("Triangles");
 
     m_desc["filaments"]            = _L("Filaments");
-    m_desc["tool_type"]            = _L("Tool type");
+	m_desc["tool_type"]            = _L("Tool type");
+    m_desc["color_patch_loops"]    = _L("Color patch loops");
+    m_desc["mode_original"]        = _L("Original");
+    m_desc["mode_color_patch"]     = _L("Color Patch");
     m_desc["tool_brush"]           = _L("Brush");
     m_desc["tool_smart_fill"]      = _L("Smart fill");
     m_desc["tool_bucket_fill"]     = _L("Bucket fill");
@@ -462,6 +465,106 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
     }
     //ImGui::NewLine();
     ImGui::Dummy(ImVec2(0.0f, ImGui::GetFontSize() * 0.1));
+
+    // FOS: Original / Color Patch mode toggle (uses color_patch_loops=0 for Original)
+    {
+        const DynamicPrintConfig &cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+        const int ext_idx = m_selected_extruder_idx;
+        if (!ImGui::IsAnyItemActive()) {
+            const auto *loops_opt = cfg.opt<ConfigOptionInts>("color_patch_loops");
+            if (loops_opt && ext_idx < (int)loops_opt->values.size())
+                m_color_patch_mode_ui = loops_opt->values[ext_idx] > 0;
+        }
+
+        float button_width = (window_width - 2 * ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        ImVec2 btn_size(button_width, 0);
+
+        if (!m_color_patch_mode_ui)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(m_desc.at("mode_original").utf8_str(), btn_size)) {
+            m_color_patch_mode_ui = false;
+            DynamicPrintConfig new_cfg;
+            ConfigOptionInts new_opt({0, 0, 0, 0});
+            if (const auto *existing = cfg.opt<ConfigOptionInts>("color_patch_loops"))
+                new_opt = *existing;
+            while ((int)new_opt.values.size() <= ext_idx)
+                new_opt.values.push_back(0);
+            new_opt.values[ext_idx] = 0;
+            new_cfg.set_key_value("color_patch_loops", new_opt.clone());
+            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
+        }
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        if (m_color_patch_mode_ui)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(m_desc.at("mode_color_patch").utf8_str(), btn_size)) {
+            m_color_patch_mode_ui = true;
+            DynamicPrintConfig new_cfg;
+            ConfigOptionInts new_opt({1, 1, 1, 1});
+            if (const auto *existing = cfg.opt<ConfigOptionInts>("color_patch_loops"))
+                new_opt = *existing;
+            while ((int)new_opt.values.size() <= ext_idx)
+                new_opt.values.push_back(1);
+            if (new_opt.values[ext_idx] == 0)
+                new_opt.values[ext_idx] = 1;
+            new_cfg.set_key_value("color_patch_loops", new_opt.clone());
+            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
+        }
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::Separator();
+
+    // FOS: color patch loops slider — only shown in Color Patch mode
+    if (m_color_patch_mode_ui) {
+        const DynamicPrintConfig &cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+        const int ext_idx = m_selected_extruder_idx;
+        const int loops_min = 1;
+        const int loops_max = 10;
+        if (!ImGui::IsAnyItemActive()) {
+            const auto *loops_opt = cfg.opt<ConfigOptionInts>("color_patch_loops");
+            if (loops_opt && ext_idx < (int)loops_opt->values.size())
+                m_color_patch_loops_ui = loops_opt->values[ext_idx];
+            if (m_color_patch_loops_ui <= 0) m_color_patch_loops_ui = 1;
+        }
+        float loops_float = float(m_color_patch_loops_ui);
+        ImGui::AlignTextToFramePadding();
+        m_imgui->text(m_desc.at("color_patch_loops"));
+        ImGui::SameLine(sliders_left_width);
+        ImGui::PushItemWidth(sliders_width);
+        if (m_imgui->bbl_slider_float_style("##color_patch_loops", &loops_float, float(loops_min), float(loops_max), "%.0f", 1.0f, true))
+            m_color_patch_loops_ui = int(loops_float + 0.5f);
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            DynamicPrintConfig new_cfg;
+            ConfigOptionInts new_opt({1, 1, 1, 1});
+            if (const auto *existing = cfg.opt<ConfigOptionInts>("color_patch_loops"))
+                new_opt = *existing;
+            while ((int)new_opt.values.size() <= ext_idx)
+                new_opt.values.push_back(1);
+            new_opt.values[ext_idx] = m_color_patch_loops_ui;
+            new_cfg.set_key_value("color_patch_loops", new_opt.clone());
+            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
+        }
+        ImGui::SameLine(drag_left_width + sliders_left_width);
+        ImGui::PushItemWidth(1.5 * slider_icon_width);
+        if (ImGui::BBLDragFloat("##color_patch_loops_input", &loops_float, 1.0f, float(loops_min), float(loops_max), "%.0f"))
+            m_color_patch_loops_ui = int(loops_float + 0.5f);
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            DynamicPrintConfig new_cfg;
+            ConfigOptionInts new_opt({1, 1, 1, 1});
+            if (const auto *existing = cfg.opt<ConfigOptionInts>("color_patch_loops"))
+                new_opt = *existing;
+            while ((int)new_opt.values.size() <= ext_idx)
+                new_opt.values.push_back(1);
+            new_opt.values[ext_idx] = m_color_patch_loops_ui;
+            new_cfg.set_key_value("color_patch_loops", new_opt.clone());
+            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
+        }
+    } // end color patch mode
 
     m_imgui->text(m_desc.at("tool_type"));
 
