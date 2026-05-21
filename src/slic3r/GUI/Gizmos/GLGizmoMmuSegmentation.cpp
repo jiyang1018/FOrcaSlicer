@@ -474,6 +474,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         const int ext_idx = m_selected_extruder_idx;
         float button_width = (window_width - 2 * ImGui::GetStyle().ItemSpacing.x) * 0.5f;
         ImVec2 btn_size(button_width, 0);
+        // FOS: sync mode UI from config, but only after user has interacted
         // FOS: sync mode UI from color_patch_enabled flag
         if (m_color_patch_initialized) {
             const auto *enabled_opt = cfg.opt<ConfigOptionBools>("color_patch_enabled");

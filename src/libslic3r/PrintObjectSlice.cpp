@@ -884,6 +884,7 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                     if (! region.expolygons.empty()) {
                         region.bbox = get_extents(region.expolygons);
                         layer_split = true;
+                    }
                 }
 
                 if (!layer_split)
@@ -971,12 +972,17 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                                 if (layer.color_patch_regions.size() <= ext_idx)
                                     layer.color_patch_regions.resize(ext_idx + 1);
                                 append(layer.color_patch_regions[ext_idx], shell_strip);
-                                // FOS: use shell_strip as dst -- avoids wedge loops on cut edges
+                                // FOS: dst = stolen clipped to expanded boundary_strip
+                                // boundary_strip outer edge = model surface (no cut-edge wedge loops)
+                                // expanded inward by loop_width * patch_loops to hold all CL loops
+                                // works for both full wrap and partial face via same code path
+                                ExPolygons dst_boundary = offset_ex(boundary_strip, float(loop_width) * float(patch_loops));
+                                ExPolygons dst_geom = intersection_ex(stolen, dst_boundary);
                                 ByRegion &dst = by_region[target_region_id];
                                 if (dst.expolygons.empty()) {
-                                    dst.expolygons = shell_strip;
+                                    dst.expolygons = dst_geom;
                                 } else {
-                                    append(dst.expolygons, shell_strip);
+                                    append(dst.expolygons, dst_geom);
                                     dst.needs_merge = true;
                                 }
                             } else {
@@ -1016,7 +1022,7 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                         // (because of preprocessing of the input regions in multi-material segmentation). Therefore, subtraction from
                         // layerm.region() could produce a huge number of small unprintable regions for the model's base extruder.
                         // This could, on some models, produce bulges with the model's base color (#7109).
-						if (!mine.empty()) {
+                        if (!mine.empty()) {
                             mine = opening(union_ex(mine), scaled<float>(5. * EPSILON), scaled<float>(5. * EPSILON));
                         }
                                                 
@@ -1047,6 +1053,8 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                         // find which extruder this region uses
                         const LayerRegion &lr = *layer.get_region(region_id);
                         const int self_ext = lr.region().config().wall_filament.value; // 1-based
+                        {
+                        }
                         for (size_t cp_idx = 0; cp_idx < layer.color_patch_regions.size(); ++cp_idx) {
                             if (layer.color_patch_regions[cp_idx].empty()) continue;
                             const int cp_ext = (int)cp_idx + 1; // 1-based
@@ -1068,6 +1076,9 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                 }
 
                 // Re-create Surfaces of LayerRegions.
+                {
+                    }
+                }
                 for (int region_id = 0; region_id < layer.region_count(); ++region_id) {
                     ByRegion &src = by_region[region_id];
                     if (src.needs_merge) {
