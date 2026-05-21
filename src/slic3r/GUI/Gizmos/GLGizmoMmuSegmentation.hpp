@@ -106,7 +106,8 @@ protected:
     // BBS
     size_t                            m_selected_extruder_idx = 0;
     int                               m_color_patch_loops_ui = 1;
-    bool                              m_color_patch_mode_ui = false;
+    bool                              m_color_patch_mode_ui = true;
+    bool                              m_color_patch_initialized = false;
     std::vector<ColorRGBA>            m_extruders_colors;
     std::vector<int>                  m_volumes_extruder_idxs;
 

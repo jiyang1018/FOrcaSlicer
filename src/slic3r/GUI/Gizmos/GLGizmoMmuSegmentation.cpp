@@ -33,6 +33,8 @@ void GLGizmoMmuSegmentation::on_opening()
 {
     if (wxGetApp().filaments_cnt() > int(GLGizmoMmuSegmentation::EXTRUDERS_LIMIT))
         show_notification_extruders_limit_exceeded();
+    // FOS: sync UI state from config on open
+    m_color_patch_initialized = true;
 }
 
 void GLGizmoMmuSegmentation::on_shutdown()
@@ -470,53 +472,55 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
     {
         const DynamicPrintConfig &cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
         const int ext_idx = m_selected_extruder_idx;
-        if (!ImGui::IsAnyItemActive()) {
+        float button_width = (window_width - 2 * ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        ImVec2 btn_size(button_width, 0);
+        // FOS: sync mode UI from config, but only after user has interacted
+        if (m_color_patch_initialized) {
             const auto *loops_opt = cfg.opt<ConfigOptionInts>("color_patch_loops");
             if (loops_opt && ext_idx < (int)loops_opt->values.size())
                 m_color_patch_mode_ui = loops_opt->values[ext_idx] > 0;
         }
-
-        float button_width = (window_width - 2 * ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-        ImVec2 btn_size(button_width, 0);
-
-        if (!m_color_patch_mode_ui)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
-        else
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        if (ImGui::Button(m_desc.at("mode_original").utf8_str(), btn_size)) {
-            m_color_patch_mode_ui = false;
-            DynamicPrintConfig new_cfg;
-            ConfigOptionInts new_opt({0, 0, 0, 0});
-            if (const auto *existing = cfg.opt<ConfigOptionInts>("color_patch_loops"))
-                new_opt = *existing;
-            while ((int)new_opt.values.size() <= ext_idx)
-                new_opt.values.push_back(0);
-            new_opt.values[ext_idx] = 0;
-            new_cfg.set_key_value("color_patch_loops", new_opt.clone());
-            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
-        }
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
         if (m_color_patch_mode_ui)
             ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
         else
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
         if (ImGui::Button(m_desc.at("mode_color_patch").utf8_str(), btn_size)) {
             m_color_patch_mode_ui = true;
+            m_color_patch_initialized = true;
             DynamicPrintConfig new_cfg;
             ConfigOptionInts new_opt({1, 1, 1, 1});
-            if (const auto *existing = cfg.opt<ConfigOptionInts>("color_patch_loops"))
+            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionInts>("color_patch_loops"))
                 new_opt = *existing;
             while ((int)new_opt.values.size() <= ext_idx)
                 new_opt.values.push_back(1);
             if (new_opt.values[ext_idx] == 0)
-                new_opt.values[ext_idx] = 1;
+                new_opt.values[ext_idx] = m_color_patch_loops_ui > 0 ? m_color_patch_loops_ui : 1;
             new_cfg.set_key_value("color_patch_loops", new_opt.clone());
             wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
+            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
         }
         ImGui::PopStyleColor();
-    }
-
+        ImGui::SameLine();
+        if (!m_color_patch_mode_ui)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(m_desc.at("mode_original").utf8_str(), btn_size)) {
+            m_color_patch_mode_ui = false;
+            m_color_patch_initialized = true;
+            DynamicPrintConfig new_cfg;
+            ConfigOptionInts new_opt({0, 0, 0, 0});
+            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionInts>("color_patch_loops"))
+                new_opt = *existing;
+            while ((int)new_opt.values.size() <= ext_idx)
+                new_opt.values.push_back(0);
+            new_opt.values[ext_idx] = 0;
+            new_cfg.set_key_value("color_patch_loops", new_opt.clone());
+            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
+            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
+        }
+        ImGui::PopStyleColor();
+        }
     ImGui::Separator();
 
     // FOS: color patch loops slider — only shown in Color Patch mode
@@ -536,18 +540,33 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         m_imgui->text(m_desc.at("color_patch_loops"));
         ImGui::SameLine(sliders_left_width);
         ImGui::PushItemWidth(sliders_width);
-        if (m_imgui->bbl_slider_float_style("##color_patch_loops", &loops_float, float(loops_min), float(loops_max), "%.0f", 1.0f, true))
+        if (m_imgui->bbl_slider_float_style("##color_patch_loops", &loops_float, float(loops_min), float(loops_max), "%.0f", 1.0f, true)) {
             m_color_patch_loops_ui = int(loops_float + 0.5f);
+            DynamicPrintConfig new_cfg_live;
+            ConfigOptionInts new_opt_live({1, 1, 1, 1});
+            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionInts>("color_patch_loops"))
+                new_opt_live = *existing;
+            while ((int)new_opt_live.values.size() <= ext_idx)
+                new_opt_live.values.push_back(1);
+            new_opt_live.values[ext_idx] = m_color_patch_loops_ui;
+            new_cfg_live.set_key_value("color_patch_loops", new_opt_live.clone());
+            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg_live);
+        }
         if (ImGui::IsItemDeactivatedAfterEdit()) {
             DynamicPrintConfig new_cfg;
             ConfigOptionInts new_opt({1, 1, 1, 1});
-            if (const auto *existing = cfg.opt<ConfigOptionInts>("color_patch_loops"))
+            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionInts>("color_patch_loops"))
                 new_opt = *existing;
             while ((int)new_opt.values.size() <= ext_idx)
                 new_opt.values.push_back(1);
             new_opt.values[ext_idx] = m_color_patch_loops_ui;
             new_cfg.set_key_value("color_patch_loops", new_opt.clone());
             wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
+            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
+            {
+                FILE *f = fopen("C:/Users/alexander.ji/SnapmakerOrcaSlicer/build/fos_debug.txt", "a");
+                if (f) { fprintf(f, "CL slider saved ext_idx=%d val=%d\n", ext_idx, m_color_patch_loops_ui); fclose(f); }
+            }
         }
         ImGui::SameLine(drag_left_width + sliders_left_width);
         ImGui::PushItemWidth(1.5 * slider_icon_width);
@@ -563,6 +582,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             new_opt.values[ext_idx] = m_color_patch_loops_ui;
             new_cfg.set_key_value("color_patch_loops", new_opt.clone());
             wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
+            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
         }
     } // end color patch mode
 

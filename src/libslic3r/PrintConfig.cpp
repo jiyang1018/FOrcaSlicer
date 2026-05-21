@@ -6319,9 +6319,7 @@ void PrintConfigDef::init_filament_option_keys()
         "retract_before_wipe", "retract_restart_extra", "retraction_minimum_travel", "wipe", "wipe_distance",
         "retract_when_changing_layer", "retract_length_toolchange", "retract_restart_extra_toolchange", "filament_colour",
         "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut"/*,"filament_seam_gap"*/
-		,"color_patch_loops"
-    };
-
+		};
     m_filament_retract_keys = {
         "deretraction_speed",
         "long_retractions_when_cut",
