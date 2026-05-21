@@ -884,7 +884,6 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                     if (! region.expolygons.empty()) {
                         region.bbox = get_extents(region.expolygons);
                         layer_split = true;
-                    }
                 }
 
                 if (!layer_split)
@@ -945,93 +944,50 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                         int        target_region_id = it_target_region->region->print_object_region_id();
                         ExPolygons stolen = intersection_ex(parent_layer_region.slices.surfaces, segmented.expolygons);
                         if (!stolen.empty()) {
-                            // BBS: color patch 隆陋 shrink stolen region to shell strip only (N loops wide)
                             const size_t ext_idx = size_t(extruder_id - 1);
                             const int patch_loops = print_object.print()->config().color_patch_loops.get_at(ext_idx);
-                            {
-                                static int fos_pl_count = 0;
-                                if (fos_pl_count++ < 5) {
-                                    FILE *f = fopen("C:/Users/alexander.ji/SnapmakerOrcaSlicer/build/fos_debug.txt", "a");
-                                    if (f) {
-                                        const auto &pl = print_object.print()->config().color_patch_loops;
-                                        fprintf(f, "ext_idx=%zu extruder_id=%d patch_loops=%d all=[%d,%d,%d,%d]\n",
-                                            ext_idx, extruder_id, patch_loops,
-                                            pl.get_at(0), pl.get_at(1), pl.get_at(2), pl.get_at(3));
-                                        fclose(f);
-                                    }
-                                }
-                            }
-						// FOS: compute full_model and loop_width for color patch geometry
-                            const double nozzle_d = print_object.print()->config().nozzle_diameter.get_at(ext_idx);
-                            const PrintRegion &target_region = *it_target_region->region;
-                            const float layer_height = (float)layer.height;
-                            const coord_t ext_sp = parent_layer_region.flow(frExternalPerimeter).scaled_spacing();
-                                        const coord_t perim_sp = parent_layer_region.flow(frPerimeter).scaled_spacing();
-                                        // FOS: strip depth = ext loop + (CL-1) inner loops
-                                        // odd CL: add perim_sp/2 so middle loop fits
-                                        // even CL: no extra margin needed
-                                        const bool odd_cl = (patch_loops % 2 == 1);
-                                        // FOS: CL=1 needs wider strip: ext_width/2 + ext_spacing/2 minimum
-                                        const coord_t ext_width = parent_layer_region.flow(frExternalPerimeter).scaled_width();
-                                        const coord_t loop_width = (patch_loops == 1)
-                                            ? (ext_sp + ext_width / 2)
-                                            : (ext_sp + coord_t((patch_loops - 1) * perim_sp) + (odd_cl ? perim_sp / 2 : 0));
-                            ExPolygons full_model;
-                            for (int r = 0; r < layer.region_count(); ++r)
-                                append(full_model, to_expolygons(layer.get_region(r)->slices.surfaces));
-                            full_model = union_ex(full_model);
-                            ExPolygons shell_strip = stolen;
-                            if (patch_loops > 0) {
-                                // FOS: loop_width already contains total strip depth
+                            const bool cp_enabled = print_object.print()->config().color_patch_enabled.get_at(ext_idx);
+                            if (cp_enabled && patch_loops > 0) {
+                                // FOS: color patch pipeline -- compute shell_strip and assign as dst
+                                const coord_t ext_sp = parent_layer_region.flow(frExternalPerimeter).scaled_spacing();
+                                const coord_t perim_sp = parent_layer_region.flow(frPerimeter).scaled_spacing();
+                                const coord_t ext_width = parent_layer_region.flow(frExternalPerimeter).scaled_width();
+                                // FOS: strip depth = ext loop + (CL-1) inner loops
+                                // odd CL: add perim_sp/2 so middle loop fits; CL=1 needs ext_width/2 minimum
+                                const bool odd_cl = (patch_loops % 2 == 1);
+                                const coord_t loop_width = (patch_loops == 1)
+                                    ? (ext_sp + ext_width / 2)
+                                    : (ext_sp + coord_t((patch_loops - 1) * perim_sp) + (odd_cl ? perim_sp / 2 : 0));
+                                ExPolygons full_model;
+                                for (int r = 0; r < layer.region_count(); ++r)
+                                    append(full_model, to_expolygons(layer.get_region(r)->slices.surfaces));
+                                full_model = union_ex(full_model);
+                                // FOS: boundary_strip outer edge = model surface; intersect with expanded stolen to clip to painted zone
                                 ExPolygons full_model_eroded = offset_ex(full_model, -float(loop_width));
                                 ExPolygons boundary_strip = diff_ex(full_model, full_model_eroded);
-                                // FOS: use full segmented volume (not stolen) to capture complete boundary strip
                                 ExPolygons stolen_expanded = offset_ex(segmented.expolygons, float(ext_sp) * 0.5f);
-                                shell_strip = intersection_ex(boundary_strip, stolen_expanded);
-                                {
-                                    static bool fos_logged2 = false;
-                                    if (!fos_logged2 && !shell_strip.empty()) {
-                                        fos_logged2 = true;
-                                        FILE *f = fopen("C:/Users/alexander.ji/SnapmakerOrcaSlicer/build/fos_debug.txt", "a");
-                                        if (f) {
-                                            fprintf(f, "loop_width=%.4f patch_loops=%d boundary_strip_area=%.4f shell_strip_area=%.4f\n",
-                                                unscaled<double>(loop_width), patch_loops,
-                                                unscaled<double>(unscaled<double>(area(to_polygons(boundary_strip)))),
-                                                unscaled<double>(unscaled<double>(area(to_polygons(shell_strip)))));
-                                            fclose(f);
-                                        }
-                                    }
+                                ExPolygons shell_strip = intersection_ex(boundary_strip, stolen_expanded);
+                                // FOS: store shell_strip in color_patch_regions for mine subtraction
+                                if (layer.color_patch_regions.size() <= ext_idx)
+                                    layer.color_patch_regions.resize(ext_idx + 1);
+                                append(layer.color_patch_regions[ext_idx], shell_strip);
+                                // FOS: use shell_strip as dst -- avoids wedge loops on cut edges
+                                ByRegion &dst = by_region[target_region_id];
+                                if (dst.expolygons.empty()) {
+                                    dst.expolygons = shell_strip;
+                                } else {
+                                    append(dst.expolygons, shell_strip);
+                                    dst.needs_merge = true;
                                 }
-                            }
-
-                            // FOS: store shell_strip in color_patch_regions for mine subtraction
-                            // dst gets full stolen volume so PerimeterGenerator has enough geometry
-                            if (layer.color_patch_regions.size() <= ext_idx)
-                                layer.color_patch_regions.resize(ext_idx + 1);
-                            append(layer.color_patch_regions[ext_idx], shell_strip);
-                            // FOS: use shell_strip for dst - avoids wedge loops on cut edges
-                            // infill is suppressed in PerimeterGenerator so no black infill inside
-                            ExPolygons dst_geom = (patch_loops > 0) ? shell_strip : stolen;
-                            {
-                                static int fos_cp_count = 0;
-                                if (fos_cp_count++ < 20) {
-                                    FILE *f = fopen("C:/Users/alexander.ji/SnapmakerOrcaSlicer/build/fos_debug.txt", "a");
-                                    if (f) { fprintf(f, "cp_region ext_idx=%zu patch_loops=%d layer=%d\n", ext_idx, patch_loops, layer.id()); fclose(f); }
-                                }
-                            }
-                            {
-                                static int fos_dst_count = 0;
-                                if (fos_dst_count++ < 200) {
-                                    FILE *f = fopen("C:/Users/alexander.ji/SnapmakerOrcaSlicer/build/fos_debug.txt", "a");
-                                    if (f) { fprintf(f, "dst target_region_id=%d ext_idx=%zu extruder_id=%d layer=%d region_count=%d\n", target_region_id, ext_idx, extruder_id, layer.id(), layer.region_count()); fclose(f); }
-                                }
-                            }
-                            ByRegion &dst = by_region[target_region_id];
-                            if (dst.expolygons.empty()) {
-                                dst.expolygons = dst_geom;
                             } else {
-                                append(dst.expolygons, dst_geom);
-                                dst.needs_merge = true;
+                                // Original pipeline: pass stolen directly to dst, no FOS logic
+                                ByRegion &dst = by_region[target_region_id];
+                                if (dst.expolygons.empty()) {
+                                    dst.expolygons = stolen;
+                                } else {
+                                    append(dst.expolygons, stolen);
+                                    dst.needs_merge = true;
+                                }
                             }
                         }
                     }
@@ -1091,13 +1047,6 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                         // find which extruder this region uses
                         const LayerRegion &lr = *layer.get_region(region_id);
                         const int self_ext = lr.region().config().wall_filament.value; // 1-based
-                        {
-                            static int fos_wf_count = 0;
-                            if (fos_wf_count++ < 5) {
-                                FILE *f = fopen("C:/Users/alexander.ji/SnapmakerOrcaSlicer/build/fos_debug.txt", "a");
-                                if (f) { fprintf(f, "region_id=%d wall_filament=%d\n", region_id, self_ext); fclose(f); }
-                            }
-                        }
                         for (size_t cp_idx = 0; cp_idx < layer.color_patch_regions.size(); ++cp_idx) {
                             if (layer.color_patch_regions[cp_idx].empty()) continue;
                             const int cp_ext = (int)cp_idx + 1; // 1-based
@@ -1119,19 +1068,6 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                 }
 
                 // Re-create Surfaces of LayerRegions.
-                {
-                    static bool fos_region_logged = false;
-                    if (!fos_region_logged) { fos_region_logged = true;
-                        FILE *f = fopen("C:/Users/alexander.ji/SnapmakerOrcaSlicer/build/fos_debug.txt", "a");
-                        if (f) {
-                            for (int r = 0; r < layer.region_count(); ++r)
-                                fprintf(f, "FINAL region_id=%d wall_filament=%d expolygons=%zu\n", r,
-                                    layer.get_region(r)->region().config().wall_filament.value,
-                                    by_region[r].expolygons.size());
-                            fclose(f);
-                        }
-                    }
-                }
                 for (int region_id = 0; region_id < layer.region_count(); ++region_id) {
                     ByRegion &src = by_region[region_id];
                     if (src.needs_merge) {

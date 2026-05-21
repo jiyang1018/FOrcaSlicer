@@ -251,7 +251,8 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
             // In Spiral Vase mode, holes are closed and only the largest area contour is kept at each layer.
             // Therefore toggling the Spiral Vase on / off requires complete reslicing.
             || opt_key == "spiral_mode"
-            || opt_key == "color_patch_loops") {
+            || opt_key == "color_patch_loops"
+            || opt_key == "color_patch_enabled") {
             osteps.emplace_back(posSlice);
         } else if (
                opt_key == "print_sequence"

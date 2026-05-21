@@ -1178,6 +1178,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               fan_speedup_time))
 	((ConfigOptionFloats,              filament_diameter))
     ((ConfigOptionInts,                color_patch_loops))
+    ((ConfigOptionBools,               color_patch_enabled))
     ((ConfigOptionFloats,              filament_density))
     ((ConfigOptionStrings,             filament_type))
     ((ConfigOptionBools,               filament_soluble))
