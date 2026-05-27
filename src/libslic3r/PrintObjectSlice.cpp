@@ -950,15 +950,19 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                             const bool cp_enabled = print_object.print()->config().color_patch_enabled.get_at(ext_idx);
                             if (cp_enabled && patch_loops > 0) {
                                 // FOS: color patch pipeline -- compute shell_strip and assign as dst
-                                const coord_t ext_sp = parent_layer_region.flow(frExternalPerimeter).scaled_spacing();
-                                const coord_t perim_sp = parent_layer_region.flow(frPerimeter).scaled_spacing();
-                                const coord_t ext_width = parent_layer_region.flow(frExternalPerimeter).scaled_width();
-                                // FOS: strip depth = ext loop + (CL-1) inner loops
-                                // odd CL: add perim_sp/2 so middle loop fits; CL=1 needs ext_width/2 minimum
-                                const bool odd_cl = (patch_loops % 2 == 1);
-                                const coord_t loop_width = (patch_loops == 1)
-                                    ? (ext_sp + ext_width / 2)
-                                    : (ext_sp + coord_t((patch_loops - 1) * perim_sp) + (odd_cl ? perim_sp / 2 : 0));
+                                // FOS: use target region's flow (painted extruder) not parent region's
+                                const LayerRegion *target_lr = layer.get_region(target_region_id);
+                                const LayerRegion &flow_region = target_lr ? *target_lr : parent_layer_region;
+                                const coord_t ext_sp = flow_region.flow(frExternalPerimeter).scaled_spacing();
+                                const coord_t perim_sp = flow_region.flow(frPerimeter).scaled_spacing();
+                                const coord_t ext_width = flow_region.flow(frExternalPerimeter).scaled_width();
+                                const coord_t perim_width = flow_region.flow(frPerimeter).scaled_width();
+                                // FOS: strip depth uses ext_sp2 at i=1 (matching process_classic) then perim_sp
+                                const coord_t ext_sp2 = coord_t(0.5f * (float(ext_width) + float(perim_width)));
+                                const coord_t loop_width = ext_width / 2
+                                    + (patch_loops > 1 ? ext_sp2 : 0)
+                                    + (patch_loops > 2 ? coord_t((patch_loops - 2) * perim_sp) : 0)
+                                    + perim_width / 2;
                                 ExPolygons full_model;
                                 for (int r = 0; r < layer.region_count(); ++r)
                                     append(full_model, to_expolygons(layer.get_region(r)->slices.surfaces));
@@ -972,17 +976,13 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                                 if (layer.color_patch_regions.size() <= ext_idx)
                                     layer.color_patch_regions.resize(ext_idx + 1);
                                 append(layer.color_patch_regions[ext_idx], shell_strip);
-                                // FOS: dst = stolen clipped to expanded boundary_strip
-                                // boundary_strip outer edge = model surface (no cut-edge wedge loops)
-                                // expanded inward by loop_width * patch_loops to hold all CL loops
-                                // works for both full wrap and partial face via same code path
-                                ExPolygons dst_boundary = offset_ex(boundary_strip, float(loop_width) * float(patch_loops));
-                                ExPolygons dst_geom = intersection_ex(stolen, dst_boundary);
+                                // FOS: assign shell_strip to dst so T2 has non-empty slices for make_perimeters
+                                // process_classic will override last with color_patch_regions for correct loop geometry
                                 ByRegion &dst = by_region[target_region_id];
                                 if (dst.expolygons.empty()) {
-                                    dst.expolygons = dst_geom;
+                                    dst.expolygons = shell_strip;
                                 } else {
-                                    append(dst.expolygons, dst_geom);
+                                    append(dst.expolygons, shell_strip);
                                     dst.needs_merge = true;
                                 }
                             } else {
@@ -1038,47 +1038,14 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                     }
                 }
 
-                // BBS: color patch -- before finalizing, add inner cores back to base regions
-                // Inner core = full segmented region minus the shell strip assigned to painted region
-                // Merge color_patch_regions per extruder so adjacent painted faces
-                // produce a single continuous shell_strip rather than two separate
-                // regions with a seam between them.
+                // FOS: merge color_patch_regions per extruder so adjacent painted faces
+                // produce a single continuous shell_strip
                 for (size_t cp_idx = 0; cp_idx < layer.color_patch_regions.size(); ++cp_idx) {
                     if (layer.color_patch_regions[cp_idx].size() > 1)
                         layer.color_patch_regions[cp_idx] = union_ex(layer.color_patch_regions[cp_idx]);
                 }
-                if (!layer.color_patch_regions.empty()) {
-                    for (int region_id = 0; region_id < layer.region_count(); ++region_id) {
-                        ByRegion &base_dst = by_region[region_id];
-                        // find which extruder this region uses
-                        const LayerRegion &lr = *layer.get_region(region_id);
-                        const int self_ext = lr.region().config().wall_filament.value; // 1-based
-                        {
-                        }
-                        for (size_t cp_idx = 0; cp_idx < layer.color_patch_regions.size(); ++cp_idx) {
-                            if (layer.color_patch_regions[cp_idx].empty()) continue;
-                            const int cp_ext = (int)cp_idx + 1; // 1-based
-                            if (cp_ext == self_ext) continue; // skip self
-                            const ByExtruder &seg = by_extruder[cp_idx];
-                            if (!seg.bbox.defined) continue;
-                            ExPolygons inner_core = diff_ex(seg.expolygons, layer.color_patch_regions[cp_idx]);
-                            if (inner_core.empty()) continue;
-                            // only add to the base region (extruder 1 / region 0 typically)
-                            // check overlap with this region's existing geometry
-                            if (base_dst.expolygons.empty()) continue;
-                            // add inner core -- use union to merge cleanly
-                            // expand inner core slightly to close gap with shell strip
-                            ExPolygons inner_core_expanded = offset_ex(inner_core, scaled<float>(0.01));
-                            append(base_dst.expolygons, inner_core_expanded);
-                            base_dst.needs_merge = true;
-                        }
-                    }
-                }
 
                 // Re-create Surfaces of LayerRegions.
-                {
-                    }
-                }
                 for (int region_id = 0; region_id < layer.region_count(); ++region_id) {
                     ByRegion &src = by_region[region_id];
                     if (src.needs_merge) {

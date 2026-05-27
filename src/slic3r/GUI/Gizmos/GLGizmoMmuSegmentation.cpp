@@ -481,6 +481,27 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             if (enabled_opt && ext_idx < (int)enabled_opt->values.size())
                 m_color_patch_mode_ui = enabled_opt->values[ext_idx];
         }
+        if (!m_color_patch_mode_ui)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
+        else
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(m_desc.at("mode_original").utf8_str(), btn_size)) {
+            m_color_patch_mode_ui = false;
+            m_color_patch_initialized = true;
+            DynamicPrintConfig new_cfg;
+            // FOS: set color_patch_enabled=false for this extruder; preserve patch_loops value
+            ConfigOptionBools new_enabled({false, false, false, false});
+            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionBools>("color_patch_enabled"))
+                new_enabled = *existing;
+            while ((int)new_enabled.values.size() <= ext_idx)
+                new_enabled.values.push_back(false);
+            new_enabled.values[ext_idx] = false;
+            new_cfg.set_key_value("color_patch_enabled", new_enabled.clone());
+            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
+            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
+        }
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
         if (m_color_patch_mode_ui)
             ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
         else
@@ -506,27 +527,6 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             if (new_opt.values[ext_idx] <= 0)
                 new_opt.values[ext_idx] = m_color_patch_loops_ui > 0 ? m_color_patch_loops_ui : 1;
             new_cfg.set_key_value("color_patch_loops", new_opt.clone());
-            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
-            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
-        }
-        ImGui::PopStyleColor();
-        ImGui::SameLine();
-        if (!m_color_patch_mode_ui)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
-        else
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        if (ImGui::Button(m_desc.at("mode_original").utf8_str(), btn_size)) {
-            m_color_patch_mode_ui = false;
-            m_color_patch_initialized = true;
-            DynamicPrintConfig new_cfg;
-            // FOS: set color_patch_enabled=false for this extruder; preserve patch_loops value
-            ConfigOptionBools new_enabled({false, false, false, false});
-            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionBools>("color_patch_enabled"))
-                new_enabled = *existing;
-            while ((int)new_enabled.values.size() <= ext_idx)
-                new_enabled.values.push_back(false);
-            new_enabled.values[ext_idx] = false;
-            new_cfg.set_key_value("color_patch_enabled", new_enabled.clone());
             wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
             wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
         }

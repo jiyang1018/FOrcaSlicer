@@ -120,7 +120,13 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
     g.overhang_flow         = this->bridging_flow(frPerimeter, object_config.thick_bridges);
     g.solid_infill_flow     = this->flow(frSolidInfill);
     
-    if (this->layer()->object()->config().wall_generator.value == PerimeterGeneratorType::Arachne && !spiral_mode)
+    // FOS: color patch regions always use classic generator for predictable loop count
+    const bool is_cp = g.color_patch_regions != nullptr
+        && g.config->wall_filament.value - 1 >= 0
+        && g.config->wall_filament.value - 1 < (int)g.color_patch_regions->size()
+        && !(*g.color_patch_regions)[g.config->wall_filament.value - 1].empty()
+        && g.print_config->color_patch_loops.get_at(g.config->wall_filament.value - 1) > 0;
+    if (!is_cp && this->layer()->object()->config().wall_generator.value == PerimeterGeneratorType::Arachne && !spiral_mode)
         g.process_arachne();
     else
         g.process_classic();

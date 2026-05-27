@@ -1210,7 +1210,7 @@ void PerimeterGenerator::process_classic()
 
         // detect how many perimeters must be generated for this island
         int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;  // 0-indexed loops
-        // BBS: color patch -- if this region is a color patch shell, limit loops to color_patch_loops
+        // FOS: color patch -- if this region is a color patch shell, limit loops to color_patch_loops
         if (this->color_patch_regions != nullptr) {
             // find which extruder this region belongs to (wall_filament is 1-based)
             const int wall_ext = this->config->wall_filament.value - 1; // 0-based
@@ -1239,11 +1239,45 @@ void PerimeterGenerator::process_classic()
         // Set the topmost layer to be one wall
         if (loop_number > 0 && config->only_one_wall_top && this->upper_slices == nullptr)
             loop_number = 0;
+        // FOS: re-apply color patch loop_number after all adjustments to override alternate_extra_wall etc.
+        if (this->color_patch_regions != nullptr) {
+            const int wall_ext_cp = this->config->wall_filament.value - 1;
+            if (wall_ext_cp >= 0 && wall_ext_cp < (int)this->color_patch_regions->size() &&
+                !(*this->color_patch_regions)[wall_ext_cp].empty()) {
+                const int patch_loops_cp = this->print_config->color_patch_loops.get_at(wall_ext_cp);
+                if (patch_loops_cp > 0)
+                    loop_number = patch_loops_cp - 1;
+            }
+        }
 
         ExPolygons last        = union_ex(surface.expolygon.simplify_p(surface_simplify_resolution));
         ExPolygons gaps;
         ExPolygons top_fills;
         ExPolygons fill_clip;
+        // FOS: for color patch regions, override last with shell_strip from color_patch_regions
+        // This ensures perimeters are generated only over the shell strip depth
+        // regardless of what restore_untyped_slices restored
+        if (this->color_patch_regions != nullptr) {
+            const int wall_ext = this->config->wall_filament.value - 1;
+            if (wall_ext >= 0 && wall_ext < (int)this->color_patch_regions->size() &&
+                !(*this->color_patch_regions)[wall_ext].empty() &&
+                this->print_config->color_patch_loops.get_at(wall_ext) > 0) {
+                // FOS: use shell_strip but converted to solid polygon by filling the hole
+                // so process_classic generates loops only from outside in, not inside out
+                ExPolygons shell = (*this->color_patch_regions)[wall_ext];
+                ExPolygons solid;
+                for (const ExPolygon &ep : shell) {
+                    ExPolygon solid_ep;
+                    solid_ep.contour = ep.contour;
+                    // drop holes -- makes it solid so loops only generate inward from outer edge
+                    solid.push_back(solid_ep);
+                }
+                // FOS: clip to current surface to handle multiple painted regions per extruder
+                ExPolygons surface_solid = { surface.expolygon };
+                last = intersection_ex(solid, surface_solid);
+                if (last.empty()) last = solid; // fallback
+            }
+        }
         if (loop_number >= 0) {
             // In case no perimeters are to be generated, loop_number will equal to -1.
             std::vector<PerimeterGeneratorLoops> contours(loop_number+1);    // depth => loops
@@ -1321,16 +1355,6 @@ void PerimeterGenerator::process_classic()
                     // from the line width of the infill?
                     // FOS: in color patch mode all inner loops use perimeter_spacing to avoid gap fill
                     coord_t distance = (i == 1) ? ext_perimeter_spacing2 : perimeter_spacing;
-                    {
-                        static bool fos_logged = false;
-                        if (!fos_logged) { fos_logged = true;
-                            FILE *f = fopen("C:/Users/alexander.ji/SnapmakerOrcaSlicer/build/fos_debug.txt", "a");
-                            if (f) { fprintf(f, "ext_sp2=%.4f perim_sp=%.4f ext_w=%.4f perim_w=%.4f\n",
-                                unscaled<double>(ext_perimeter_spacing2), unscaled<double>(perimeter_spacing),
-                                unscaled<double>(ext_perimeter_width), unscaled<double>(perimeter_width));
-                                fclose(f); }
-                        }
-                    }
                     //BBS
                     //offsets = this->config->thin_walls ?
                         // This path will ensure, that the perimeters do not overfill, as in 
@@ -1349,17 +1373,35 @@ void PerimeterGenerator::process_classic()
                     //BBS: For internal perimeter, we should "enable" thin wall strategy in which offset2 is used to
                     // remove too closed line, so that gap fill can be used for such internal narrow area in following
                     // handling.
-                    offsets = offset2_ex(last,
-                        -float(distance + min_spacing / 2. - 1.),
-                        float(min_spacing / 2. - 1.));
+                    // FOS: for color patch regions use simple offset (not offset2) to avoid
+                    // collapsing thin wedge ends on partial face odd CL
+                    const bool is_cp_simple = [&]() -> bool {
+                        if (this->color_patch_regions == nullptr) return false;
+                        const int we = this->config->wall_filament.value - 1;
+                        if (we < 0 || we >= (int)this->color_patch_regions->size()) return false;
+                        if ((*this->color_patch_regions)[we].empty()) return false;
+                        return this->print_config->color_patch_loops.get_at(we) > 0;
+                    }();
+                    offsets = is_cp_simple
+                        ? offset_ex(last, -float(distance))
+                        : offset2_ex(last,
+                            -float(distance + min_spacing / 2. - 1.),
+                            float(min_spacing / 2. - 1.));
                     // look for gaps
                     if (has_gap_fill) {
                         // not using safety offset here would "detect" very narrow gaps
                         // (but still long enough to escape the area threshold) that gap fill
                         // won't be able to fill but we'd still remove from infill area
-                        // FOS: skip gap detection at i==1 boundary when spacing types differ,
-                        // to avoid false gap fill between ext and perimeter spaced loops
-                        const bool skip_gap = (i == 1) && (ext_perimeter_spacing2 != perimeter_spacing);
+                        // FOS: skip gap detection for color patch regions entirely
+                        // to avoid gap fill swallowing middle loops on odd CL
+                        const bool is_cp_region_gap = [&]() -> bool {
+                            if (this->color_patch_regions == nullptr) return false;
+                            const int wall_ext = this->config->wall_filament.value - 1;
+                            if (wall_ext < 0 || wall_ext >= (int)this->color_patch_regions->size()) return false;
+                            if ((*this->color_patch_regions)[wall_ext].empty()) return false;
+                            return this->print_config->color_patch_loops.get_at(wall_ext) > 0;
+                        }();
+                        const bool skip_gap = is_cp_region_gap;
                         if (!skip_gap)
                             append(gaps, diff_ex(
                                 offset(last,    - float(0.5 * distance)),
@@ -1704,15 +1746,6 @@ void PerimeterGenerator::process_classic()
             infill_exp = union_ex(infill_exp, offset_ex(top_infill_exp, double(top_infill_peri_overlap)));
         }
         // FOS: suppress infill for color patch regions - only CL loops should print, no infill
-        const bool is_cp_region = [&]() -> bool {
-            if (this->color_patch_regions == nullptr) return false;
-            const int wall_ext = this->config->wall_filament.value - 1;
-            if (wall_ext < 0 || wall_ext >= (int)this->color_patch_regions->size()) return false;
-            if ((*this->color_patch_regions)[wall_ext].empty()) return false;
-            return this->print_config->color_patch_loops.get_at(wall_ext) > 0;
-        }();
-        if (!is_cp_region)
-            // FOS: suppress infill for color patch regions - only CL loops should print, no infill
         const bool is_cp_region = [&]() -> bool {
             if (this->color_patch_regions == nullptr) return false;
             const int wall_ext = this->config->wall_filament.value - 1;
