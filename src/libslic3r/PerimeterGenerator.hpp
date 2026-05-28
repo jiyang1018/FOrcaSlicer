@@ -77,7 +77,7 @@ public:
     const PrintRegionConfig     *config;
     const PrintObjectConfig     *object_config;
     const PrintConfig           *print_config;
-    const std::vector<ExPolygons> *color_patch_regions; // BBS: per-extruder painted regions for color shell loops
+    const std::vector<ExPolygons> *color_patch_regions; // FOS: per-extruder painted regions for color shell loops
     const std::vector<int>        *color_patch_loops_effective; // FOS: per-extruder effective CL values
     // Outputs:
     ExtrusionEntityCollection   *loops;
