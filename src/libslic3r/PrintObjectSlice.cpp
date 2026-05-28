@@ -946,8 +946,14 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                         ExPolygons stolen = intersection_ex(parent_layer_region.slices.surfaces, segmented.expolygons);
                         if (!stolen.empty()) {
                             const size_t ext_idx = size_t(extruder_id - 1);
-                            const int patch_loops = print_object.print()->config().color_patch_loops.get_at(ext_idx);
-                            const bool cp_enabled = print_object.print()->config().color_patch_enabled.get_at(ext_idx);
+                            // FOS: read color_patch settings from per-object config if set, else global
+                            const ModelObject *mo = print_object.model_object();
+                            const auto *mo_loops = mo ? mo->config.get().opt<ConfigOptionInts>("color_patch_loops") : nullptr;
+                            const auto *mo_enabled = mo ? mo->config.get().opt<ConfigOptionBools>("color_patch_enabled") : nullptr;
+                            const auto &gl_loops = print_object.print()->config().color_patch_loops;
+                            const auto &gl_enabled = print_object.print()->config().color_patch_enabled;
+                            const int patch_loops = (mo_loops && ext_idx < mo_loops->values.size()) ? (int)mo_loops->values[ext_idx] : (gl_loops.values.empty() ? 0 : gl_loops.get_at(ext_idx));
+                            const bool cp_enabled = (mo_enabled && ext_idx < mo_enabled->values.size()) ? mo_enabled->values[ext_idx] : (gl_enabled.values.empty() ? false : (bool)gl_enabled.get_at(ext_idx));
                             if (cp_enabled && patch_loops > 0) {
                                 // FOS: color patch pipeline -- compute shell_strip and assign as dst
                                 // FOS: use target region's flow (painted extruder) not parent region's

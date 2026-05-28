@@ -117,6 +117,9 @@ static ExtrusionEntityCollection traverse_loops(const PerimeterGenerator &perime
             const int wall_ext = perimeter_generator.config->wall_filament.value - 1;
             if (wall_ext < 0 || wall_ext >= (int)perimeter_generator.color_patch_regions->size()) return 0;
             if ((*perimeter_generator.color_patch_regions)[wall_ext].empty()) return 0;
+            if (perimeter_generator.color_patch_loops_effective != nullptr &&
+                wall_ext < (int)perimeter_generator.color_patch_loops_effective->size())
+                return (*perimeter_generator.color_patch_loops_effective)[wall_ext];
             return perimeter_generator.print_config->color_patch_loops.get_at(wall_ext);
         }();
         bool is_external = loop.depth < outer_wall_loops_count || (cp_loops > 0 && loop.depth < cp_loops);
@@ -1218,7 +1221,7 @@ void PerimeterGenerator::process_classic()
                 !(*this->color_patch_regions)[wall_ext].empty()) {
                 const int patch_loops = (this->print_config != nullptr &&
                     wall_ext < (int)this->print_config->color_patch_loops.values.size())
-                    ? this->print_config->color_patch_loops.values[wall_ext]
+                    ? (this->color_patch_loops_effective && wall_ext < (int)this->color_patch_loops_effective->size() ? (*this->color_patch_loops_effective)[wall_ext] : this->print_config->color_patch_loops.values[wall_ext])
                     : 1;
                 if (patch_loops > 0) {
                     loop_number = patch_loops - 1; // 0-indexed
@@ -1244,7 +1247,9 @@ void PerimeterGenerator::process_classic()
             const int wall_ext_cp = this->config->wall_filament.value - 1;
             if (wall_ext_cp >= 0 && wall_ext_cp < (int)this->color_patch_regions->size() &&
                 !(*this->color_patch_regions)[wall_ext_cp].empty()) {
-                const int patch_loops_cp = this->print_config->color_patch_loops.get_at(wall_ext_cp);
+                const int patch_loops_cp = (this->color_patch_loops_effective && wall_ext_cp < (int)this->color_patch_loops_effective->size())
+                    ? (*this->color_patch_loops_effective)[wall_ext_cp]
+                    : this->print_config->color_patch_loops.get_at(wall_ext_cp);
                 if (patch_loops_cp > 0)
                     loop_number = patch_loops_cp - 1;
             }
@@ -1261,7 +1266,7 @@ void PerimeterGenerator::process_classic()
             const int wall_ext = this->config->wall_filament.value - 1;
             if (wall_ext >= 0 && wall_ext < (int)this->color_patch_regions->size() &&
                 !(*this->color_patch_regions)[wall_ext].empty() &&
-                this->print_config->color_patch_loops.get_at(wall_ext) > 0) {
+                (this->color_patch_loops_effective && wall_ext < (int)this->color_patch_loops_effective->size() ? (*this->color_patch_loops_effective)[wall_ext] : this->print_config->color_patch_loops.get_at(wall_ext)) > 0) {
                 // FOS: use shell_strip but converted to solid polygon by filling the hole
                 // so process_classic generates loops only from outside in, not inside out
                 ExPolygons shell = (*this->color_patch_regions)[wall_ext];
@@ -1314,7 +1319,7 @@ void PerimeterGenerator::process_classic()
                             const int wall_ext = this->config->wall_filament.value - 1;
                             if (wall_ext < 0 || wall_ext >= (int)this->color_patch_regions->size()) return false;
                             if ((*this->color_patch_regions)[wall_ext].empty()) return false;
-                            return this->print_config->color_patch_loops.get_at(wall_ext) > 0;
+                            return (this->color_patch_loops_effective && wall_ext < (int)this->color_patch_loops_effective->size() ? (*this->color_patch_loops_effective)[wall_ext] : this->print_config->color_patch_loops.get_at(wall_ext)) > 0;
                         }();
                         const float i0_half_width = is_cp_region
                             ? float(perimeter_spacing / 2)
@@ -1380,7 +1385,7 @@ void PerimeterGenerator::process_classic()
                         const int we = this->config->wall_filament.value - 1;
                         if (we < 0 || we >= (int)this->color_patch_regions->size()) return false;
                         if ((*this->color_patch_regions)[we].empty()) return false;
-                        return this->print_config->color_patch_loops.get_at(we) > 0;
+                        return (this->color_patch_loops_effective && we < (int)this->color_patch_loops_effective->size() ? (*this->color_patch_loops_effective)[we] : this->print_config->color_patch_loops.get_at(we)) > 0;
                     }();
                     offsets = is_cp_simple
                         ? offset_ex(last, -float(distance))
@@ -1399,7 +1404,7 @@ void PerimeterGenerator::process_classic()
                             const int wall_ext = this->config->wall_filament.value - 1;
                             if (wall_ext < 0 || wall_ext >= (int)this->color_patch_regions->size()) return false;
                             if ((*this->color_patch_regions)[wall_ext].empty()) return false;
-                            return this->print_config->color_patch_loops.get_at(wall_ext) > 0;
+                            return (this->color_patch_loops_effective && wall_ext < (int)this->color_patch_loops_effective->size() ? (*this->color_patch_loops_effective)[wall_ext] : this->print_config->color_patch_loops.get_at(wall_ext)) > 0;
                         }();
                         const bool skip_gap = is_cp_region_gap;
                         if (!skip_gap)
@@ -1751,7 +1756,7 @@ void PerimeterGenerator::process_classic()
             const int wall_ext = this->config->wall_filament.value - 1;
             if (wall_ext < 0 || wall_ext >= (int)this->color_patch_regions->size()) return false;
             if ((*this->color_patch_regions)[wall_ext].empty()) return false;
-            return this->print_config->color_patch_loops.get_at(wall_ext) > 0;
+            return (this->color_patch_loops_effective && wall_ext < (int)this->color_patch_loops_effective->size() ? (*this->color_patch_loops_effective)[wall_ext] : this->print_config->color_patch_loops.get_at(wall_ext)) > 0;
         }();
         if (!is_cp_region)
             this->fill_surfaces->append(infill_exp, stInternal);

@@ -78,6 +78,7 @@ public:
     const PrintObjectConfig     *object_config;
     const PrintConfig           *print_config;
     const std::vector<ExPolygons> *color_patch_regions; // BBS: per-extruder painted regions for color shell loops
+    const std::vector<int>        *color_patch_loops_effective; // FOS: per-extruder effective CL values
     // Outputs:
     ExtrusionEntityCollection   *loops;
     ExtrusionEntityCollection   *gap_fill;
@@ -120,6 +121,7 @@ public:
             overhang_flow(flow), solid_infill_flow(flow),
             config(config), object_config(object_config), print_config(print_config),
             color_patch_regions(nullptr),
+            color_patch_loops_effective(nullptr),
             m_spiral_vase(spiral_mode),
             m_scaled_resolution(scaled<double>(print_config->resolution.value > EPSILON ? print_config->resolution.value : EPSILON)),
             loops(loops), gap_fill(gap_fill), fill_surfaces(fill_surfaces), fill_no_overlap(fill_no_overlap),

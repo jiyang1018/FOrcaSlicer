@@ -161,6 +161,7 @@ public:
     // Populated by apply_mm_segmentation() for layers with painted faces.
     // Used by PerimeterGenerator to emit color shell loops.
     std::vector<ExPolygons> color_patch_regions;
+    std::vector<int>        color_patch_loops_effective;
     size_t                  region_count() const { return m_regions.size(); }
     const LayerRegion*      get_region(int idx) const { return m_regions[idx]; }
     LayerRegion*            get_region(int idx) { return m_regions[idx]; }

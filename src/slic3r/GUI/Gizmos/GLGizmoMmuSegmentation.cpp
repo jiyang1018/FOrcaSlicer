@@ -470,16 +470,17 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
 
     // FOS: Original / Color Patch mode toggle (uses color_patch_loops=0 for Original)
     {
-        const DynamicPrintConfig &cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
         const int ext_idx = m_selected_extruder_idx;
         float button_width = (window_width - 2 * ImGui::GetStyle().ItemSpacing.x) * 0.5f;
         ImVec2 btn_size(button_width, 0);
-        // FOS: sync mode UI from config, but only after user has interacted
-        // FOS: sync mode UI from color_patch_enabled flag
+        // FOS: sync mode UI from per-object color_patch_enabled config
         if (m_color_patch_initialized) {
-            const auto *enabled_opt = cfg.opt<ConfigOptionBools>("color_patch_enabled");
-            if (enabled_opt && ext_idx < (int)enabled_opt->values.size())
-                m_color_patch_mode_ui = enabled_opt->values[ext_idx];
+            ModelObject *mo_sync = m_c->selection_info()->model_object();
+            if (mo_sync) {
+                const auto *enabled_opt = mo_sync->config.get().opt<ConfigOptionBools>("color_patch_enabled");
+                if (enabled_opt && ext_idx < (int)enabled_opt->values.size())
+                    m_color_patch_mode_ui = enabled_opt->values[ext_idx];
+            }
         }
         if (!m_color_patch_mode_ui)
             ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
@@ -488,17 +489,18 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         if (ImGui::Button(m_desc.at("mode_original").utf8_str(), btn_size)) {
             m_color_patch_mode_ui = false;
             m_color_patch_initialized = true;
-            DynamicPrintConfig new_cfg;
-            // FOS: set color_patch_enabled=false for this extruder; preserve patch_loops value
-            ConfigOptionBools new_enabled({false, false, false, false});
-            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionBools>("color_patch_enabled"))
-                new_enabled = *existing;
-            while ((int)new_enabled.values.size() <= ext_idx)
-                new_enabled.values.push_back(false);
-            new_enabled.values[ext_idx] = false;
-            new_cfg.set_key_value("color_patch_enabled", new_enabled.clone());
-            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
-            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
+            // FOS: write color_patch_enabled=false to per-object config
+            ModelObject *mo_orig = m_c->selection_info()->model_object();
+            if (mo_orig) {
+                ConfigOptionBools new_enabled({false, false, false, false});
+                if (const auto *existing = mo_orig->config.get().opt<ConfigOptionBools>("color_patch_enabled"))
+                    new_enabled = *existing;
+                while ((int)new_enabled.values.size() <= ext_idx)
+                    new_enabled.values.push_back(false);
+                new_enabled.values[ext_idx] = false;
+                mo_orig->config.set_key_value("color_patch_enabled", new_enabled.clone());
+                wxGetApp().plater()->update();
+            }
         }
         ImGui::PopStyleColor();
         ImGui::SameLine();
@@ -509,39 +511,40 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         if (ImGui::Button(m_desc.at("mode_color_patch").utf8_str(), btn_size)) {
             m_color_patch_mode_ui = true;
             m_color_patch_initialized = true;
-            DynamicPrintConfig new_cfg;
-            // FOS: set color_patch_enabled=true for this extruder
-            ConfigOptionBools new_enabled({false, false, false, false});
-            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionBools>("color_patch_enabled"))
-                new_enabled = *existing;
-            while ((int)new_enabled.values.size() <= ext_idx)
-                new_enabled.values.push_back(false);
-            new_enabled.values[ext_idx] = true;
-            new_cfg.set_key_value("color_patch_enabled", new_enabled.clone());
-            // FOS: also ensure patch_loops is non-zero
-            ConfigOptionInts new_opt({0, 0, 0, 0});
-            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionInts>("color_patch_loops"))
-                new_opt = *existing;
-            while ((int)new_opt.values.size() <= ext_idx)
-                new_opt.values.push_back(1);
-            if (new_opt.values[ext_idx] <= 0)
-                new_opt.values[ext_idx] = m_color_patch_loops_ui > 0 ? m_color_patch_loops_ui : 1;
-            new_cfg.set_key_value("color_patch_loops", new_opt.clone());
-            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
-            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
+            // FOS: write color_patch_enabled=true and patch_loops to per-object config
+            ModelObject *mo_cp = m_c->selection_info()->model_object();
+            if (mo_cp) {
+                ConfigOptionBools new_enabled({false, false, false, false});
+                if (const auto *existing = mo_cp->config.get().opt<ConfigOptionBools>("color_patch_enabled"))
+                    new_enabled = *existing;
+                while ((int)new_enabled.values.size() <= ext_idx)
+                    new_enabled.values.push_back(false);
+                new_enabled.values[ext_idx] = true;
+                mo_cp->config.set_key_value("color_patch_enabled", new_enabled.clone());
+                // FOS: also ensure patch_loops is non-zero
+                ConfigOptionInts new_opt({0, 0, 0, 0});
+                if (const auto *existing = mo_cp->config.get().opt<ConfigOptionInts>("color_patch_loops"))
+                    new_opt = *existing;
+                while ((int)new_opt.values.size() <= ext_idx)
+                    new_opt.values.push_back(1);
+                if (new_opt.values[ext_idx] <= 0)
+                    new_opt.values[ext_idx] = m_color_patch_loops_ui > 0 ? m_color_patch_loops_ui : 1;
+                mo_cp->config.set_key_value("color_patch_loops", new_opt.clone());
+                wxGetApp().plater()->update();
+            }
         }
         ImGui::PopStyleColor();
         }
     ImGui::Separator();
 
-    // FOS: color patch loops slider — only shown in Color Patch mode
+    // FOS: color patch loops slider -- only shown in Color Patch mode
     if (m_color_patch_mode_ui) {
-        const DynamicPrintConfig &cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+        ModelObject *mo_sl = m_c->selection_info()->model_object();
         const int ext_idx = m_selected_extruder_idx;
         const int loops_min = 1;
         const int loops_max = 10;
-        if (!ImGui::IsAnyItemActive()) {
-            const auto *loops_opt = cfg.opt<ConfigOptionInts>("color_patch_loops");
+        if (!ImGui::IsAnyItemActive() && mo_sl) {
+            const auto *loops_opt = mo_sl->config.get().opt<ConfigOptionInts>("color_patch_loops");
             if (loops_opt && ext_idx < (int)loops_opt->values.size())
                 m_color_patch_loops_ui = loops_opt->values[ext_idx];
             if (m_color_patch_loops_ui <= 0) m_color_patch_loops_ui = 1;
@@ -553,43 +556,32 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
         ImGui::PushItemWidth(sliders_width);
         if (m_imgui->bbl_slider_float_style("##color_patch_loops", &loops_float, float(loops_min), float(loops_max), "%.0f", 1.0f, true)) {
             m_color_patch_loops_ui = int(loops_float + 0.5f);
-            DynamicPrintConfig new_cfg_live;
-            ConfigOptionInts new_opt_live({1, 1, 1, 1});
-            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionInts>("color_patch_loops"))
-                new_opt_live = *existing;
-            while ((int)new_opt_live.values.size() <= ext_idx)
-                new_opt_live.values.push_back(1);
-            new_opt_live.values[ext_idx] = m_color_patch_loops_ui;
-            new_cfg_live.set_key_value("color_patch_loops", new_opt_live.clone());
-            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg_live);
         }
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-            DynamicPrintConfig new_cfg;
+        if (ImGui::IsItemDeactivatedAfterEdit() && mo_sl) {
+            // FOS: save slider value to per-object config and trigger re-slice
             ConfigOptionInts new_opt({1, 1, 1, 1});
-            if (const auto *existing = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt<ConfigOptionInts>("color_patch_loops"))
+            if (const auto *existing = mo_sl->config.get().opt<ConfigOptionInts>("color_patch_loops"))
                 new_opt = *existing;
             while ((int)new_opt.values.size() <= ext_idx)
                 new_opt.values.push_back(1);
             new_opt.values[ext_idx] = m_color_patch_loops_ui;
-            new_cfg.set_key_value("color_patch_loops", new_opt.clone());
-            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
-            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
+            mo_sl->config.set_key_value("color_patch_loops", new_opt.clone());
+            wxGetApp().plater()->update();
         }
         ImGui::SameLine(drag_left_width + sliders_left_width);
         ImGui::PushItemWidth(1.5 * slider_icon_width);
         if (ImGui::BBLDragFloat("##color_patch_loops_input", &loops_float, 1.0f, float(loops_min), float(loops_max), "%.0f"))
             m_color_patch_loops_ui = int(loops_float + 0.5f);
-        if (ImGui::IsItemDeactivatedAfterEdit()) {
-            DynamicPrintConfig new_cfg;
+        if (ImGui::IsItemDeactivatedAfterEdit() && mo_sl) {
+            // FOS: save drag value to per-object config and trigger re-slice
             ConfigOptionInts new_opt({1, 1, 1, 1});
-            if (const auto *existing = cfg.opt<ConfigOptionInts>("color_patch_loops"))
+            if (const auto *existing = mo_sl->config.get().opt<ConfigOptionInts>("color_patch_loops"))
                 new_opt = *existing;
             while ((int)new_opt.values.size() <= ext_idx)
                 new_opt.values.push_back(1);
             new_opt.values[ext_idx] = m_color_patch_loops_ui;
-            new_cfg.set_key_value("color_patch_loops", new_opt.clone());
-            wxGetApp().preset_bundle->prints.get_edited_preset().config.apply(new_cfg);
-            wxGetApp().plater()->on_config_change(wxGetApp().preset_bundle->prints.get_edited_preset().config);
+            mo_sl->config.set_key_value("color_patch_loops", new_opt.clone());
+            wxGetApp().plater()->update();
         }
     } // end color patch mode
 
@@ -904,7 +896,7 @@ void GLGizmoMmuSegmentation::update_model_object()
         size_t obj_idx = std::find(mos.begin(), mos.end(), mo) - mos.begin();
         wxGetApp().obj_list()->update_info_items(obj_idx);
         wxGetApp().plater()->get_partplate_list().notify_instance_update(obj_idx, 0);
-        m_parent.post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+        wxGetApp().plater()->update();
     }
 }
 
