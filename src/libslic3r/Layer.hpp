@@ -162,6 +162,7 @@ public:
     // Used by PerimeterGenerator to emit color shell loops.
     std::vector<ExPolygons> color_patch_regions;
     std::vector<int>        color_patch_loops_effective;
+    std::vector<bool>       color_patch_is_top_bottom;  // FOS: true if this layer is top/bottom for this extruder
     size_t                  region_count() const { return m_regions.size(); }
     const LayerRegion*      get_region(int idx) const { return m_regions[idx]; }
     LayerRegion*            get_region(int idx) { return m_regions[idx]; }

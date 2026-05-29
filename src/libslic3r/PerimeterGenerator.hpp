@@ -77,8 +77,9 @@ public:
     const PrintRegionConfig     *config;
     const PrintObjectConfig     *object_config;
     const PrintConfig           *print_config;
-    const std::vector<ExPolygons> *color_patch_regions; // FOS: per-extruder painted regions for color shell loops
+    const std::vector<ExPolygons> *color_patch_regions;       // FOS: per-extruder painted regions for color shell loops
     const std::vector<int>        *color_patch_loops_effective; // FOS: per-extruder effective CL values
+    const std::vector<bool>       *color_patch_is_top_bottom;  // FOS: per-extruder top/bottom layer flag
     // Outputs:
     ExtrusionEntityCollection   *loops;
     ExtrusionEntityCollection   *gap_fill;
@@ -122,6 +123,7 @@ public:
             config(config), object_config(object_config), print_config(print_config),
             color_patch_regions(nullptr),
             color_patch_loops_effective(nullptr),
+            color_patch_is_top_bottom(nullptr),
             m_spiral_vase(spiral_mode),
             m_scaled_resolution(scaled<double>(print_config->resolution.value > EPSILON ? print_config->resolution.value : EPSILON)),
             loops(loops), gap_fill(gap_fill), fill_surfaces(fill_surfaces), fill_no_overlap(fill_no_overlap),

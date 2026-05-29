@@ -1761,8 +1761,6 @@ void PerimeterGenerator::process_classic()
         if (!is_cp_region)
             this->fill_surfaces->append(infill_exp, stInternal);
 
-        apply_extra_perimeters(infill_exp);
-
         // BBS: get the no-overlap infill expolygons
         {
             ExPolygons polyWithoutOverlap;
@@ -2481,10 +2479,10 @@ void PerimeterGenerator::process_arachne()
                 // Get searching thresholds. For an external perimeter we take the external perimeter spacing/2 plus the internal perimeter spacing/2 and expand by the factor
                 // rounding errors. When precise wall is enabled, the external perimeter full spacing is used.
                 coord_t threshold_external = (apply_precise_outer_wall)
-                    // Precise outer wall ⇒ use “full external spacing”
+                    // Precise outer wall 閳?use 閳ユ竾ull external spacing閳?
                     ? ( this->ext_perimeter_flow.scaled_spacing()
                         + this->perimeter_flow.scaled_spacing()/2.0 )
-                    // Normal ⇒ half ext spacing + half int spacing
+                    // Normal 閳?half ext spacing + half int spacing
                     : ( this->ext_perimeter_flow.scaled_spacing()/2.0
                         + this->perimeter_flow.scaled_spacing()/2.0 );
                 

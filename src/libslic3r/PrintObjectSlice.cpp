@@ -874,6 +874,8 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                 Layer &layer = *print_object.get_layer(int(layer_id));
                 it_layer_range = layer_range_next(layer_ranges, it_layer_range, layer.slice_z);
                 const PrintObjectRegions::LayerRangeRegions &layer_range = *it_layer_range;
+                // FOS: total layers needed for top/bottom detection
+                const int fos_total_layers = (int)print_object.layer_count();
                 // Gather per extruder expolygons.
                 by_extruder.assign(num_extruders, ByExtruder());
                 by_region.assign(layer.region_count(), ByRegion());
@@ -955,7 +957,7 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                             const int patch_loops = (mo_loops && ext_idx < mo_loops->values.size()) ? (int)mo_loops->values[ext_idx] : (gl_loops.values.empty() ? 0 : gl_loops.get_at(ext_idx));
                             const bool cp_enabled = (mo_enabled && ext_idx < mo_enabled->values.size()) ? mo_enabled->values[ext_idx] : (gl_enabled.values.empty() ? false : (bool)gl_enabled.get_at(ext_idx));
                             if (cp_enabled && patch_loops > 0) {
-                                // FOS: color patch pipeline -- compute shell_strip and assign as dst
+                                // FOS: color patch pipeline
                                 // FOS: use target region's flow (painted extruder) not parent region's
                                 const LayerRegion *target_lr = layer.get_region(target_region_id);
                                 const LayerRegion &flow_region = target_lr ? *target_lr : parent_layer_region;
@@ -963,33 +965,55 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                                 const coord_t perim_sp = flow_region.flow(frPerimeter).scaled_spacing();
                                 const coord_t ext_width = flow_region.flow(frExternalPerimeter).scaled_width();
                                 const coord_t perim_width = flow_region.flow(frPerimeter).scaled_width();
-                                // FOS: strip depth uses ext_sp2 at i=1 (matching process_classic) then perim_sp
                                 const coord_t ext_sp2 = coord_t(0.5f * (float(ext_width) + float(perim_width)));
                                 const coord_t loop_width = ext_width / 2
                                     + (patch_loops > 1 ? ext_sp2 : 0)
                                     + (patch_loops > 2 ? coord_t((patch_loops - 2) * perim_sp) : 0)
                                     + perim_width / 2;
-                                ExPolygons full_model;
-                                for (int r = 0; r < layer.region_count(); ++r)
-                                    append(full_model, to_expolygons(layer.get_region(r)->slices.surfaces));
-                                full_model = union_ex(full_model);
-                                // FOS: boundary_strip outer edge = model surface; intersect with expanded stolen to clip to painted zone
-                                ExPolygons full_model_eroded = offset_ex(full_model, -float(loop_width));
-                                ExPolygons boundary_strip = diff_ex(full_model, full_model_eroded);
-                                ExPolygons stolen_expanded = offset_ex(segmented.expolygons, float(ext_sp) * 0.5f);
-                                ExPolygons shell_strip = intersection_ex(boundary_strip, stolen_expanded);
-                                // FOS: store shell_strip in color_patch_regions for mine subtraction
-                                if (layer.color_patch_regions.size() <= ext_idx)
-                                    layer.color_patch_regions.resize(ext_idx + 1);
-                                append(layer.color_patch_regions[ext_idx], shell_strip);
-                                // FOS: assign shell_strip to dst so T2 has non-empty slices for make_perimeters
-                                // process_classic will override last with color_patch_regions for correct loop geometry
-                                ByRegion &dst = by_region[target_region_id];
-                                if (dst.expolygons.empty()) {
-                                    dst.expolygons = shell_strip;
+                                // FOS: compute painted layer depth from loop_width / layer_height
+                                const coordf_t fos_layer_height = layer.height > 0 ? layer.height : 0.2;
+                                const int fos_yellow_layers = std::max(1, (int)std::round(unscale<double>(loop_width) / fos_layer_height));
+                                const bool fos_is_top_bottom = ((int)layer_id < fos_yellow_layers) || ((int)layer_id >= fos_total_layers - fos_yellow_layers);
+                                // FOS: store top/bottom flag for mine subtraction
+                                if (layer.color_patch_is_top_bottom.size() <= ext_idx)
+                                    layer.color_patch_is_top_bottom.resize(ext_idx + 1, false);
+                                layer.color_patch_is_top_bottom[ext_idx] = fos_is_top_bottom;
+                                if (fos_is_top_bottom) {
+                                    // FOS: top/bottom - painted extruder gets full stolen, slices normally
+                                    ByRegion &dst = by_region[target_region_id];
+                                    if (dst.expolygons.empty())
+                                        dst.expolygons = stolen;
+                                    else {
+                                        append(dst.expolygons, stolen);
+                                        dst.needs_merge = true;
+                                    }
                                 } else {
-                                    append(dst.expolygons, shell_strip);
-                                    dst.needs_merge = true;
+                                    // FOS: wall layers - compute shell_strip for CL loop generation
+                                    ExPolygons full_model;
+                                    for (int r = 0; r < layer.region_count(); ++r)
+                                        append(full_model, to_expolygons(layer.get_region(r)->slices.surfaces));
+                                    full_model = union_ex(full_model);
+                                    ExPolygons full_model_eroded = offset_ex(full_model, -float(loop_width));
+                                    ExPolygons boundary_strip = diff_ex(full_model, full_model_eroded);
+                                    ExPolygons stolen_expanded = offset_ex(segmented.expolygons, float(ext_sp) * 0.5f);
+                                    ExPolygons shell_strip = intersection_ex(boundary_strip, stolen_expanded);
+                                    // FOS: store shell_strip in color_patch_regions
+                                    if (layer.color_patch_regions.size() <= ext_idx)
+                                        layer.color_patch_regions.resize(ext_idx + 1);
+                                    append(layer.color_patch_regions[ext_idx], shell_strip);
+                                    // FOS: set loops effective
+                                    if (layer.color_patch_loops_effective.size() <= ext_idx)
+                                        layer.color_patch_loops_effective.resize(ext_idx + 1, 0);
+                                    if (layer.color_patch_loops_effective[ext_idx] == 0)
+                                        layer.color_patch_loops_effective[ext_idx] = patch_loops;
+                                    // FOS: assign shell_strip to dst
+                                    ByRegion &dst = by_region[target_region_id];
+                                    if (dst.expolygons.empty())
+                                        dst.expolygons = shell_strip;
+                                    else {
+                                        append(dst.expolygons, shell_strip);
+                                        dst.needs_merge = true;
+                                    }
                                 }
                             } else {
                                 // Original pipeline: pass stolen directly to dst, no FOS logic
