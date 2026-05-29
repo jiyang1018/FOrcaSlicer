@@ -117,6 +117,11 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/dev-utils/platform/osx/Info.plist.in 
 if (WIN32)
     add_library(Snapmaker_Orca SHARED Snapmaker_Orca.cpp Snapmaker_Orca.hpp dev-utils/BaseException.cpp dev-utils/BaseException.h dev-utils/StackWalker.cpp dev-utils/StackWalker.h sentry_wrapper/SentryWrapper.hpp sentry_wrapper/SentryWrapper.cpp bury_cfg/bury_point.hpp bury_cfg/bury_point.cpp common_func/common_func.hpp common_func/common_func.cpp)
     target_compile_definitions(Snapmaker_Orca PRIVATE BURY_EXPORTS)
+    set_target_properties(Snapmaker_Orca PROPERTIES
+        OUTPUT_NAME "FOrcaSlicer-core"
+        PDB_NAME "FOrcaSlicer-core"
+        ARCHIVE_OUTPUT_NAME "FOrcaSlicer-core"
+    )
 else ()
     add_executable(Snapmaker_Orca Snapmaker_Orca.cpp Snapmaker_Orca.hpp sentry_wrapper/SentryWrapper.hpp sentry_wrapper/SentryWrapper.cpp bury_cfg/bury_point.hpp bury_cfg/bury_point.cpp common_func/common_func.hpp common_func/common_func.cpp)
 endif ()
@@ -128,8 +133,8 @@ endif (MINGW)
 
 if (NOT WIN32 AND NOT APPLE)
     # Binary name on unix like systems (Linux, Unix)
-    set_target_properties(Snapmaker_Orca PROPERTIES OUTPUT_NAME "snapmaker-orca")
-    set(SLIC3R_APP_CMD "snapmaker-orca")
+    set_target_properties(Snapmaker_Orca PROPERTIES OUTPUT_NAME "FOrcaSlicer")
+    set(SLIC3R_APP_CMD "FOrcaSlicer")
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/dev-utils/platform/unix/build_linux_image.sh.in ${CMAKE_CURRENT_BINARY_DIR}/build_linux_image.sh USE_SOURCE_PERMISSIONS @ONLY)
 endif ()
 
@@ -191,7 +196,7 @@ if (WIN32)
     endif()
     target_compile_definitions(Snapmaker_Orca_app_gui PRIVATE -DSLIC3R_WRAPPER_NOCONSOLE)
     add_dependencies(Snapmaker_Orca_app_gui Snapmaker_Orca)
-    set_target_properties(Snapmaker_Orca_app_gui PROPERTIES OUTPUT_NAME "snapmaker-orca")
+    set_target_properties(Snapmaker_Orca_app_gui PROPERTIES OUTPUT_NAME "FOrcaSlicer")
     
     if (SLIC3R_SENTRY)
         target_link_libraries(Snapmaker_Orca_app_gui PRIVATE boost_headeronly sentry::sentry nlohmann_json Snapmaker_Orca)
@@ -293,7 +298,7 @@ else ()
         set(MACOSX_BUNDLE_ICON_FILE Icon.icns)
         set_target_properties(Snapmaker_Orca PROPERTIES
             MACOSX_BUNDLE TRUE
-            MACOSX_BUNDLE_BUNDLE_NAME "Snapmaker Orca"
+            MACOSX_BUNDLE_BUNDLE_NAME "FOrcaSlicer"
             MACOSX_BUNDLE_SHORT_VERSION_STRING ${Snapmaker_VERSION}
             MACOSX_BUNDLE_COPYRIGHT "Copyright © 2024-2026 Snapmaker. All rights reserved.")
         # Get the bundle directory by going up from the executable to the .app bundle

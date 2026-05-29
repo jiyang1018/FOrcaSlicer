@@ -40,3 +40,6 @@ resources/profiles/user/default
 *.code-workspace
 deps_src/build/
 .claude/
+
+FOrcaSlicer_Windows_Installer_*.exe
+FOrcaSlicer_Windows_Portable_*.zip

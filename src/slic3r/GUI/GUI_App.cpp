@@ -6868,20 +6868,7 @@ bool GUI_App::config_wizard_startup()
     auto isAgree = wxGetApp().app_config->get("app", PRIVACY_POLICY_FLAGS);
     user_update_privacy_notify(isAgree == "true");   
     BOOST_LOG_TRIVIAL(warning) << "config_wizard_startup changed the privacy policy with: " << (isAgree);
-    if (!m_app_conf_exists || preset_bundle->printers.only_default_printers()) {
-        BOOST_LOG_TRIVIAL(info) << "run wizard...";
-        run_wizard(ConfigWizard::RR_DATA_EMPTY);
-        BOOST_LOG_TRIVIAL(info) << "finished run wizard";
-
-        return true;
-    } 
-
-    if (isAgree.empty()) 
-    {
-        run_wizard(ConfigWizard::RR_DATA_EMPTY); // Compatible with older versions
-        return true;
-    }
-
+    // FOS: skip wizard - users add printers after logging in
     return false;
 }
 
