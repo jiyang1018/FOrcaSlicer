@@ -1,11 +1,11 @@
-; [1] PACK_SOURCE_DIR = compile-time only (e.g. .\build\Snapmaker_Orca). [2] INSTALL_DIR_RUNTIME = runtime install dir (default .\ = $EXEDIR).
+; [1] PACK_SOURCE_DIR = compile-time only (e.g. .\build\FOrcaSlicer). [2] INSTALL_DIR_RUNTIME = runtime install dir (default .\ = $EXEDIR).
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 !include "LogicLib.nsh"
 
-!define PRODUCT_NAME "Snapmaker Orca"
-!define PRODUCT_PUBLISHER "Snapmaker"
-!define PRODUCT_WEB_SITE "https://github.com/Snapmaker/OrcaSlicer"
+!define PRODUCT_NAME "FOrcaSlicer"
+!define PRODUCT_PUBLISHER "FOrcaSlicer"
+!define PRODUCT_WEB_SITE "https://github.com/jiyang1018/FOrcaSlicer"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"
 !define PRODUCT_INSTALL_KEY "Software\${PRODUCT_PUBLISHER}\${PRODUCT_NAME}"
@@ -15,16 +15,16 @@
 !endif
 
 !ifndef SOURCE_DIR
-    !define SOURCE_DIR ".\build\Snapmaker_Orca"
+    !define SOURCE_DIR ".\build\FOrcaSlicer"
 !endif
 !define PACK_SOURCE_DIR "${SOURCE_DIR}"
 
-; 64-bit app: use PROGRAMFILES64 so default path is C:\Program Files\Snapmaker_Orca, not (x86)
-!define INSTALL_DIR_RUNTIME "$PROGRAMFILES64\Snapmaker_Orca"
+; 64-bit app: use PROGRAMFILES64 so default path is C:\Program Files\FOrcaSlicer, not (x86)
+!define INSTALL_DIR_RUNTIME "$PROGRAMFILES64\FOrcaSlicer"
 InstallDir "${INSTALL_DIR_RUNTIME}"
 
 !ifndef OUTPUT_FILE
-    !define OUTPUT_FILE "Snapmaker_Orca_Windows_Installer_V${VERSION}.exe"
+    !define OUTPUT_FILE "FOrcaSlicer_Windows_Installer_V${VERSION}.exe"
 !endif
 
 ; License page: show LICENSE.txt from repo root (same dir as this .nsi)
@@ -49,13 +49,13 @@ VIAddVersionKey "InternalName" "${PRODUCT_NAME}"
 VIAddVersionKey "LegalTrademarks" ""
 VIAddVersionKey "OriginalFilename" "${OUTPUT_FILE}"
 
-; Installer and uninstaller icon: set by build_and_pack.bat via /DICON_FILE=path (e.g. Snapmaker_Orca.ico or snapmaker.ico)
+; Installer and uninstaller icon: set by build_and_pack.bat via /DICON_FILE=path (e.g. FOrcaSlicer.ico or snapmaker.ico)
 !ifdef ICON_FILE
     !define MUI_ICON "${ICON_FILE}"
     !define MUI_UNICON "${ICON_FILE}"
 !else
-    !define MUI_ICON ".\resources\images\Snapmaker_Orca.ico"
-    !define MUI_UNICON ".\resources\images\Snapmaker_Orca.ico"
+    !define MUI_ICON ".\src\FOrcaSlicer.ico"
+    !define MUI_UNICON ".\src\FOrcaSlicer.ico"
 !endif
 
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${PRODUCT_NAME} Setup"
@@ -105,7 +105,7 @@ Section "Main program" SecMain
     ; PACK_SOURCE_DIR = compile time only. At runtime this File extracts from embedded payload to $INSTDIR. Exclude include and lib dirs.
     File /r /x "*.pdb" /x "*.ilk" /x "*.exp" /x "*.lib" /x "*.obj" /x "*.idb" /x "*.tlog" /x "*.h" /x "*.hpp" /x "*.c" /x "*.cpp" /x "*.cxx" /x "*.cc" /x "*.vcxproj" /x "*.vcxproj.filters" /x "*.sln" /x "*.cmake" /x "*.py" /x "*.md" /x "*.vcxproj.user" /x "CMakeFiles" /x "RelWithDebInfo" /x "Debug" /x "MinSizeRel" /x ".vs" /x "vcpkg_installed" /x "*.dir" /x "include\*" /x "lib\*" "${PACK_SOURCE_DIR}\*.*"
     
-    IfFileExists "$INSTDIR\snapmaker-orca.exe" 0 extract_error
+    IfFileExists "$INSTDIR\FOrcaSlicer.exe" 0 extract_error
     
     DetailPrint "Creating uninstaller..."
     WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -114,7 +114,7 @@ Section "Main program" SecMain
     WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayName" "${PRODUCT_NAME}"
     WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
     WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "InstallLocation" "$INSTDIR"
-    WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\snapmaker-orca.exe"
+    WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\FOrcaSlicer.exe"
     WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
     WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${VERSION}"
     WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
@@ -125,22 +125,22 @@ Section "Main program" SecMain
     WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_INSTALL_KEY}" "Version" "${VERSION}"
     WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_INSTALL_KEY}" "InstallPath" "$INSTDIR"
 
-    ; URL protocols (same as macOS CFBundleURLSchemes): snapmaker-orca:// and Snapmaker_Orca://
-    DetailPrint "Registering URL protocols (snapmaker-orca, Snapmaker_Orca)..."
+    ; URL protocols (same as macOS CFBundleURLSchemes): FOrcaSlicer:// and FOrcaSlicer://
+    DetailPrint "Registering URL protocols (FOrcaSlicer, FOrcaSlicer)..."
     SetRegView 64
-    WriteRegStr HKLM "Software\Classes\snapmaker-orca" "" "URL:Snapmaker Orca"
-    WriteRegStr HKLM "Software\Classes\snapmaker-orca" "URL Protocol" ""
-    WriteRegStr HKLM "Software\Classes\snapmaker-orca\shell\open\command" "" '"$INSTDIR\snapmaker-orca.exe" "%1"'
-    WriteRegStr HKLM "Software\Classes\Snapmaker_Orca" "" "URL:Snapmaker Orca"
-    WriteRegStr HKLM "Software\Classes\Snapmaker_Orca" "URL Protocol" ""
-    WriteRegStr HKLM "Software\Classes\Snapmaker_Orca\shell\open\command" "" '"$INSTDIR\snapmaker-orca.exe" "%1"'
+    WriteRegStr HKLM "Software\Classes\FOrcaSlicer" "" "URL:Snapmaker Orca"
+    WriteRegStr HKLM "Software\Classes\FOrcaSlicer" "URL Protocol" ""
+    WriteRegStr HKLM "Software\Classes\FOrcaSlicer\shell\open\command" "" '"$INSTDIR\FOrcaSlicer.exe" "%1"'
+    WriteRegStr HKLM "Software\Classes\FOrcaSlicer" "" "URL:Snapmaker Orca"
+    WriteRegStr HKLM "Software\Classes\FOrcaSlicer" "URL Protocol" ""
+    WriteRegStr HKLM "Software\Classes\FOrcaSlicer\shell\open\command" "" '"$INSTDIR\FOrcaSlicer.exe" "%1"'
     SetRegView 32
     
     DetailPrint "Installation complete!"
     Goto end_section
     
     extract_error:
-        MessageBox MB_OK|MB_ICONSTOP "Installation failed: snapmaker-orca.exe was not found in the package. The installer may be corrupted."
+        MessageBox MB_OK|MB_ICONSTOP "Installation failed: FOrcaSlicer.exe was not found in the package. The installer may be corrupted."
         Abort
     
     end_section:
@@ -148,13 +148,13 @@ SectionEnd
 
 Section "Desktop shortcut" SecDesktop
     DetailPrint "Creating desktop shortcut..."
-    CreateShortcut "$DESKTOP\Snapmaker Orca.lnk" "$INSTDIR\snapmaker-orca.exe" "" "$INSTDIR\snapmaker-orca.exe" 0
+    CreateShortcut "$DESKTOP\Snapmaker Orca.lnk" "$INSTDIR\FOrcaSlicer.exe" "" "$INSTDIR\FOrcaSlicer.exe" 0
 SectionEnd
 
 Section "Start menu shortcut" SecStartMenu
     DetailPrint "Creating start menu shortcut..."
     CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
-    CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Snapmaker Orca.lnk" "$INSTDIR\snapmaker-orca.exe" "" "$INSTDIR\snapmaker-orca.exe" 0
+    CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Snapmaker Orca.lnk" "$INSTDIR\FOrcaSlicer.exe" "" "$INSTDIR\FOrcaSlicer.exe" 0
     CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
 SectionEnd
 
@@ -169,7 +169,7 @@ Section "Uninstall"
     DetailPrint "Uninstalling ${PRODUCT_NAME}..."
     
     DetailPrint "Checking for running processes..."
-    nsExec::ExecToLog 'taskkill /F /IM snapmaker-orca.exe /T'
+    nsExec::ExecToLog 'taskkill /F /IM FOrcaSlicer.exe /T'
     Sleep 500
     
     DetailPrint "Removing desktop shortcut..."
@@ -186,8 +186,8 @@ Section "Uninstall"
     
     DetailPrint "Removing registry entries..."
     SetRegView 64
-    DeleteRegKey HKLM "Software\Classes\snapmaker-orca"
-    DeleteRegKey HKLM "Software\Classes\Snapmaker_Orca"
+    DeleteRegKey HKLM "Software\Classes\FOrcaSlicer"
+    DeleteRegKey HKLM "Software\Classes\FOrcaSlicer"
     SetRegView 32
     DeleteRegKey ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}"
     DeleteRegKey ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_INSTALL_KEY}"
@@ -197,16 +197,16 @@ Section "Uninstall"
 SectionEnd
 
 Function LaunchApp
-    ExecShell "open" "$INSTDIR\snapmaker-orca.exe"
+    ExecShell "open" "$INSTDIR\FOrcaSlicer.exe"
 FunctionEnd
 
-; Prevent overwriting locked DLLs when snapmaker-orca (or legacy Snapmaker_Orca.exe) is still running.
+; Prevent overwriting locked DLLs when FOrcaSlicer (or legacy FOrcaSlicer.exe) is still running.
 Function EnsureSnapmakerNotRunning
     snapmaker_check_loop:
-        ExecWait 'cmd.exe /c tasklist /FI "IMAGENAME eq snapmaker-orca.exe" 2>nul | find /i "snapmaker-orca.exe" >nul' $0
+        ExecWait 'cmd.exe /c tasklist /FI "IMAGENAME eq FOrcaSlicer.exe" 2>nul | find /i "FOrcaSlicer.exe" >nul' $0
         IntCmp $0 0 snapmaker_in_use snapmaker_try_legacy snapmaker_try_legacy
     snapmaker_try_legacy:
-        ExecWait 'cmd.exe /c tasklist /FI "IMAGENAME eq Snapmaker_Orca.exe" 2>nul | find /i "Snapmaker_Orca.exe" >nul' $0
+        ExecWait 'cmd.exe /c tasklist /FI "IMAGENAME eq FOrcaSlicer.exe" 2>nul | find /i "FOrcaSlicer.exe" >nul' $0
         IntCmp $0 0 snapmaker_in_use snapmaker_idle snapmaker_idle
     snapmaker_in_use:
         IfSilent snapmaker_silent snapmaker_prompt
@@ -214,7 +214,7 @@ Function EnsureSnapmakerNotRunning
         SetErrorLevel 7
         Quit
     snapmaker_prompt:
-        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Snapmaker Orca is still running (snapmaker-orca.exe).$\r$\nClose the program, then click Retry, or Cancel to exit the installer." IDRETRY snapmaker_check_loop
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Snapmaker Orca is still running (FOrcaSlicer.exe).$\r$\nClose the program, then click Retry, or Cancel to exit the installer." IDRETRY snapmaker_check_loop
         Abort
     snapmaker_idle:
 FunctionEnd
