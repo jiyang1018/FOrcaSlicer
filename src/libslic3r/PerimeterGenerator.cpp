@@ -1758,7 +1758,15 @@ void PerimeterGenerator::process_classic()
             if ((*this->color_patch_regions)[wall_ext].empty()) return false;
             return (this->color_patch_loops_effective && wall_ext < (int)this->color_patch_loops_effective->size() ? (*this->color_patch_loops_effective)[wall_ext] : this->print_config->color_patch_loops.get_at(wall_ext)) > 0;
         }();
-        if (!is_cp_region)
+        const bool is_cp_top_bottom = [&]() -> bool {
+            if (this->color_patch_is_top_bottom == nullptr) return false;
+            const int wall_ext = this->config->wall_filament.value - 1;
+            if (wall_ext < 0 || wall_ext >= (int)this->color_patch_is_top_bottom->size()) return false;
+            return (*this->color_patch_is_top_bottom)[wall_ext];
+        }();
+        if (is_cp_top_bottom)
+            this->fill_surfaces->append(infill_exp, stInternalSolid);
+        else if (!is_cp_region)
             this->fill_surfaces->append(infill_exp, stInternal);
 
         // BBS: get the no-overlap infill expolygons
@@ -2479,10 +2487,10 @@ void PerimeterGenerator::process_arachne()
                 // Get searching thresholds. For an external perimeter we take the external perimeter spacing/2 plus the internal perimeter spacing/2 and expand by the factor
                 // rounding errors. When precise wall is enabled, the external perimeter full spacing is used.
                 coord_t threshold_external = (apply_precise_outer_wall)
-                    // Precise outer wall 閳?use 閳ユ竾ull external spacing閳?
+                    // Precise outer wall 闂?use 闂傚倸鍊搁崐鐑芥嚄閸洖纾婚柕濞炬櫅绾惧潡鏌ょ喊鍗炲闁告姘ㄧ槐鎺楁嚋閸忓摜鐥卨 external spacing闂?
                     ? ( this->ext_perimeter_flow.scaled_spacing()
                         + this->perimeter_flow.scaled_spacing()/2.0 )
-                    // Normal 閳?half ext spacing + half int spacing
+                    // Normal 闂?half ext spacing + half int spacing
                     : ( this->ext_perimeter_flow.scaled_spacing()/2.0
                         + this->perimeter_flow.scaled_spacing()/2.0 );
                 

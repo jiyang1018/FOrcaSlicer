@@ -874,8 +874,6 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                 Layer &layer = *print_object.get_layer(int(layer_id));
                 it_layer_range = layer_range_next(layer_ranges, it_layer_range, layer.slice_z);
                 const PrintObjectRegions::LayerRangeRegions &layer_range = *it_layer_range;
-                // FOS: total layers needed for top/bottom detection
-                const int fos_total_layers = (int)print_object.layer_count();
                 // Gather per extruder expolygons.
                 by_extruder.assign(num_extruders, ByExtruder());
                 by_region.assign(layer.region_count(), ByRegion());
@@ -958,6 +956,41 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                             const bool cp_enabled = (mo_enabled && ext_idx < mo_enabled->values.size()) ? mo_enabled->values[ext_idx] : (gl_enabled.values.empty() ? false : (bool)gl_enabled.get_at(ext_idx));
                             if (cp_enabled && patch_loops > 0) {
                                 // FOS: color patch pipeline
+                                // FOS: detect top/bottom - check if painted region reaches object boundary
+                                const int fos_total_layers = (int)print_object.layer_count();
+                                // FOS: use object's top/bottom shell count, not patch_loops
+                                const int fos_top_shells = layer_range.volume_regions.empty() ? patch_loops : layer_range.volume_regions[0].region->config().top_shell_layers.value;
+                                const int fos_bot_shells = layer_range.volume_regions.empty() ? patch_loops : layer_range.volume_regions[0].region->config().bottom_shell_layers.value;
+                                const bool fos_near_obj_top = ((int)layer_id >= fos_total_layers - fos_top_shells);
+                                const bool fos_near_obj_bottom = ((int)layer_id < fos_bot_shells);
+                                bool fos_is_top_bottom = false;
+                                BoundingBox fos_stolen_bbox = get_extents(stolen);
+                                if (fos_near_obj_top) {
+                                    // FOS: check if painted region reaches the top patch_loops zone
+                                    // scan from object top downward to find if any layer in top zone has stolen
+                                    for (int tc = fos_total_layers - 1; tc >= fos_total_layers - patch_loops && tc >= 0; --tc) {
+                                        if (tc == (int)layer_id) { fos_is_top_bottom = true; break; }
+                                        const LayerRegion *tlr = print_object.get_layer(tc)->get_region(parent_layer_region_idx);
+                                        if (tlr->slices.empty()) continue;
+                                        if (!get_extents(tlr->slices.surfaces).overlap(fos_stolen_bbox)) continue;
+                                        auto ts = intersection_ex(to_expolygons(tlr->slices.surfaces), segmented.expolygons);
+                                        if (!ts.empty()) { fos_is_top_bottom = true; break; }
+                                    }
+                                }
+                                if (!fos_is_top_bottom && fos_near_obj_bottom) {
+                                    // FOS: check if painted region reaches the bottom patch_loops zone
+                                    for (int bc = 0; bc < patch_loops && bc < fos_total_layers; ++bc) {
+                                        if (bc == (int)layer_id) { fos_is_top_bottom = true; break; }
+                                        const LayerRegion *blr = print_object.get_layer(bc)->get_region(parent_layer_region_idx);
+                                        if (blr->slices.empty()) continue;
+                                        if (!get_extents(blr->slices.surfaces).overlap(fos_stolen_bbox)) continue;
+                                        auto bs = intersection_ex(to_expolygons(blr->slices.surfaces), segmented.expolygons);
+                                        if (!bs.empty()) { fos_is_top_bottom = true; break; }
+                                    }
+                                }
+                                if (layer.color_patch_is_top_bottom.size() <= ext_idx)
+                                    layer.color_patch_is_top_bottom.resize(ext_idx + 1, false);
+                                layer.color_patch_is_top_bottom[ext_idx] = fos_is_top_bottom;
                                 // FOS: use target region's flow (painted extruder) not parent region's
                                 const LayerRegion *target_lr = layer.get_region(target_region_id);
                                 const LayerRegion &flow_region = target_lr ? *target_lr : parent_layer_region;
@@ -965,55 +998,73 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                                 const coord_t perim_sp = flow_region.flow(frPerimeter).scaled_spacing();
                                 const coord_t ext_width = flow_region.flow(frExternalPerimeter).scaled_width();
                                 const coord_t perim_width = flow_region.flow(frPerimeter).scaled_width();
+                                // FOS: strip depth uses ext_sp2 at i=1 (matching process_classic) then perim_sp
                                 const coord_t ext_sp2 = coord_t(0.5f * (float(ext_width) + float(perim_width)));
                                 const coord_t loop_width = ext_width / 2
                                     + (patch_loops > 1 ? ext_sp2 : 0)
                                     + (patch_loops > 2 ? coord_t((patch_loops - 2) * perim_sp) : 0)
                                     + perim_width / 2;
-                                // FOS: compute painted layer depth from loop_width / layer_height
-                                const coordf_t fos_layer_height = layer.height > 0 ? layer.height : 0.2;
-                                const int fos_yellow_layers = std::max(1, (int)std::round(unscale<double>(loop_width) / fos_layer_height));
-                                const bool fos_is_top_bottom = ((int)layer_id < fos_yellow_layers) || ((int)layer_id >= fos_total_layers - fos_yellow_layers);
-                                // FOS: store top/bottom flag for mine subtraction
-                                if (layer.color_patch_is_top_bottom.size() <= ext_idx)
-                                    layer.color_patch_is_top_bottom.resize(ext_idx + 1, false);
-                                layer.color_patch_is_top_bottom[ext_idx] = fos_is_top_bottom;
-                                if (fos_is_top_bottom) {
-                                    // FOS: top/bottom - painted extruder gets full stolen, slices normally
-                                    ByRegion &dst = by_region[target_region_id];
-                                    if (dst.expolygons.empty())
-                                        dst.expolygons = stolen;
-                                    else {
-                                        append(dst.expolygons, stolen);
-                                        dst.needs_merge = true;
-                                    }
-                                } else {
-                                    // FOS: wall layers - compute shell_strip for CL loop generation
-                                    ExPolygons full_model;
-                                    for (int r = 0; r < layer.region_count(); ++r)
-                                        append(full_model, to_expolygons(layer.get_region(r)->slices.surfaces));
-                                    full_model = union_ex(full_model);
-                                    ExPolygons full_model_eroded = offset_ex(full_model, -float(loop_width));
-                                    ExPolygons boundary_strip = diff_ex(full_model, full_model_eroded);
-                                    ExPolygons stolen_expanded = offset_ex(segmented.expolygons, float(ext_sp) * 0.5f);
-                                    ExPolygons shell_strip = intersection_ex(boundary_strip, stolen_expanded);
-                                    // FOS: store shell_strip in color_patch_regions
-                                    if (layer.color_patch_regions.size() <= ext_idx)
-                                        layer.color_patch_regions.resize(ext_idx + 1);
+                                ExPolygons full_model;
+                                for (int r = 0; r < layer.region_count(); ++r)
+                                    append(full_model, to_expolygons(layer.get_region(r)->slices.surfaces));
+                                full_model = union_ex(full_model);
+                                // FOS: boundary_strip outer edge = model surface; intersect with expanded stolen to clip to painted zone
+                                ExPolygons full_model_eroded = offset_ex(full_model, -float(loop_width));
+                                ExPolygons boundary_strip = diff_ex(full_model, full_model_eroded);
+                                ExPolygons stolen_expanded = offset_ex(segmented.expolygons, float(ext_sp) * 0.5f);
+                                ExPolygons shell_strip = intersection_ex(boundary_strip, stolen_expanded);
+                                if (layer.color_patch_regions.size() <= ext_idx)
+                                    layer.color_patch_regions.resize(ext_idx + 1);
+                                if (layer.color_patch_loops_effective.size() <= ext_idx)
+                                    layer.color_patch_loops_effective.resize(ext_idx + 1, 0);
+                                if (!fos_is_top_bottom) {
+                                    // FOS: wall layers - store shell_strip for CL loop generation
                                     append(layer.color_patch_regions[ext_idx], shell_strip);
-                                    // FOS: set loops effective
-                                    if (layer.color_patch_loops_effective.size() <= ext_idx)
-                                        layer.color_patch_loops_effective.resize(ext_idx + 1, 0);
                                     if (layer.color_patch_loops_effective[ext_idx] == 0)
                                         layer.color_patch_loops_effective[ext_idx] = patch_loops;
-                                    // FOS: assign shell_strip to dst
-                                    ByRegion &dst = by_region[target_region_id];
-                                    if (dst.expolygons.empty())
-                                        dst.expolygons = shell_strip;
-                                    else {
-                                        append(dst.expolygons, shell_strip);
-                                        dst.needs_merge = true;
+                                }
+                                // FOS: top/bottom layers run in original mode - no color_patch_regions
+                                // PerimeterGenerator will generate natural loops and solid infill
+                                // FOS: for top/bottom, use full stolen as dst
+                                // but only the portion that is actually top/bottom (not covered by layer above/below)
+                                ExPolygons cp_dst;
+                                if (fos_is_top_bottom) {
+                                    // FOS: split stolen into exposed-face portion and side-face portion
+                                    // exposed-face = stolen area not covered by same extruder in layer above (top) or below (bottom)
+                                    ExPolygons exposed_stolen = stolen;
+                                    // check above for top-face detection
+                                    int above_idx = (int)layer_id + 1;
+                                    if (above_idx < fos_total_layers) {
+                                        const auto &above_seg = segmentation[above_idx][ext_idx];
+                                        if (!above_seg.empty()) {
+                                            ExPolygons not_covered_above = diff_ex(stolen, above_seg);
+                                            if (!not_covered_above.empty())
+                                                exposed_stolen = not_covered_above;
+                                        }
                                     }
+                                    // check below for bottom-face detection
+                                    int below_idx = (int)layer_id - 1;
+                                    if (below_idx >= 0) {
+                                        const auto &below_seg = segmentation[below_idx][ext_idx];
+                                        if (!below_seg.empty()) {
+                                            ExPolygons not_covered_below = diff_ex(stolen, below_seg);
+                                            if (!not_covered_below.empty() && area(not_covered_below) > area(exposed_stolen))
+                                                exposed_stolen = not_covered_below;
+                                        }
+                                    }
+                                    // side portion gets shell_strip, exposed portion gets full stolen
+                                    ExPolygons side_stolen = diff_ex(stolen, exposed_stolen);
+                                    ExPolygons side_shell = intersection_ex(shell_strip, side_stolen);
+                                    cp_dst = union_ex(exposed_stolen, side_shell);
+                                } else {
+                                    cp_dst = shell_strip;
+                                }
+                                ByRegion &dst = by_region[target_region_id];
+                                if (dst.expolygons.empty())
+                                    dst.expolygons = cp_dst;
+                                else {
+                                    append(dst.expolygons, cp_dst);
+                                    dst.needs_merge = true;
                                 }
                             } else {
                                 // Original pipeline: pass stolen directly to dst, no FOS logic
@@ -1039,7 +1090,10 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                                 const size_t seg_idx = &segmented - by_extruder.data();
                                 const bool has_color_patch = seg_idx < layer.color_patch_regions.size() &&
                                     !layer.color_patch_regions[seg_idx].empty();
-                                mine = has_color_patch
+                                // FOS: top/bottom layers subtract full stolen, wall layers subtract shell_strip
+                                const bool seg_is_top_bottom = seg_idx < layer.color_patch_is_top_bottom.size() &&
+                                    layer.color_patch_is_top_bottom[seg_idx];
+                                mine = (has_color_patch && !seg_is_top_bottom)
                                     ? diff(mine, to_polygons(layer.color_patch_regions[seg_idx]))
                                     : diff(mine, segmented.expolygons);
                                 if (mine.empty())

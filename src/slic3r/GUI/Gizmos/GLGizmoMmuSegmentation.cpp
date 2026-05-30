@@ -499,7 +499,14 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                     new_enabled.values.push_back(false);
                 new_enabled.values[ext_idx] = false;
                 mo_orig->config.set_key_value("color_patch_enabled", new_enabled.clone());
-                wxGetApp().plater()->update();
+                {
+                    const ModelObjectPtrs &mos = wxGetApp().model().objects;
+                    ModelObject *mo_notify = m_c->selection_info()->model_object();
+                    size_t obj_idx = std::find(mos.begin(), mos.end(), mo_notify) - mos.begin();
+                    wxGetApp().plater()->get_partplate_list().notify_instance_update(obj_idx, 0);
+                    wxGetApp().plater()->update();
+                    m_parent.post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+                }
             }
         }
         ImGui::PopStyleColor();
@@ -530,7 +537,14 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                 if (new_opt.values[ext_idx] <= 0)
                     new_opt.values[ext_idx] = m_color_patch_loops_ui > 0 ? m_color_patch_loops_ui : 1;
                 mo_cp->config.set_key_value("color_patch_loops", new_opt.clone());
-                wxGetApp().plater()->update();
+                {
+                    const ModelObjectPtrs &mos = wxGetApp().model().objects;
+                    ModelObject *mo_notify = m_c->selection_info()->model_object();
+                    size_t obj_idx = std::find(mos.begin(), mos.end(), mo_notify) - mos.begin();
+                    wxGetApp().plater()->get_partplate_list().notify_instance_update(obj_idx, 0);
+                    wxGetApp().plater()->update();
+                    m_parent.post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+                }
             }
         }
         ImGui::PopStyleColor();
@@ -566,7 +580,14 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                 new_opt.values.push_back(1);
             new_opt.values[ext_idx] = m_color_patch_loops_ui;
             mo_sl->config.set_key_value("color_patch_loops", new_opt.clone());
-            wxGetApp().plater()->update();
+            {
+                    const ModelObjectPtrs &mos = wxGetApp().model().objects;
+                    ModelObject *mo_notify = m_c->selection_info()->model_object();
+                    size_t obj_idx = std::find(mos.begin(), mos.end(), mo_notify) - mos.begin();
+                    wxGetApp().plater()->get_partplate_list().notify_instance_update(obj_idx, 0);
+                    wxGetApp().plater()->update();
+                    m_parent.post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+                }
         }
         ImGui::SameLine(drag_left_width + sliders_left_width);
         ImGui::PushItemWidth(1.5 * slider_icon_width);
@@ -581,7 +602,14 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                 new_opt.values.push_back(1);
             new_opt.values[ext_idx] = m_color_patch_loops_ui;
             mo_sl->config.set_key_value("color_patch_loops", new_opt.clone());
-            wxGetApp().plater()->update();
+            {
+                    const ModelObjectPtrs &mos = wxGetApp().model().objects;
+                    ModelObject *mo_notify = m_c->selection_info()->model_object();
+                    size_t obj_idx = std::find(mos.begin(), mos.end(), mo_notify) - mos.begin();
+                    wxGetApp().plater()->get_partplate_list().notify_instance_update(obj_idx, 0);
+                    wxGetApp().plater()->update();
+                    m_parent.post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+                }
         }
     } // end color patch mode
 
@@ -896,7 +924,14 @@ void GLGizmoMmuSegmentation::update_model_object()
         size_t obj_idx = std::find(mos.begin(), mos.end(), mo) - mos.begin();
         wxGetApp().obj_list()->update_info_items(obj_idx);
         wxGetApp().plater()->get_partplate_list().notify_instance_update(obj_idx, 0);
-        wxGetApp().plater()->update();
+        {
+                    const ModelObjectPtrs &mos = wxGetApp().model().objects;
+                    ModelObject *mo_notify = m_c->selection_info()->model_object();
+                    size_t obj_idx = std::find(mos.begin(), mos.end(), mo_notify) - mos.begin();
+                    wxGetApp().plater()->get_partplate_list().notify_instance_update(obj_idx, 0);
+                    wxGetApp().plater()->update();
+                    m_parent.post_event(SimpleEvent(EVT_GLCANVAS_SCHEDULE_BACKGROUND_PROCESS));
+                }
     }
 }
 
