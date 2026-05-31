@@ -34,6 +34,9 @@ The Snapmaker U1 supports 4 independent print heads with different nozzle diamet
 - Original mode produces G-code identical to stock OrcaSlicer (verified by diff)
 - Per-object CL settings save and load correctly with .3mf files
 - CL slider, input box, and mode toggle correctly trigger re-slice when changed
+- CL=1 works correctly for all nozzle sizes including 0.6mm and 0.8mm
+- Color Patch button automatically disabled for the Outer Wall extruder with tooltip explanation
+- Mixed nozzle gap between OW and IW correctly sized when different nozzle sizes are assigned
 
 ---
 
