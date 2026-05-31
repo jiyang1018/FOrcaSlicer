@@ -499,6 +499,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                     new_enabled.values.push_back(false);
                 new_enabled.values[ext_idx] = false;
                 mo_orig->config.set_key_value("color_patch_enabled", new_enabled.clone());
+                mo_orig->config.touch();
                 {
                     const ModelObjectPtrs &mos = wxGetApp().model().objects;
                     ModelObject *mo_notify = m_c->selection_info()->model_object();
@@ -528,6 +529,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                     new_enabled.values.push_back(false);
                 new_enabled.values[ext_idx] = true;
                 mo_cp->config.set_key_value("color_patch_enabled", new_enabled.clone());
+                mo_cp->config.touch();
                 // FOS: also ensure patch_loops is non-zero
                 ConfigOptionInts new_opt({0, 0, 0, 0});
                 if (const auto *existing = mo_cp->config.get().opt<ConfigOptionInts>("color_patch_loops"))
@@ -537,6 +539,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                 if (new_opt.values[ext_idx] <= 0)
                     new_opt.values[ext_idx] = m_color_patch_loops_ui > 0 ? m_color_patch_loops_ui : 1;
                 mo_cp->config.set_key_value("color_patch_loops", new_opt.clone());
+                mo_cp->config.touch();
                 {
                     const ModelObjectPtrs &mos = wxGetApp().model().objects;
                     ModelObject *mo_notify = m_c->selection_info()->model_object();
@@ -580,6 +583,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                 new_opt.values.push_back(1);
             new_opt.values[ext_idx] = m_color_patch_loops_ui;
             mo_sl->config.set_key_value("color_patch_loops", new_opt.clone());
+            mo_sl->config.touch();
             {
                     const ModelObjectPtrs &mos = wxGetApp().model().objects;
                     ModelObject *mo_notify = m_c->selection_info()->model_object();
@@ -602,6 +606,7 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                 new_opt.values.push_back(1);
             new_opt.values[ext_idx] = m_color_patch_loops_ui;
             mo_sl->config.set_key_value("color_patch_loops", new_opt.clone());
+            mo_sl->config.touch();
             {
                     const ModelObjectPtrs &mos = wxGetApp().model().objects;
                     ModelObject *mo_notify = m_c->selection_info()->model_object();

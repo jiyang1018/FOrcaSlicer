@@ -957,7 +957,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "wipe_speed"
             || opt_key == "color_patch_loops"
             || opt_key == "color_patch_enabled") {
-            steps.emplace_back(posPerimeters);
+            steps.emplace_back(posSlice);
         } else if (
             opt_key == "small_area_infill_flow_compensation_model") {
             steps.emplace_back(posSlice);

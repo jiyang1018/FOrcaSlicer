@@ -1374,12 +1374,29 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         if (! solid_or_modifier_differ) {
             // Synchronize Object's config.
             bool object_config_changed = ! model_object.config.timestamp_matches(model_object_new.config);
-			if (object_config_changed)
-				model_object.config.assign_config(model_object_new.config);
+            // FOS: check per-object DynamicConfig for color_patch keys not in PrintObjectConfig
+            t_config_option_keys fos_extra_diff;
+            if (object_config_changed) {
+                for (const char *fos_key : {"color_patch_loops", "color_patch_enabled"}) {
+                    const ConfigOption *old_opt = model_object.config.get().option(fos_key);
+                    const ConfigOption *new_opt = model_object_new.config.get().option(fos_key);
+                    bool fos_changed = (old_opt == nullptr) != (new_opt == nullptr);
+                    if (!fos_changed && old_opt && new_opt)
+                        fos_changed = (old_opt->serialize() != new_opt->serialize());
+                    if (fos_changed)
+                        fos_extra_diff.emplace_back(fos_key);
+                }
+			            }
+                  if (object_config_changed)
+                model_object.config.assign_config(model_object_new.config);
             if (! object_diff.empty() || object_config_changed || num_extruders_changed ) {
                 PrintObjectConfig new_config = PrintObject::object_config_from_model_object(m_default_object_config, model_object, num_extruders );
                 for (const PrintObjectStatus &print_object_status : print_object_status_db.get_range(model_object)) {
                     t_config_option_keys diff = print_object_status.print_object->config().diff(new_config);
+                    // FOS: append color_patch keys that changed in per-object DynamicConfig
+                    for (const auto &fos_key : fos_extra_diff)
+                        if (std::find(diff.begin(), diff.end(), fos_key) == diff.end())
+                            diff.emplace_back(fos_key);
                     if (! diff.empty()) {
                         update_apply_status(print_object_status.print_object->invalidate_state_by_config_options(print_object_status.print_object->config(), new_config, diff));
                         print_object_status.print_object->config_apply_only(new_config, diff, true);
