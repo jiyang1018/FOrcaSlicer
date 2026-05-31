@@ -1,120 +1,164 @@
+# FOrcaSlicer — Flexible OrcaSlicer
 
-<h1> <p "font-size:200px;"> Snapmaker Orca</p> </h1>
+A fork of [Snapmaker OrcaSlicer](https://github.com/Snapmaker/OrcaSlicer) adding mixed nozzle size printing and color patch pipeline support for the Snapmaker U1 4-head printer.
 
-[![Build all](https://github.com/Snapmaker/OrcaSlicer/actions/workflows/build_all.yml/badge.svg?branch=main)](https://github.com/Snapmaker/OrcaSlicer/actions/workflows/build_all.yml)
-<br>Snapmaker Orca is an open source slicer for FDM printers based on OrcaSlicer.
- 
+## Download
+👉 **[Latest Release](https://github.com/jiyang1018/FOrcaSlicer/releases/latest)**
 
+- `FOrcaSlicer_Windows_Installer_V*.exe` — Windows installer
+- `FOrcaSlicer_Windows_Portable_V*.zip` — Windows portable (no install needed)
 
-# Download
+## Development Roadmap
+Track progress, design decisions, and implementation details:
+👉 **[View the interactive roadmap](https://jiyang1018.github.io/FOrcaSlicer-roadmap/)**
 
-### Stable Release
-📥 **[Download the Latest Stable Release](https://github.com/Snapmaker/OrcaSlicer/releases/latest)**  
-Visit our GitHub Releases page for the latest stable version of Snapmaker Slicer, recommended for most users.
+---
 
-# How to install
-**Windows**: 
-1.  Download the installer for your preferred version from the [releases page](https://github.com/Snapmaker/OrcaSlicer/releases).
-    - *For convenience there is also a portable build available.*
-    - *If you have troubles to run the build, you might need to install following runtimes:*
-      - [MicrosoftEdgeWebView2RuntimeInstallerX64](https://github.com/SoftFever/OrcaSlicer/releases/download/v1.0.10-sf2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe)
-          - [Details of this runtime](https://aka.ms/webview2)
-          - [Alternative Download Link Hosted by Microsoft](https://go.microsoft.com/fwlink/p/?LinkId=2124703)
-      - [vcredist2019_x64](https://github.com/SoftFever/OrcaSlicer/releases/download/v1.0.10-sf2/vcredist2019_x64.exe)
-          -  [Alternative Download Link Hosted by Microsoft](https://aka.ms/vs/17/release/vc_redist.x64.exe)
-          -  This file may already be available on your computer if you've installed visual studio.  Check the following location: `%VCINSTALLDIR%Redist\MSVC\v142`
+## About
 
-**Mac**:
-1. Download the DMG for your computer: `arm64` version for Apple Silicon and `x86_64` for Intel CPU.  
-2. Drag Snapmaker_Orca.app to Application folder. 
-3. *If you want to run a build from a PR, you also need to follow the instructions below:*  
-    <details quarantine>
-    - Option 1 (You only need to do this once. After that the app can be opened normally.):
-      - Step 1: Hold _cmd_ and right click the app, from the context menu choose **Open**.
-      - Step 2: A warning window will pop up, click _Open_  
-      
-    - Option 2:  
-      Execute this command in terminal: `xattr -dr com.apple.quarantine /Applications/Snapmaker_Orca.app`
-      ```console
-          softfever@mac:~$ xattr -dr com.apple.quarantine /Applications/Snapmaker_Orca.app
-      ```
-    - Option 3:  
-        - Step 1: open the app, a warning window will pop up  
-            ![image](./SoftFever_doc/mac_cant_open.png)  
-        - Step 2: in `System Settings` -> `Privacy & Security`, click `Open Anyway`:  
-            ![image](./SoftFever_doc/mac_security_setting.png)  
-    </details>
-    
-**Linux (Ubuntu)**:
- 1. If you run into trouble executing it, try this command in the terminal:  
-    `chmod +x /path_to_appimage/Snapmaker_Orca_Linux.AppImage`
-    
-# How to compile
-- Windows 64-bit  
-  - Tools needed: Visual Studio 2019, Cmake, git, git-lfs, Strawberry Perl.
-      - You will require cmake version 3.14 or later, which is available [on their website](https://cmake.org/download/).
-      - Strawberry Perl is [available on their GitHub repository](https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/).
-  - Run `build_release.bat` in `x64 Native Tools Command Prompt for VS 2019`
-  - Note: Don't forget to run `git lfs pull` after cloning the repository to download tools on Windows
+The Snapmaker U1 supports 4 independent print heads with different nozzle diameters (e.g. 0.2mm, 0.4mm, 0.6mm, 0.8mm). Stock Snapmaker OrcaSlicer syncs all nozzles to the same size. FOrcaSlicer extends the slicer with:
 
-- Mac 64-bit  
-  - Tools needed: Xcode, Cmake, git, gettext, libtool, automake, autoconf, texinfo
-      - You can install most of them by running `brew install cmake gettext libtool automake autoconf texinfo`
-  - run `build_release_macos.sh`
-  - To build and debug in Xcode:
-      - run `Xcode.app`
-      - open ``build_`arch`/Snapmaker_Orca.Xcodeproj``
-      - menu bar: Product => Scheme => Snapmaker_Orca
-      - menu bar: Product => Scheme => Edit Scheme...
-          - Run => Info tab => Build Configuration: `RelWithDebInfo`
-          - Run => Options tab => Document Versions: uncheck `Allow debugging when browsing versions`
-      - menu bar: Product => Run
+### Mixed Nozzle Size Support
+- Independent nozzle diameter configuration per head
+- Separate "Outer wall (OW)" and "Inner wall (IW)" from "Walls" in the Multimaterial tab
+- OW, IW, infill, solid infill, and prime tower can each use different nozzle sizes independently
+- Nozzle verification dialog before printing
+- Print line widths in preview reflect actual nozzle diameter per extruder
 
-- Ubuntu 
-  - Dependencies **Will be auto-installed with the shell script**: `libmspack-dev libgstreamerd-3-dev libsecret-1-dev libwebkit2gtk-4.0-dev libosmesa6-dev libssl-dev libcurl4-openssl-dev eglexternalplatform-dev libudev-dev libdbus-1-dev extra-cmake-modules libgtk2.0-dev libglew-dev libudev-dev libdbus-1-dev cmake git texinfo`
-  - run 'sudo ./BuildLinux.sh -u'
-  - run './BuildLinux.sh -dsir'
+### Color Patch Pipeline
+- When a surface is painted with a color, only the outer N wall loops on that surface print in the painted color
+- Top and bottom solid surfaces of painted faces print fully in the painted color
+- Per-object, per-filament color patch loop count (CL)
+- Unpainted volume sliced under original logic
+- Color patch mode and original mode can be mixed per object on the same plate
+- Original mode produces G-code identical to stock OrcaSlicer (verified by diff)
+- Per-object CL settings save and load correctly with .3mf files
+- CL slider, input box, and mode toggle correctly trigger re-slice when changed
 
+---
 
-# Note: 
-If you're running Klipper, it's recommended to add the following configuration to your `printer.cfg` file.
+## How to Install
+
+### Windows
+1. Download the installer or portable zip from the [releases page](https://github.com/jiyang1018/FOrcaSlicer/releases).
+2. If you have trouble running the build, install these runtimes:
+   - [MicrosoftEdgeWebView2RuntimeInstallerX64](https://go.microsoft.com/fwlink/p/?LinkId=2124703)
+   - [vcredist2019_x64](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+
+### First Run
+Log in with your Snapmaker account to access the printer library and set up your printer.
+
+### Mac
+> Not yet officially supported. Build from source using the instructions below.
+
+### Linux
+> Not yet officially supported. Build from source using the instructions below.
+
+---
+
+## How to Compile
+
+### Windows 64-bit
+Tools needed: Visual Studio 2019, CMake 3.14+, git, git-lfs, Strawberry Perl
+
+```powershell
+git clone https://github.com/jiyang1018/FOrcaSlicer
+cd FOrcaSlicer
+git lfs pull
+cd build
+cmake ..
+.\build.ps1
 ```
-# Enable object exclusion
-[exclude_object]
 
-# Enable arcs support
+Output: `build\FOrcaSlicer\FOrcaSlicer.exe`
+
+### Building the Installer
+Requires [NSIS](https://nsis.sourceforge.io/Download):
+```powershell
+makensis /DVERSION=2.3.2 installer.nsi
+```
+
+### Mac 64-bit
+Tools needed: Xcode, CMake, git, gettext, libtool, automake, autoconf, texinfo
+```bash
+brew install cmake gettext libtool automake autoconf texinfo
+./build_release_macos.sh
+```
+
+### Linux (Ubuntu)
+```bash
+sudo ./BuildLinux.sh -u
+./BuildLinux.sh -dsir
+```
+
+---
+
+## Klipper Note
+If you're running Klipper, add this to your `printer.cfg`:
+```
+[exclude_object]
 [gcode_arcs]
 resolution: 0.1
 ```
 
+---
 
-## Some background
-Snapmaker Orca is originally forked from Snapmaker_Orca.
+## Name
+**FOrcaSlicer** means two things:
+1. **F**lexible **Orca**Slicer — extends OrcaSlicer with flexible per-head configuration
+2. **Fork**-a-Slicer — a fork of the original OrcaSlicer
 
-Snapmaker_Orca is originally forked from Bambu Studio, it was previously known as BambuStudio-SoftFever.
-Bambu Studio is forked from [PrusaSlicer](https://github.com/prusa3d/PrusaSlicer) by Prusa Research, which is from [Slic3r](https://github.com/Slic3r/Slic3r) by Alessandro Ranellucci and the RepRap community. 
-Orca Slicer incorporates a lot of features from SuperSlicer by @supermerill
-Orca Slicer's logo is designed by community member Justin Levine(@freejstnalxndr)  
+---
 
+## 关于本项目 / About (中文)
 
-# License
-Snapmaker Orca is licensed under the GNU Affero General Public License, version 3. Orca Slicer is based on Snapmaker_Orca by SoftFever
+[Snapmaker OrcaSlicer](https://github.com/Snapmaker/OrcaSlicer) 的分支版本，为 Snapmaker U1 四头打印机添加混合挤出口尺寸打印支持。
 
-Orca Slicer is licensed under the GNU Affero General Public License, version 3. Orca Slicer is based on Bambu Studio by BambuLab.
+👉 **[查看交互式路线图](https://jiyang1018.github.io/FOrcaSlicer-roadmap/)**
+
+### 混合挤出口尺寸支持
+- 支持每个工作头独立配置挤出口直径
+- 在多材料标签页中，将"外墙（OW）"和"内壁（IW）"从"总墙壁"中独立拆分
+- 外墙、内壁、填充、实心填充及换料塔可分别指定不同尺寸挤出口
+- 打印前通过挤出口验证对话框确认配置
+- 预览中的打印线宽反映每个挤出机的实际挤出口直径
+
+### 外壳着色模式（Color Patch）
+- 上色时，仅该面最外层 N 圈壁会由涂色耗材打印
+- 上色面的顶部和底部实体层也完全使用涂色耗材打印
+- 支持逐对象、逐耗材着色区域路径数
+- 未涂色区域按原始逻辑切片
+- 外壳着色模式与原始模式可在同一实体上混合使用
+- 含逐对象 CL 的项目设置可正确保存和读取 .3mf 文件
+
+---
+
+## Background
+FOrcaSlicer is forked from Snapmaker OrcaSlicer.
+Snapmaker OrcaSlicer is forked from OrcaSlicer by SoftFever.
+OrcaSlicer is forked from Bambu Studio by BambuLab.
+Bambu Studio is forked from [PrusaSlicer](https://github.com/prusa3d/PrusaSlicer) by Prusa Research.
+PrusaSlicer is based on [Slic3r](https://github.com/Slic3r/Slic3r) by Alessandro Ranellucci and the RepRap community.
+FOrcaSlicer incorporates features from SuperSlicer by @supermerill.
+
+---
+
+## License
+FOrcaSlicer is licensed under the GNU Affero General Public License, version 3.
+
+Snapmaker OrcaSlicer is licensed under the GNU Affero General Public License, version 3.
+
+OrcaSlicer is licensed under the GNU Affero General Public License, version 3. OrcaSlicer is based on Bambu Studio by BambuLab.
 
 Bambu Studio is licensed under the GNU Affero General Public License, version 3. Bambu Studio is based on PrusaSlicer by PrusaResearch.
 
 PrusaSlicer is licensed under the GNU Affero General Public License, version 3. PrusaSlicer is owned by Prusa Research. PrusaSlicer is originally based on Slic3r by Alessandro Ranellucci.
 
-Slic3r is licensed under the GNU Affero General Public License, version 3. Slic3r was created by Alessandro Ranellucci with the help of many other contributors.
+Slic3r is licensed under the GNU Affero General Public License, version 3.
 
 The GNU Affero General Public License, version 3 ensures that if you use any part of this software in any way (even behind a web server), your software must be released under the same license.
 
-Orca Slicer includes a pressure advance calibration pattern test adapted from Andrew Ellis' generator, which is licensed under GNU General Public License, version 3. Ellis' generator is itself adapted from a generator developed by Sineos for Marlin, which is licensed under GNU General Public License, version 3.
+---
 
-The Bambu networking plugin is based on non-free libraries from BambuLab. It is optional to the Orca Slicer and provides extended functionalities for Bambulab printer users.
-
-# Feedback & Contribution
-We greatly value feedback and contributions from our users. Your feedback will help us to further develop Snapmaker Orca for our community.
-- To submit a bug or feature request, file an issue in GitHub Issues or email us at support@snapmaker.com.
-- To contribute some code, make sure you have read and followed our guidelines for contributing.
+## Feedback & Contributions
+File issues or feature requests at [GitHub Issues](https://github.com/jiyang1018/FOrcaSlicer/issues).
