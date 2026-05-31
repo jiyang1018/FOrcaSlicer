@@ -1338,7 +1338,7 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
             double extrusion_width_max = config.get_abs_value(opt_key, max_nozzle_diameter);
         	if (extrusion_width_min == 0) {
         		// Default "auto-generated" extrusion width is always valid.
-        	} else if (extrusion_width_min <= layer_height) {
+        	} else if (extrusion_width_min < layer_height) {
                 err_msg = L("Too small line width");
 				return false;
 			} else if (extrusion_width_max > max_nozzle_diameter * MAX_LINE_WIDTH_MULTIPLIER) {

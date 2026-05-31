@@ -2626,7 +2626,19 @@ optgroup->append_single_option_line("skirt_loops", "others_settings_skirt#loops"
 // Reload current config (aka presets->edited_preset->config) into the UI fields.
 void TabPrint::reload_config()
 {
-    this->compatible_widget_reload(m_compatible_printers);
+
+this->compatible_widget_reload(m_compatible_printers);
+    // FOS: ensure FOrcaSlicer-specific options have defaults when loading foreign presets
+    if (m_config->option("outer_wall_loops") == nullptr)
+        m_config->set_key_value("outer_wall_loops", new ConfigOptionInt(1));
+    if (m_config->option("outer_wall_layer_height_max") == nullptr)
+        m_config->set_key_value("outer_wall_layer_height_max", new ConfigOptionFloat(0.f));
+    if (m_config->option("outer_wall_seam_position") == nullptr)
+        m_config->set_key_value("outer_wall_seam_position", new ConfigOptionEnum<SeamPosition>(spAligned));
+    if (m_config->option("color_patch_loops") == nullptr)
+        m_config->set_key_value("color_patch_loops", new ConfigOptionInts({0, 0, 0, 0}));
+    if (m_config->option("color_patch_enabled") == nullptr)
+        m_config->set_key_value("color_patch_enabled", new ConfigOptionBools({false, false, false, false}));
     Tab::reload_config();
 }
 

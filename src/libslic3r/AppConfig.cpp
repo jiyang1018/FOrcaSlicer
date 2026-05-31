@@ -389,8 +389,9 @@ void AppConfig::set_defaults()
     //     set_bool("staff_pick_switch", false);
     // }
 
+    // FOS: disable auto-sync — Snapmaker server presets are 2.3.14 format, incompatible with FOrcaSlicer 2.3.2
     if (get("sync_system_preset").empty()) {
-        set_bool("sync_system_preset", true);
+        set_bool("sync_system_preset", false);
     }
 
     if (get("backup_switch").empty() || get("version") < "01.06.00.00") {

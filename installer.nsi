@@ -148,13 +148,13 @@ SectionEnd
 
 Section "Desktop shortcut" SecDesktop
     DetailPrint "Creating desktop shortcut..."
-    CreateShortcut "$DESKTOP\Snapmaker Orca.lnk" "$INSTDIR\FOrcaSlicer.exe" "" "$INSTDIR\FOrcaSlicer.exe" 0
+    CreateShortcut "$DESKTOP\FOrcaSlicer.lnk" "$INSTDIR\FOrcaSlicer.exe" "" "$INSTDIR\FOrcaSlicer.exe" 0
 SectionEnd
 
 Section "Start menu shortcut" SecStartMenu
     DetailPrint "Creating start menu shortcut..."
     CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
-    CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Snapmaker Orca.lnk" "$INSTDIR\FOrcaSlicer.exe" "" "$INSTDIR\FOrcaSlicer.exe" 0
+    CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\FOrcaSlicer.lnk" "$INSTDIR\FOrcaSlicer.exe" "" "$INSTDIR\FOrcaSlicer.exe" 0
     CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
 SectionEnd
 
@@ -173,7 +173,7 @@ Section "Uninstall"
     Sleep 500
     
     DetailPrint "Removing desktop shortcut..."
-    Delete "$DESKTOP\Snapmaker Orca.lnk"
+    Delete "$DESKTOP\FOrcaSlicer.lnk"
     Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
     
     DetailPrint "Removing start menu shortcut..."

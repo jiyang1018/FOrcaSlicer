@@ -397,6 +397,17 @@ void Preset::normalize(DynamicPrintConfig &config)
         }
     }
 
+    // FOS: ensure FOrcaSlicer-specific options have defaults when loading foreign presets
+    if (config.option("outer_wall_loops") == nullptr)
+        config.set_key_value("outer_wall_loops", new ConfigOptionInt(1));
+    if (config.option("outer_wall_layer_height_max") == nullptr)
+        config.set_key_value("outer_wall_layer_height_max", new ConfigOptionFloat(0.f));
+    if (config.option("outer_wall_seam_position") == nullptr)
+        config.set_key_value("outer_wall_seam_position", new ConfigOptionEnum<SeamPosition>(spAligned));
+    if (config.option("color_patch_loops") == nullptr)
+        config.set_key_value("color_patch_loops", new ConfigOptionInts({0, 0, 0, 0}));
+    if (config.option("color_patch_enabled") == nullptr)
+        config.set_key_value("color_patch_enabled", new ConfigOptionBools({false, false, false, false}));
     handle_legacy_sla(config);
 }
 
