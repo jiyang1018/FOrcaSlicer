@@ -7374,10 +7374,16 @@ void DynamicPrintConfig::normalize_fdm_1()
     if (auto *opt_gcode_resolution = this->opt<ConfigOptionFloat>("resolution", false); opt_gcode_resolution)
         // Resolution will be above 1um.
         opt_gcode_resolution->value = std::max(opt_gcode_resolution->value, 0.001);
-
+    // FOS: compute has_mixed_nozzle_sizes flag
+    if (auto *nozzle_diams = this->opt<ConfigOptionFloats>("nozzle_diameter", false); nozzle_diams && !nozzle_diams->values.empty()) {
+        const double first = nozzle_diams->values[0];
+        bool mixed = false;
+        for (double d : nozzle_diams->values)
+            if (std::abs(d - first) > 0.001) { mixed = true; break; }
+        this->opt<ConfigOptionBool>("has_mixed_nozzle_sizes", true)->value = mixed;
+    }
     return;
 }
-
 t_config_option_keys DynamicPrintConfig::normalize_fdm_2(int num_objects, int used_filaments)
 {
     t_config_option_keys changed_keys;

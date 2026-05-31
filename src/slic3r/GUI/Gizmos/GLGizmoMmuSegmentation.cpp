@@ -511,12 +511,19 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             }
         }
         ImGui::PopStyleColor();
+        // FOS: Color Patch disabled if selected extruder is the OW extruder
+        const int ow_ext_idx = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament") - 1;
+        const bool is_ow_extruder = (ext_idx == ow_ext_idx);
+        if (is_ow_extruder && m_color_patch_mode_ui)
+            m_color_patch_mode_ui = false;
         ImGui::SameLine();
         if (m_color_patch_mode_ui)
             ImGui::PushStyleColor(ImGuiCol_Button, ImGuiWrapper::COL_ORCA);
         else
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_Button]);
-        if (ImGui::Button(m_desc.at("mode_color_patch").utf8_str(), btn_size)) {
+        if (is_ow_extruder)
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyle().Colors[ImGuiCol_Button]);
+        if (ImGui::Button(m_desc.at("mode_color_patch").utf8_str(), btn_size) && !is_ow_extruder) {
             m_color_patch_mode_ui = true;
             m_color_patch_initialized = true;
             // FOS: write color_patch_enabled=true and patch_loops to per-object config
@@ -550,7 +557,12 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
                 }
             }
         }
-        ImGui::PopStyleColor();
+	
+        if (is_ow_extruder)
+            ImGui::PopStyleColor(); // pop ButtonHovered
+        ImGui::PopStyleColor(); // pop Button color
+        if (is_ow_extruder && ImGui::IsItemHovered())
+            m_imgui->tooltip(_L("Color Patch is not available for the Outer Wall extruder"), max_tooltip_width);
         }
     ImGui::Separator();
 

@@ -1321,7 +1321,7 @@ void PerimeterGenerator::process_classic()
                             if ((*this->color_patch_regions)[wall_ext].empty()) return false;
                             return (this->color_patch_loops_effective && wall_ext < (int)this->color_patch_loops_effective->size() ? (*this->color_patch_loops_effective)[wall_ext] : this->print_config->color_patch_loops.get_at(wall_ext)) > 0;
                         }();
-                        const float i0_half_width = is_cp_region
+                        const float i0_half_width = (is_cp_region && loop_number > 0)
                             ? float(perimeter_spacing / 2)
                             : float(ext_perimeter_width / 2.);
                         for (const ExPolygon& expolygon : last) {
