@@ -38,3 +38,4 @@ jobs:
               \"draft\": false,
               \"prerelease\": ${{ github.event.release.prerelease }}
             }"
+
