@@ -1359,7 +1359,22 @@ void PerimeterGenerator::process_classic()
                     //FIXME Is this offset correct if the line width of the inner perimeters differs
                     // from the line width of the infill?
                     // FOS: in color patch mode all inner loops use perimeter_spacing to avoid gap fill
-                    coord_t distance = (i == 1) ? ext_perimeter_spacing2 : perimeter_spacing;
+                    // FOS: for mixed nozzle, OW loops use ext_perimeter_spacing, IW loops use perimeter_spacing
+                    const int fos_ow_loops = this->print_config->has_mixed_nozzle_sizes.value
+                        ? std::max(1, this->config->outer_wall_loops.value) : 1;
+                    const bool is_ow_loop = (i < fos_ow_loops);
+                    const bool is_ow_to_iw_transition = (i == fos_ow_loops);
+                    coord_t distance;
+                    if (this->print_config->has_mixed_nozzle_sizes.value) {
+                        if (is_ow_loop)
+                            distance = ext_perimeter_spacing;
+                        else if (is_ow_to_iw_transition)
+                            distance = coord_t(0.5f * (float(ext_perimeter_spacing) + float(perimeter_spacing)));
+                        else
+                            distance = perimeter_spacing;
+                    } else {
+                        distance = (i == 1) ? ext_perimeter_spacing2 : perimeter_spacing;
+                    }
                     //BBS
                     //offsets = this->config->thin_walls ?
                         // This path will ensure, that the perimeters do not overfill, as in 
