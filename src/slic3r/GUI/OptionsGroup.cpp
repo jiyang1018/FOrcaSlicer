@@ -1009,17 +1009,22 @@ boost::any ConfigOptionsGroup::get_config_value(const DynamicPrintConfig& config
 			ret = from_u8(config.opt_string(opt_key, static_cast<unsigned int>(idx)));
 		break;
 	case coBool:
-		ret = config.opt_bool(opt_key);
-		break;
-	case coBools:
-		ret = config.opt_bool(opt_key, idx);
-		break;
+                if (config.option(opt_key) == nullptr) { ret = false; break; }
+                ret = config.opt_bool(opt_key);
+                break;
+        case coBools:
+                if (config.option(opt_key) == nullptr) { ret = false; break; }
+                ret = config.opt_bool(opt_key, idx);
+                break;
 	case coInt:
-		ret = config.opt_int(opt_key);
-		break;
+                // FOS: guard against missing options in foreign presets
+                if (config.option(opt_key) == nullptr) { ret = 0; break; }
+                ret = config.opt_int(opt_key);
+                break;
 	case coInts:
-		ret = config.opt_int(opt_key, idx);
-		break;
+         if (config.option(opt_key) == nullptr) { ret = 0; break; }
+         ret = config.opt_int(opt_key, idx);
+         break;
 	case coEnum:
         if (!config.has("first_layer_sequence_choice") && opt_key == "first_layer_sequence_choice") {
             // reset to Auto value
@@ -1041,6 +1046,7 @@ boost::any ConfigOptionsGroup::get_config_value(const DynamicPrintConfig& config
         break;
     // BBS
     case coEnums:
+        if (config.option(opt_key) == nullptr) { ret = 0; break; }
         ret = config.opt_int(opt_key, idx);
         break;
     case coPoint:
@@ -1139,21 +1145,26 @@ boost::any ConfigOptionsGroup::get_config_value2(const DynamicPrintConfig& confi
             ret = config.opt_string(opt_key, static_cast<unsigned int>(idx));
         break;
     case coBool:
+        if (config.option(opt_key) == nullptr) { ret = false; break; }
         ret = config.opt_bool(opt_key);
         break;
     case coBools:
+        if (config.option(opt_key) == nullptr) { ret = false; break; }
         ret = static_cast<unsigned char>(config.opt_bool(opt_key, idx));
         break;
     case coInt:
+        if (config.option(opt_key) == nullptr) { ret = 0; break; }
         ret = config.opt_int(opt_key);
         break;
     case coInts:
-        ret = config.opt_int(opt_key, idx);
-        break;
+         if (config.option(opt_key) == nullptr) { ret = 0; break; }
+         ret = config.opt_int(opt_key, idx);
+         break;
     case coEnum:
         ret = config.option(opt_key)->getInt();
         break;
     case coEnums:
+        if (config.option(opt_key) == nullptr) { ret = 0; break; }
         ret = config.opt_int(opt_key, idx);
         break;
     case coPoint:

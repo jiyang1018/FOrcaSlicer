@@ -396,7 +396,8 @@ void Preset::normalize(DynamicPrintConfig &config)
                 static_cast<ConfigOptionStrings*>(opt)->values.resize(n, std::string());
         }
     }
-
+	if (config.option("inner_wall_filament") == nullptr)
+    config.set_key_value("inner_wall_filament", new ConfigOptionInt(1));
     // FOS: ensure FOrcaSlicer-specific options have defaults when loading foreign presets
     if (config.option("outer_wall_loops") == nullptr)
         config.set_key_value("outer_wall_loops", new ConfigOptionInt(1));

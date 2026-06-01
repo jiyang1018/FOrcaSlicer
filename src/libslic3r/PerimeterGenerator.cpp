@@ -1323,7 +1323,7 @@ void PerimeterGenerator::process_classic()
                         }();
                         const float i0_half_width = (is_cp_region && loop_number > 0)
                             ? float(perimeter_spacing / 2)
-                            : float(ext_perimeter_width / 2.);
+                            : (is_cp_region ? float(ext_perimeter_spacing / 2) : float(ext_perimeter_width / 2.));
                         for (const ExPolygon& expolygon : last) {
                             // BBS: judge whether it's narrow but not too long island which is hard to place two line
                             ExPolygons expolys;
@@ -2487,7 +2487,7 @@ void PerimeterGenerator::process_arachne()
                 // Get searching thresholds. For an external perimeter we take the external perimeter spacing/2 plus the internal perimeter spacing/2 and expand by the factor
                 // rounding errors. When precise wall is enabled, the external perimeter full spacing is used.
                 coord_t threshold_external = (apply_precise_outer_wall)
-                    // Precise outer wall 闂?use 闂傚倸鍊搁崐鐑芥嚄閸洖纾婚柕濞炬櫅绾惧潡鏌ょ喊鍗炲闁告姘ㄧ槐鎺楁嚋閸忓摜鐥卨 external spacing闂?
+                    // Precise outer wall 闂?use 闂傚倸鍊搁崐鎼佸磹閻戣姤鍤勯柛顐ｆ礀绾惧鏌曟繛鐐珔缁炬儳娼￠弻銈囧枈閸楃偛顫梺鍛婎殕濮樸劎妲愰幒妤佸殝闁稿繐鎽滈惀鍗?external spacing闂?
                     ? ( this->ext_perimeter_flow.scaled_spacing()
                         + this->perimeter_flow.scaled_spacing()/2.0 )
                     // Normal 闂?half ext spacing + half int spacing

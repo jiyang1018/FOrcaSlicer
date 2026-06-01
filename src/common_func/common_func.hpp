@@ -4,7 +4,7 @@
 
 
 #define SLIC3R_APP_NAME "FOrcaSlicer"
-#define SLIC3R_APP_KEY "Snapmaker_Orca"
+#define SLIC3R_APP_KEY "FOrcaSlicer"
 #define SLIC3R_VERSION "01.10.01.50"
 #define Snapmaker_VERSION "2.3.2"
 #define MIN_FIRM_VER "1.0.0"

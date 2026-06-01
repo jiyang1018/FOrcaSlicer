@@ -2628,9 +2628,8 @@ void TabPrint::reload_config()
 {
 
 this->compatible_widget_reload(m_compatible_printers);
-    // FOS: ensure FOrcaSlicer-specific options have defaults when loading foreign presets
-    if (m_config->option("outer_wall_loops") == nullptr)
-        m_config->set_key_value("outer_wall_loops", new ConfigOptionInt(1));
+    if (m_config->option("inner_wall_filament") == nullptr)
+        m_config->set_key_value("inner_wall_filament", new ConfigOptionInt(1));
     if (m_config->option("outer_wall_layer_height_max") == nullptr)
         m_config->set_key_value("outer_wall_layer_height_max", new ConfigOptionFloat(0.f));
     if (m_config->option("outer_wall_seam_position") == nullptr)
