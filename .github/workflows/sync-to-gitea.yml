@@ -1,0 +1,40 @@
+name: Sync to Gitea
+
+on:
+  push:
+    branches: ['**']
+  release:
+    types: [published]
+  create:
+    tags:
+      - '**'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Gitea
+        run: |
+          git remote add gitea ${{ secrets.GITEA_URL }}/alex/FOrcaSlicer.git
+          git config http.extraheader "Authorization: token ${{ secrets.GITEA_TOKEN }}"
+          git push gitea --all --force
+          git push gitea --tags --force
+
+      - name: Sync Release to Gitea
+        if: github.event_name == 'release'
+        run: |
+          curl -X POST "${{ secrets.GITEA_URL }}/api/v1/repos/alex/FOrcaSlicer/releases" \
+            -H "Authorization: token ${{ secrets.GITEA_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "tag_name": "${{ github.ref_name }}",
+              "name": "${{ github.event.release.name }}",
+              "body": "${{ github.event.release.body }}",
+              "draft": false,
+              "prerelease": ${{ github.event.release.prerelease }}
+            }'
