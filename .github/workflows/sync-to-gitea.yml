@@ -2,12 +2,12 @@ name: Sync to Gitea
 
 on:
   push:
-    branches: ['**']
-  release:
-    types: [published]
-  create:
-    tags:
+    branches:
       - '**'
+  release:
+    types:
+      - published
+  create:
 
 jobs:
   sync:
@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-- name: Push to Gitea
+      - name: Push to Gitea
         run: |
           git remote add gitea ${{ secrets.GITEA_URL }}/alex/FOrcaSlicer_GitHub_Mirror.git
           git config http.extraheader "Authorization: token ${{ secrets.GITEA_TOKEN }}"
@@ -31,10 +31,10 @@ jobs:
           curl -X POST "${{ secrets.GITEA_URL }}/api/v1/repos/alex/FOrcaSlicer_GitHub_Mirror/releases" \
             -H "Authorization: token ${{ secrets.GITEA_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "tag_name": "${{ github.ref_name }}",
-              "name": "${{ github.event.release.name }}",
-              "body": "${{ github.event.release.body }}",
-              "draft": false,
-              "prerelease": ${{ github.event.release.prerelease }}
-            }'
+            -d "{
+              \"tag_name\": \"${{ github.ref_name }}\",
+              \"name\": \"${{ github.event.release.name }}\",
+              \"body\": \"${{ github.event.release.body }}\",
+              \"draft\": false,
+              \"prerelease\": ${{ github.event.release.prerelease }}
+            }"
