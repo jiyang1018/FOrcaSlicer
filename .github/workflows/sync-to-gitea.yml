@@ -18,9 +18,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Push to Gitea
+- name: Push to Gitea
         run: |
-          git remote add gitea ${{ secrets.GITEA_URL }}/alex/FOrcaSlicer.git
+          git remote add gitea ${{ secrets.GITEA_URL }}/alex/FOrcaSlicer_GitHub_Mirror.git
           git config http.extraheader "Authorization: token ${{ secrets.GITEA_TOKEN }}"
           git push gitea --all --force
           git push gitea --tags --force
@@ -28,7 +28,7 @@ jobs:
       - name: Sync Release to Gitea
         if: github.event_name == 'release'
         run: |
-          curl -X POST "${{ secrets.GITEA_URL }}/api/v1/repos/alex/FOrcaSlicer/releases" \
+          curl -X POST "${{ secrets.GITEA_URL }}/api/v1/repos/alex/FOrcaSlicer_GitHub_Mirror/releases" \
             -H "Authorization: token ${{ secrets.GITEA_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{
