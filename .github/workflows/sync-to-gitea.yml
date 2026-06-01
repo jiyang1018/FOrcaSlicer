@@ -20,7 +20,7 @@ jobs:
 
       - name: Push to Gitea
         run: |
-          git remote add gitea ${{ secrets.GITEA_URL }}/alex/FOrcaSlicer_GitHub_Mirror.git
+          git remote add gitea ${{ secrets.GITEA_URL }}/alex/FOrcaSlicer_GitHub_Mirror
           git config http.extraheader "Authorization: token ${{ secrets.GITEA_TOKEN }}"
           git push gitea --all --force
           git push gitea --tags --force
