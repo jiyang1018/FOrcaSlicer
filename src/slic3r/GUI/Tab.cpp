@@ -2514,7 +2514,8 @@ void TabPrint::build()
 
         optgroup = page->new_optgroup(L("Mixed Nozzle"), L"param_wall");
         optgroup->append_single_option_line("outer_wall_loops");
-        optgroup->append_single_option_line("outer_wall_layer_height_max");
+        // FOS: IW max layer height not yet implemented (requires accumulator sync)
+        // optgroup->append_single_option_line("outer_wall_layer_height_max");
         optgroup->append_single_option_line("outer_wall_seam_position");
 
         optgroup = page->new_optgroup(L("Ooze prevention"), L"param_ooze_prevention");
@@ -2672,7 +2673,8 @@ void TabPrint::toggle_options()
 
     // Mixed nozzle: always show our new fields regardless of toggle_print_fff_options
     toggle_option("outer_wall_loops", true);
-    toggle_option("outer_wall_layer_height_max", true);
+    // FOS: not yet implemented
+    // toggle_option("outer_wall_layer_height_max", true);
     toggle_option("outer_wall_seam_position", true);
 
     Field *field = m_active_page->get_field("support_style");

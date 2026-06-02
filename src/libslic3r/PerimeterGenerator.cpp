@@ -1360,12 +1360,15 @@ void PerimeterGenerator::process_classic()
                     // from the line width of the infill?
                     // FOS: in color patch mode all inner loops use perimeter_spacing to avoid gap fill
                     // FOS: for mixed nozzle, OW loops use ext_perimeter_spacing, IW loops use perimeter_spacing
-                    const int fos_ow_loops = this->print_config->has_mixed_nozzle_sizes.value
+                    // FOS: only split OW/IW spacing when OW and IW use different extruders
+                    const bool fos_ow_iw_split = this->print_config->has_mixed_nozzle_sizes.value &&
+                        this->config->wall_filament.value != this->config->inner_wall_filament.value;
+                    const int fos_ow_loops = fos_ow_iw_split
                         ? std::max(1, this->config->outer_wall_loops.value) : 1;
                     const bool is_ow_loop = (i < fos_ow_loops);
                     const bool is_ow_to_iw_transition = (i == fos_ow_loops);
                     coord_t distance;
-                    if (this->print_config->has_mixed_nozzle_sizes.value) {
+                    if (fos_ow_iw_split) {
                         if (is_ow_loop)
                             distance = ext_perimeter_spacing;
                         else if (is_ow_to_iw_transition)

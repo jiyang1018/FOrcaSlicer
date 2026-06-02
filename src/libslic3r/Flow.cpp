@@ -139,7 +139,8 @@ Flow Flow::with_spacing(float new_spacing) const
         assert(m_width >= m_height);
         out.m_width += new_spacing - m_spacing;
         if (out.m_width < out.m_height)
-            throw Slic3r::InvalidArgument(L("Invalid spacing supplied to Flow::with_spacing(), check your layer height and extrusion width"));
+            // FOS: clamp width to height minimum to avoid crash with mixed nozzle color patch flows
+            out.m_width = out.m_height;
     }
     out.m_spacing = new_spacing;
     return out;
