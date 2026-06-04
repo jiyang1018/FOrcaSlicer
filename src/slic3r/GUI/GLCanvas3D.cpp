@@ -2795,7 +2795,19 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
     }
 
     update_volumes_colors_by_extruder();
-	// Update selection indices based on the old/new GLVolumeCollection.
+    // FOS: re-apply OW extruder color override after scene rebuild
+    if (m_config != nullptr) {
+        const auto* wall_fil = m_config->option<ConfigOptionInt>("wall_filament");
+        const int ow_ext = wall_fil ? wall_fil->value : 1;
+        if (ow_ext > 1) {
+            for (GLVolume* vol : m_volumes.volumes) {
+                if (vol && !vol->is_modifier && !vol->is_wipe_tower && vol->volume_idx() >= 0)
+                    vol->extruder_id = ow_ext;
+            }
+            update_volumes_colors_by_extruder();
+        }
+    }
+        // Update selection indices based on the old/new GLVolumeCollection.
     if (m_selection.get_mode() == Selection::Instance)
         m_selection.instances_changed(instance_ids_selected);
     else

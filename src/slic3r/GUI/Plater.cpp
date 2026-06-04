@@ -1424,15 +1424,15 @@ Sidebar::Sidebar(Plater *parent)
         nozzle_title->SetBackgroundColor(title_bg);
         nozzle_title->SetBackgroundColor2(0xF1F1F1);
         wxBoxSizer* nozzle_title_sizer = new wxBoxSizer(wxHORIZONTAL);
-        // FOS: TODO add nozzle icon when asset is ready
-        // auto nozzle_icon = new ScalableButton(nozzle_title, wxID_ANY, "fos_nozzle",
-        //     wxEmptyString, wxDefaultSize, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER, true, 16);
+        // FOS: nozzle diameter title icon
+        auto nozzle_icon = new ScalableButton(nozzle_title, wxID_ANY, "nozzle_diameter",
+            wxEmptyString, wxDefaultSize, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER, true, 16);
         Label* nozzle_label = new Label(nozzle_title, Label::Body_14, _L("Nozzle Diameter"));
         // Mixed toggle
         Label* mixed_label = new Label(nozzle_title, Label::Body_13, _L("Mixed"));
         p->m_fos_mixed_toggle = new SwitchButton(nozzle_title, wxID_ANY);
         nozzle_title_sizer->AddSpacer(FromDIP(10));
-        // nozzle_title_sizer->Add(nozzle_icon, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
+        nozzle_title_sizer->Add(nozzle_icon, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
         nozzle_title_sizer->Add(nozzle_label, 0, wxALIGN_CENTER_VERTICAL);
         nozzle_title_sizer->AddStretchSpacer();
         nozzle_title_sizer->Add(mixed_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
