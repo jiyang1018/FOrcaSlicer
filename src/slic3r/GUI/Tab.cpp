@@ -879,7 +879,7 @@ void Tab::decorate()
         field->set_undo_tooltip(tt);
         field->set_undo_to_sys_tooltip(sys_tt);
         // Mixed nozzle: override color for outer_wall_loops if > wall_loops
-        if (opt.first == "outer_wall_loops") {
+        if (opt.first == "outer_wall_loops" && m_config->option("outer_wall_loops") && m_config->option("wall_loops")) {
             int owl = m_config->opt_int("outer_wall_loops");
             int wl  = m_config->opt_int("wall_loops");
             if (owl > wl) {

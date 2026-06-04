@@ -1042,6 +1042,7 @@ boost::any ConfigOptionsGroup::get_config_value(const DynamicPrintConfig& config
             ret = global_cfg.option("curr_bed_type")->getInt();
             break;
         }
+        if (config.option(opt_key) == nullptr) { ret = 0; break; }
         ret = config.option(opt_key)->getInt();
         break;
     // BBS

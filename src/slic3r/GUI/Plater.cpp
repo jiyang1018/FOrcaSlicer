@@ -131,6 +131,7 @@
 #include "Widgets/RoundedRectangle.hpp"
 #include "Widgets/RadioGroup.hpp"
 #include "Widgets/DialogButtons.hpp"
+#include "Widgets/SwitchButton.hpp"
 #include "Widgets/CheckBox.hpp"
 #include "Widgets/Button.hpp"
 
@@ -718,10 +719,21 @@ struct Sidebar::priv
     wxStaticText* m_text_printer_settings = nullptr;
     wxPanel* m_panel_printer_content = nullptr;
 
-    // nozzle notebook  and related controls
-    CustomNotebook*                  m_nozzle_notebook{nullptr};
+    // FOS: nozzle panel controls (replaces notebook)
+    StaticBox*                   m_nozzle_container{nullptr};
+    wxPanel*                     m_nozzle_content{nullptr};
+    wxBoxSizer*                  m_nozzle_grid_sizer{nullptr};
+    SwitchButton*                m_fos_mixed_toggle{nullptr};
+    bool                         m_fos_mixed_nozzle_mode{false};
+    std::vector<ComboBox*>       m_fos_nozzle_combos;
+    // legacy - kept for compatibility
+    CustomNotebook*              m_nozzle_notebook{nullptr};
     std::vector<ComboBox*>       m_nozzle_diameter_lists;
     std::vector<ScalableButton*> m_nozzle_edit_btns;
+    Button*                      m_fos_btn_synced{nullptr};
+    Button*                      m_fos_btn_mixed{nullptr};
+    wxPanel*                     m_fos_mixed_panel{nullptr};
+    std::vector<ComboBox*>       m_fos_mixed_diameter_lists;
 
     ObjectList          *m_object_list{ nullptr };
     ObjectSettings      *object_settings{ nullptr };
@@ -1406,23 +1418,103 @@ Sidebar::Sidebar(Plater *parent)
         p->m_panel_printer_content->Layout();
         scrolled_sizer->Add(p->m_panel_printer_content, 0, wxEXPAND, 0);
 
-        // 创建Nozzle notebook的容器
-        StaticBox* nozzle_container = new StaticBox(p->m_panel_printer_content, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                                    wxTAB_TRAVERSAL | wxBORDER_NONE);
-        nozzle_container->SetCornerRadius(8);
-        // nozzle_container->SetBorderColor(panel_bd_col);
+        // FOS: Nozzle title bar (mirrors filament title bar style)
+        StaticBox* nozzle_title = new StaticBox(p->m_panel_printer_content, wxID_ANY,
+            wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxBORDER_NONE);
+        nozzle_title->SetBackgroundColor(title_bg);
+        nozzle_title->SetBackgroundColor2(0xF1F1F1);
+        wxBoxSizer* nozzle_title_sizer = new wxBoxSizer(wxHORIZONTAL);
+        // FOS: TODO add nozzle icon when asset is ready
+        // auto nozzle_icon = new ScalableButton(nozzle_title, wxID_ANY, "fos_nozzle",
+        //     wxEmptyString, wxDefaultSize, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER, true, 16);
+        Label* nozzle_label = new Label(nozzle_title, Label::Body_14, _L("Nozzle Diameter"));
+        // Mixed toggle
+        Label* mixed_label = new Label(nozzle_title, Label::Body_13, _L("Mixed"));
+        p->m_fos_mixed_toggle = new SwitchButton(nozzle_title, wxID_ANY);
+        nozzle_title_sizer->AddSpacer(FromDIP(10));
+        // nozzle_title_sizer->Add(nozzle_icon, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
+        nozzle_title_sizer->Add(nozzle_label, 0, wxALIGN_CENTER_VERTICAL);
+        nozzle_title_sizer->AddStretchSpacer();
+        nozzle_title_sizer->Add(mixed_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
+        nozzle_title_sizer->Add(p->m_fos_mixed_toggle, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(10));
+        nozzle_title->SetSizer(nozzle_title_sizer);
+        nozzle_title->SetMinSize({-1, FromDIP(30)});
+        vsizer_printer->Add(nozzle_title, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(4));
 
-        // 创建notebook
-        p->m_nozzle_notebook = new CustomNotebook(nozzle_container, wxID_ANY);
+        // FOS: Nozzle content panel (2-column grid, mirrors filament content)
+        p->m_nozzle_container = new StaticBox(p->m_panel_printer_content, wxID_ANY,
+            wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxBORDER_NONE);
+        p->m_nozzle_content = new wxPanel(p->m_nozzle_container, wxID_ANY);
+        p->m_nozzle_content->SetBackgroundColour(wxColour(255, 255, 255));
+        p->m_nozzle_grid_sizer = new wxBoxSizer(wxHORIZONTAL);
+        p->m_nozzle_grid_sizer->Add(new wxBoxSizer(wxVERTICAL), 1, wxEXPAND);
+        p->m_nozzle_grid_sizer->Add(new wxBoxSizer(wxVERTICAL), 1, wxEXPAND);
+        wxSizer* nozzle_content_sizer = new wxBoxSizer(wxVERTICAL);
+        nozzle_content_sizer->AddSpacer(FromDIP(8));
+        nozzle_content_sizer->Add(p->m_nozzle_grid_sizer, 0, wxEXPAND);
+        nozzle_content_sizer->AddSpacer(FromDIP(8));
+        p->m_nozzle_content->SetSizer(nozzle_content_sizer);
+        wxBoxSizer* nozzle_container_sizer = new wxBoxSizer(wxVERTICAL);
+        nozzle_container_sizer->Add(p->m_nozzle_content, 1, wxEXPAND);
+        p->m_nozzle_container->SetSizer(nozzle_container_sizer);
+        vsizer_printer->Add(p->m_nozzle_container, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(4));
+        vsizer_printer->AddSpacer(FromDIP(4));
 
-        // 创建nozzle_sizer并添加notebook
-        wxBoxSizer* nozzle_sizer = new wxBoxSizer(wxVERTICAL);
-        nozzle_sizer->Add(p->m_nozzle_notebook, 1, wxEXPAND | wxALL, FromDIP(0));
-        nozzle_container->SetSizer(nozzle_sizer);
-        nozzle_container->SetMinSize(wxSize(-1, FromDIP(80)));
-
-        // 添加到主布局
-        vsizer_printer->Add(nozzle_container, 0, wxEXPAND | wxALL, FromDIP(4));
+        // FOS: Mixed toggle handler
+        p->m_fos_mixed_toggle->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent& e) {
+            if (p->m_fos_mixed_toggle->GetValue()) {
+                // Turning on mixed mode — confirm
+                MessageDialog dlg(wxGetApp().mainframe,
+                    _L("Mixed nozzle size mode allows different diameters per head.\n\n"
+                       "Please verify each nozzle diameter in software matches the physical nozzle installed. "
+                       "Incorrect settings may cause print failures.\n\nContinue?"),
+                    _L("Mixed Nozzle Sizes"), wxICON_WARNING | wxYES_NO);
+                if (dlg.ShowModal() != wxID_YES) {
+                    p->m_fos_mixed_toggle->SetValue(false);
+                    return;
+                }
+                p->m_fos_mixed_nozzle_mode = true;
+                update_nozzle_settings();
+            } else {
+                // Turning off mixed mode — check if nozzles differ
+                auto* nd = wxGetApp().preset_bundle->printers.get_edited_preset()
+                    .config.option<ConfigOptionFloats>("nozzle_diameter");
+                if (nd && nd->values.size() > 1) {
+                    double first = nd->values[0];
+                    bool has_mixed = false;
+                    for (double d : nd->values)
+                        if (std::abs(d - first) > 0.001) { has_mixed = true; break; }
+                    if (has_mixed) {
+                        std::ostringstream ss;
+                        ss << std::fixed << std::setprecision(1) << first;
+                        MessageDialog dlg(wxGetApp().mainframe,
+                            wxString::Format(_L("This will sync all nozzles to Nozzle 1 diameter (%smm). Continue?"),
+                                wxString(ss.str())),
+                            _L("Sync Nozzles"), wxICON_WARNING | wxYES_NO);
+                        if (auto* btn = dynamic_cast<Button*>(dlg.FindWindowById(wxID_YES))) btn->SetLabel(_L("Sync"));
+                        if (auto* btn = dynamic_cast<Button*>(dlg.FindWindowById(wxID_NO)))  btn->SetLabel(_L("Cancel"));
+                        if (dlg.ShowModal() != wxID_YES) {
+                            p->m_fos_mixed_toggle->SetValue(true);
+                            return;
+                        }
+                        // Sync all to nozzle 1
+                        for (size_t k = 0; k < nd->values.size(); k++)
+                            nd->values[k] = first;
+                        // Switch to matching system preset
+                        auto preset = wxGetApp().preset_bundle->get_similar_printer_preset({}, ss.str());
+                        if (preset) {
+                            preset->is_visible = true;
+                            std::string preset_name = preset->name;
+                            wxGetApp().CallAfter([preset_name]() {
+                                wxGetApp().get_tab(Preset::TYPE_PRINTER)->select_preset(preset_name);
+                            });
+                        }
+                    }
+                }
+                p->m_fos_mixed_nozzle_mode = false;
+                update_nozzle_settings();
+            }
+        });
 
         // Initialize nozzle settings
         update_nozzle_settings();
@@ -2117,7 +2209,7 @@ void Sidebar::update_presets(Preset::Type preset_type)
 
     case Preset::TYPE_PRINTER:
     {
-        // update_nozzle_settings();
+        update_nozzle_settings();
         auto machineName = wxGetApp().preset_bundle->printers.get_selected_preset_name();
 
         auto printer_config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
@@ -2727,160 +2819,282 @@ void Sidebar::update_dynamic_filament_list()
 
 void Sidebar::update_nozzle_settings(bool switch_machine)
 {
-    if (!p->m_nozzle_notebook)
+    if (!p->m_nozzle_container || !p->m_nozzle_content || !p->m_nozzle_grid_sizer)
         return;
 
-    // Get new nozzle count
+    // FOS: auto-detect mixed mode only when switching PTP (not on manual toggle)
+    if (switch_machine) {
+        auto* nd_check = dynamic_cast<const ConfigOptionFloats*>(
+            wxGetApp().preset_bundle->printers.get_edited_preset().config.option("nozzle_diameter"));
+        if (nd_check && nd_check->values.size() > 1) {
+            double first = nd_check->values[0];
+            bool has_mixed = false;
+            for (double d : nd_check->values)
+                if (std::abs(d - first) > 0.001) { has_mixed = true; break; }
+            p->m_fos_mixed_nozzle_mode = has_mixed;
+        }
+    }
+    // FOS: sync toggle state
+    if (p->m_fos_mixed_toggle)
+        p->m_fos_mixed_toggle->SetValue(p->m_fos_mixed_nozzle_mode);
+
+    // Get nozzle data
     auto* nozzle_diameter = dynamic_cast<const ConfigOptionFloats*>(
         wxGetApp().preset_bundle->printers.get_edited_preset().config.option("nozzle_diameter"));
-    size_t new_nozzle_count = nozzle_diameter ? nozzle_diameter->values.size() : 1;
+    size_t nozzle_count = nozzle_diameter ? nozzle_diameter->values.size() : 1;
 
-    // Clear existing pages and controls
-    p->m_nozzle_notebook->DeleteAllPages();
-    p->m_nozzle_diameter_lists.clear();
-    p->m_nozzle_edit_btns.clear();
+    // Get OW nozzle index
+    const auto* print_config = &wxGetApp().preset_bundle->prints.get_edited_preset().config;
+    const int ow_ext_idx = print_config->option<ConfigOptionInt>("wall_filament")
+        ? print_config->option<ConfigOptionInt>("wall_filament")->value - 1 : 0;
 
-    // Recreate pages for new nozzle count
-    // Create tabs for each nozzle
-    for (size_t i = 0; i < new_nozzle_count; i++) {
-        wxPanel* nozzle_panel = new wxPanel(p->m_nozzle_notebook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                            wxTAB_TRAVERSAL | wxBORDER_NONE);
-        // nozzle_panel->SetBackgroundColour(wxColour(255, 255, 255));
+    // Rebuild grid
+    p->m_nozzle_content->DestroyChildren();
+    p->m_fos_nozzle_combos.clear();
 
-        wxBoxSizer* tab_sizer = new wxBoxSizer(wxHORIZONTAL);
+    wxBoxSizer* grid = new wxBoxSizer(wxHORIZONTAL);
+    wxBoxSizer* col0 = new wxBoxSizer(wxVERTICAL);
+    wxBoxSizer* col1 = new wxBoxSizer(wxVERTICAL);
+    grid->Add(col0, 1, wxEXPAND);
+    grid->Add(col1, 1, wxEXPAND);
 
-        // Add diameter label and combobox
-        wxBoxSizer*   diameter_sizer = new wxBoxSizer(wxHORIZONTAL);
-        wxStaticText* diameter_label = new wxStaticText(nozzle_panel, wxID_ANY, _L("Diameter"));
-        bool          is_dark        = wxGetApp().app_config->get("dark_color_mode") == "1";
-        if (!is_dark) {
-            diameter_label->SetForegroundColour(wxColor(0, 0, 0));
-        }
-        else {
-            diameter_label->SetForegroundColour(wxColor(194, 194, 194));
-        }
-        
-        diameter_label->SetFont(Label::Body_14);
+    bool is_dark = wxGetApp().app_config->get("dark_color_mode") == "1";
 
-        ComboBox* diameter_combo = new ComboBox(nozzle_panel, wxID_ANY, wxEmptyString, wxDefaultPosition, {-1, FromDIP(32)}, 0,
-                                                nullptr, wxCB_READONLY);
-        
+    for (size_t i = 0; i < nozzle_count; i++) {
+        wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
 
-        // Visible presets for this printer_model (system + user). Imported multi-nozzle variants are
-        // usually non-system; diameters_for_same_printer_model() only counted system and kept the combo disabled.
-        auto diameters = wxGetApp().preset_bundle->printers.diameters_of_selected_printer();
-        for (auto& diameter : diameters) {
-            diameter_combo->AppendString(wxString(diameter) + "mm");
-        }
-        if (diameter_combo->GetCount() == 0) {
-            const auto *pv = wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionString>("printer_variant");
-            if (pv)
-                diameter_combo->AppendString(wxString(pv->value) + "mm");
-        }
-        if (diameters.size() < 2) {
-            diameter_combo->Enable(false);
+        // FOS: nozzle number now shown in color bar label
+
+        // Diameter combo with background color per diameter value
+        ComboBox* combo = new ComboBox(p->m_nozzle_content, wxID_ANY, wxEmptyString,
+            wxDefaultPosition, {-1, FromDIP(30)}, 0, nullptr, wxCB_READONLY);
+
+        if (p->m_fos_mixed_nozzle_mode) {
+            // Mixed mode: show all standard sizes
+            for (auto& d : std::vector<std::string>{"0.2", "0.4", "0.6", "0.8"})
+                combo->AppendString(wxString(d) + "mm");
+        } else {
+            // Synced mode: show available diameters for this printer model
+            auto diameters = wxGetApp().preset_bundle->printers.diameters_of_selected_printer();
+            for (auto& d : diameters)
+                combo->AppendString(wxString(d) + "mm");
+            if (combo->GetCount() == 0) {
+                const auto* pv = wxGetApp().preset_bundle->printers.get_edited_preset()
+                    .config.option<ConfigOptionString>("printer_variant");
+                if (pv) combo->AppendString(wxString(pv->value) + "mm");
+            }
+            if (!p->m_fos_mixed_nozzle_mode && combo->GetCount() < 2)
+                combo->Enable(false);
         }
 
-        diameter_combo->Bind(wxEVT_COMBOBOX, [this, diameter_combo, i](wxCommandEvent& event) {
-
-            //auto* pNotice = p->plater->get_notification_manager();
-            //if (pNotice)
-            //{
-            //    pNotice->close_notification_of_type(NotificationType::CustomNotification);
-            //    pNotice->push_notification(_u8L("Note: Printing PLA Silk on the hot end of 0.6mm hardened steel is not recommended. 0.4mm or smaller specifications are suggested."), 0); 
-            //    pNotice->set_slicing_progress_hidden();            
-            //}
-
-            auto diameter_str = diameter_combo->GetValue().substr(0, 3);
-double diameter_val = std::stod(diameter_str.ToStdString());
-
-// For U1: update only this nozzle's diameter in the config vector directly
-auto printer_config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
-auto printer_model_opt = printer_config.option<ConfigOptionString>("printer_model");
-bool is_snapmaker_u1 = printer_model_opt &&
-    boost::icontains(printer_model_opt->value, "Snapmaker") &&
-    boost::icontains(printer_model_opt->value, "U1");
-
-if (is_snapmaker_u1) {
-    auto* nozzle_diameters = wxGetApp().preset_bundle->printers
-        .get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
-    if (nozzle_diameters && i < nozzle_diameters->size())
-        nozzle_diameters->values[i] = diameter_val;
-    wxGetApp().get_tab(Preset::TYPE_PRINTER)->update();
-} else {
-    auto preset = wxGetApp().preset_bundle->get_similar_printer_preset({}, diameter_str.ToStdString());
-    if (preset == nullptr) {
-        BOOST_LOG_TRIVIAL(error) << "get the similar printer preset fail";
-        return;
-    }
-    preset->is_visible = true;
-    for (size_t k = 0; k < p->m_nozzle_diameter_lists.size(); ++k)
-        p->m_nozzle_diameter_lists[k]->SetValue(diameter_str + "mm");
-    wxGetApp().get_tab(Preset::TYPE_PRINTER)->select_preset(preset->name);
-}
-            // Do not event.Skip(): select_preset rebuilds nozzle UI and can destroy this combo; skipping would let sidebar treat this as bed-type combo and use-after-free.
-        });
-        
-        auto* nozzle_diameters = wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+        // Set current value
         std::string diam_str;
-        if (nozzle_diameters && i < nozzle_diameters->size()) {
+        if (nozzle_diameter && i < nozzle_diameter->values.size()) {
             std::ostringstream oss;
-            oss << nozzle_diameters->values[i];
+            oss << std::fixed << std::setprecision(1) << nozzle_diameter->values[i];
             diam_str = oss.str();
         } else {
-            diam_str = wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionString>("printer_variant")->value;
+            const auto* pv = wxGetApp().preset_bundle->printers.get_edited_preset()
+                .config.option<ConfigOptionString>("printer_variant");
+            diam_str = pv ? pv->value : "0.4";
         }
-        diameter_combo->SetValue(diam_str + "mm");
+        combo->SetValue(wxString(diam_str) + "mm");
+		// FOS: color swatch panel indicating diameter value
+        auto get_diam_color = [](const std::string& d) -> wxColour {
+            if      (d == "0.2") return wxColour(0xFF, 0xFF, 0xFF);
+            else if (d == "0.4") return wxColour(0xE6, 0xE6, 0xE6);
+            else if (d == "0.6") return wxColour(0xCC, 0xCC, 0xCC);
+            else if (d == "0.8") return wxColour(0xB3, 0xB3, 0xB3);
+            else                 return wxColour(0xFF, 0xFF, 0xFF);
+        };
+        // FOS: left color bar showing diameter
+        wxPanel* color_bar = new wxPanel(p->m_nozzle_content, wxID_ANY,
+            wxDefaultPosition, wxSize(FromDIP(100), -1));
+        color_bar->SetBackgroundColour(get_diam_color(diam_str));
+        color_bar->SetName(wxString::Format("fos_bar_%d", (int)i));
 
-        p->m_nozzle_diameter_lists.push_back(diameter_combo);
+        // FOS: nozzle label on the color bar
+        wxStaticText* bar_label = new wxStaticText(color_bar, wxID_ANY,
+            wxString::Format("%d: %smm", (int)(i+1), wxString(diam_str)),
+            wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE_HORIZONTAL);
+        bar_label->SetFont(Label::Body_14);
+        bar_label->SetName(wxString::Format("fos_bar_label_%d", (int)i));
+        wxBoxSizer* bar_sizer = new wxBoxSizer(wxHORIZONTAL);
+        bar_sizer->AddStretchSpacer();
+        bar_sizer->Add(bar_label, 0, wxALIGN_CENTER_VERTICAL);
+        bar_sizer->AddStretchSpacer();
+        color_bar->SetSizer(bar_sizer);
 
-        diameter_sizer->AddSpacer(15);
-        diameter_sizer->Add(diameter_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(5));
-        diameter_sizer->AddSpacer(10);
-        diameter_sizer->Add(diameter_combo, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(15));
+        // Bind change event
+        combo->Bind(wxEVT_COMBOBOX, [this, i, ow_ext_idx](wxCommandEvent& evt) {
+            ComboBox* cb = dynamic_cast<ComboBox*>(evt.GetEventObject());
+            if (!cb) return;
+            wxString val_str = cb->GetValue();
+            std::string dstr = val_str.substr(0, 3).ToStdString();
+            double dval = std::stod(dstr);
 
-        // 删除Flow相关控件
+            auto printer_config = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+            auto printer_model_opt = printer_config.option<ConfigOptionString>("printer_model");
+            bool is_snapmaker_u1 = printer_model_opt &&
+                boost::icontains(printer_model_opt->value, "Snapmaker") &&
+                boost::icontains(printer_model_opt->value, "U1");
 
-        tab_sizer->Add(diameter_sizer, 1, wxEXPAND | wxALIGN_CENTER_VERTICAL);
+            if (p->m_fos_mixed_nozzle_mode) {
+                // Mixed mode: update individual nozzle
+                // FOS: update swatch and bar colors
+                wxColour bg;
+                if      (dstr == "0.2") bg = wxColour(0xFF, 0xFF, 0xFF);
+                else if (dstr == "0.4") bg = wxColour(0xE6, 0xE6, 0xE6);
+                else if (dstr == "0.6") bg = wxColour(0xCC, 0xCC, 0xCC);
+                else if (dstr == "0.8") bg = wxColour(0xB3, 0xB3, 0xB3);
+                else                   bg = wxColour(0xFF, 0xFF, 0xFF);
+                if (auto* bar = p->m_nozzle_content->FindWindow(wxString::Format("fos_bar_%d", (int)i))) {
+                    bar->SetBackgroundColour(bg);
+                    if (auto* lbl = bar->FindWindow(wxString::Format("fos_bar_label_%d", (int)i)))
+                        dynamic_cast<wxStaticText*>(lbl)->SetLabel(
+                            wxString::Format("%d: %smm", (int)(i+1), wxString(dstr)));
+                    bar->Refresh();
+                }
+                wxGetApp().CallAfter([this, i, dval, dstr, ow_ext_idx]() {
+                    auto* nd2 = wxGetApp().preset_bundle->printers.get_edited_preset()
+                        .config.option<ConfigOptionFloats>("nozzle_diameter");
+                    if (nd2 && i < nd2->values.size())
+                        nd2->values[i] = dval;
+                    wxGetApp().get_tab(Preset::TYPE_PRINTER)->update();
+                    if ((int)i == ow_ext_idx) {
+                        auto& pp = wxGetApp().preset_bundle->printers.get_edited_preset();
+                        if (!pp.is_system) {
+                            std::ostringstream ss;
+                            ss << std::fixed << std::setprecision(1) << dval;
+                            std::string new_inherits = "Snapmaker U1 (" + ss.str() + " nozzle)";
+                            pp.inherits() = new_inherits;
+                            const_cast<Preset&>(wxGetApp().preset_bundle->printers
+                                .get_selected_preset()).inherits() = new_inherits;
+                        }
+                        wxGetApp().preset_bundle->update_compatible(PresetSelectCompatibleType::Always);
+                        wxGetApp().CallAfter([]() {
+                            if (wxGetApp().plater()) {
+                                wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_PRINT);
+                                wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_FILAMENT);
+                                if (auto* tab = wxGetApp().get_tab(Preset::TYPE_PRINT)) {
+                                    tab->update_tab_ui();
+                                    tab->load_current_preset();
+                                }
+                            }
+                        });
+                    }
+                });
+                // If OW nozzle changed, update inherits and refresh PRP
+                if ((int)i == ow_ext_idx) {
+                    auto& pp = wxGetApp().preset_bundle->printers.get_edited_preset();
+                    if (!pp.is_system) {
+                        std::ostringstream ss;
+                        ss << std::fixed << std::setprecision(1) << dval;
+                        std::string new_inherits = "Snapmaker U1 (" + ss.str() + " nozzle)";
+                        pp.inherits() = new_inherits;
+                        const_cast<Preset&>(wxGetApp().preset_bundle->printers
+                            .get_selected_preset()).inherits() = new_inherits;
+                    }
+                    wxGetApp().preset_bundle->update_compatible(PresetSelectCompatibleType::Always);
+                    wxGetApp().CallAfter([]() {
+                        if (wxGetApp().plater()) {
+                            wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_PRINT);
+                            wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_FILAMENT);
+                            if (auto* tab = wxGetApp().get_tab(Preset::TYPE_PRINT)) {
+                                tab->update_tab_ui();
+                                tab->load_current_preset();
+                            }
+                        }
+                    });
+                }
+            } else {
+                // Synced mode: switch to matching system preset (stock behavior)
+                if (is_snapmaker_u1) {
+                    const wxString msg_text = wxString::Format(
+                        _L("This will sync all nozzles to %smm and update compatible process presets.\n\n"
+                           "To use different nozzle sizes per head, enable Mixed mode."),
+                        wxString(dstr));
+                    MessageDialog dialog(wxGetApp().mainframe, msg_text,
+                        _L("Nozzle diameter"), wxICON_WARNING | wxYES_NO);
+                    if (auto* btn = dynamic_cast<Button*>(dialog.FindWindowById(wxID_YES))) btn->SetLabel(_L("Sync"));
+                    if (auto* btn = dynamic_cast<Button*>(dialog.FindWindowById(wxID_NO)))  btn->SetLabel(_L("Cancel"));
+                    if (dialog.ShowModal() != wxID_YES) {
+                        update_nozzle_settings();
+                        return;
+                    }
+                }
+                auto preset = wxGetApp().preset_bundle->get_similar_printer_preset({}, dstr);
+                if (preset == nullptr) {
+                    BOOST_LOG_TRIVIAL(error) << "get the similar printer preset fail";
+                    return;
+                }
+                preset->is_visible = true;
+                // FOS: update all combo displays to synced value
+                for (auto* c : p->m_fos_nozzle_combos)
+                    c->SetValue(wxString(dstr) + "mm");
+                std::string preset_name = preset->name;
+                wxGetApp().CallAfter([preset_name]() {
+                    wxGetApp().get_tab(Preset::TYPE_PRINTER)->select_preset(preset_name);
+                });
+            }
+        });
 
-        nozzle_panel->SetSizer(tab_sizer);
+        row->Add(color_bar, 0, wxEXPAND);
+        row->AddSpacer(FromDIP(4));
+        row->Add(combo, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
 
-        // Add tab
-        wxString tab_name = "";
-        switch (new_nozzle_count)
-        {
-        case 1:
-        {
-            tab_name = _L("Nozzle");
-            break;
-        }
-        case 2:
-        {
-            if (i == 0)
-                tab_name = _L("Left Nozzle");
-            else
-                tab_name = _L("Right Nozzle");
+        if (i % 2 == 0)
+            col0->Add(row, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
+        else
+            col1->Add(row, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
 
-            break;
-        }
-        default:
-        {
-            tab_name = wxString(_L("Nozzle")) + wxString::Format(" %d", i + 1);
-        }
-            
-        }
-        p->m_nozzle_notebook->AddPage(nozzle_panel, tab_name);
+        p->m_fos_nozzle_combos.push_back(combo);
     }
 
-    p->m_nozzle_notebook->Layout();
+    wxSizer* content_sizer = new wxBoxSizer(wxVERTICAL);
+    content_sizer->AddSpacer(FromDIP(8));
+    content_sizer->Add(grid, 0, wxEXPAND);
+    content_sizer->AddSpacer(FromDIP(8));
+    p->m_nozzle_content->SetSizer(content_sizer);
+    p->m_nozzle_content->Layout();
+    p->m_nozzle_container->Layout();
 
+    // FOS: refresh PRP when switching PTP
     if (switch_machine) {
+        const auto* print_config = &wxGetApp().preset_bundle->prints.get_edited_preset().config;
+        const int ow_ext_idx = print_config->option<ConfigOptionInt>("wall_filament")
+            ? print_config->option<ConfigOptionInt>("wall_filament")->value - 1 : 0;
+        auto* nd = dynamic_cast<const ConfigOptionFloats*>(
+            wxGetApp().preset_bundle->printers.get_edited_preset().config.option("nozzle_diameter"));
+        if (nd && ow_ext_idx < (int)nd->values.size()) {
+            auto& pp = wxGetApp().preset_bundle->printers.get_edited_preset();
+            if (!pp.is_system) {
+                std::ostringstream ss;
+                ss << std::fixed << std::setprecision(1) << nd->values[ow_ext_idx];
+                std::string new_inherits = "Snapmaker U1 (" + ss.str() + " nozzle)";
+                if (pp.inherits() != new_inherits) {
+                    pp.inherits() = new_inherits;
+                    const_cast<Preset&>(wxGetApp().preset_bundle->printers
+                        .get_selected_preset()).inherits() = new_inherits;
+                }
+            }
+            wxGetApp().preset_bundle->update_compatible(PresetSelectCompatibleType::Always);
+            wxGetApp().CallAfter([]() {
+                if (wxGetApp().plater()) {
+                    wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_PRINT);
+                    wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_FILAMENT);
+                    if (auto* tab = wxGetApp().get_tab(Preset::TYPE_PRINT)) {
+                        tab->update_tab_ui();
+                        tab->load_current_preset();
+                    }
+                }
+            });
+        }
         p->combo_printer->SetFocus();
     } else {
         p->combo_printer->GetParent()->SetFocus();
     }
 }
-
 ObjectList* Sidebar::obj_list()
 {
     // BBS

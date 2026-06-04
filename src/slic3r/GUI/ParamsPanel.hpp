@@ -120,6 +120,7 @@ class ParamsPanel : public wxPanel
 
         wxBitmap m_toggle_on_icon;
         wxBitmap m_toggle_off_icon;
+        wxTextCtrl* m_fos_nozzle_note{nullptr}; // FOS: nozzle/PRP info note
 
         wxPanel* m_current_tab { nullptr };
 

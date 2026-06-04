@@ -386,9 +386,22 @@ void ParamsPanel::create_layout()
     }
 
     if (m_tab_print) {
-        //m_print_sizer = new wxBoxSizer( wxHORIZONTAL );
-        //m_print_sizer->Add( m_tab_print, 1, wxEXPAND | wxALL, 5 );
-        //m_left_sizer->Add( m_print_sizer, 1, wxEXPAND, 5 );
+        // FOS: info note about PRP filtering by nozzle 1
+        auto* fos_note = new wxTextCtrl(this, wxID_ANY,
+            _L("Process presets are filtered by Nozzle 1 diameter. The layer height value you set determines your actual sliced result."),
+            wxDefaultPosition, wxDefaultSize,
+            wxTE_MULTILINE | wxTE_READONLY | wxTE_NO_VSCROLL | wxBORDER_NONE | wxTE_WORDWRAP);
+        fos_note->SetFont(Label::Body_14);
+        fos_note->SetForegroundColour(wxColour(0x90, 0x90, 0x90));
+        fos_note->SetBackgroundColour(this->GetBackgroundColour());
+        fos_note->Bind(wxEVT_SIZE, [fos_note](wxSizeEvent& e) {
+            int line_height = fos_note->GetCharHeight();
+            int num_lines = fos_note->GetNumberOfLines();
+            if (num_lines < 1) num_lines = 1;
+            fos_note->SetMinSize(wxSize(-1, line_height * num_lines + 6));
+            e.Skip();
+        });
+        m_left_sizer->Add(fos_note, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(4));
         m_left_sizer->Add( m_tab_print, 0, wxEXPAND );
     }
 
