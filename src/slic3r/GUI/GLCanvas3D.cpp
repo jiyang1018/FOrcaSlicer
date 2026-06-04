@@ -1803,7 +1803,6 @@ void GLCanvas3D::update_volumes_colors_by_extruder()
     if (m_config != nullptr)
         m_volumes.update_colors_by_extruder(m_config);
 }
-
 bool GLCanvas3D::is_collapse_toolbar_on_left() const
 {
     auto state = wxGetApp().plater()->get_sidebar_docking_state();
@@ -2795,18 +2794,6 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
     }
 
     update_volumes_colors_by_extruder();
-    // FOS: re-apply OW extruder color override after scene rebuild
-    if (m_config != nullptr) {
-        const auto* wall_fil = m_config->option<ConfigOptionInt>("wall_filament");
-        const int ow_ext = wall_fil ? wall_fil->value : 1;
-        if (ow_ext > 1) {
-            for (GLVolume* vol : m_volumes.volumes) {
-                if (vol && !vol->is_modifier && !vol->is_wipe_tower && vol->volume_idx() >= 0)
-                    vol->extruder_id = ow_ext;
-            }
-            update_volumes_colors_by_extruder();
-        }
-    }
         // Update selection indices based on the old/new GLVolumeCollection.
     if (m_selection.get_mode() == Selection::Instance)
         m_selection.instances_changed(instance_ids_selected);
@@ -6064,7 +6051,11 @@ void GLCanvas3D::render_thumbnail_internal(ThumbnailData& thumbnail_data, const 
             const Transform3d model_matrix = vol->world_matrix();
             shader->set_uniform("view_model_matrix", view_matrix * model_matrix);
             shader->set_uniform("projection_matrix", projection_matrix);
-            vol->simple_render(shader, model_objects, extruder_colors);
+            {
+                const auto* wf = wxGetApp().preset_bundle->prints.get_edited_preset().config.option<ConfigOptionInt>("wall_filament");
+                const int ow_ext = wf ? wf->value : 1;
+                vol->simple_render(shader, model_objects, extruder_colors, false, ow_ext);
+            }
             vol->is_active = is_active;
         }
 
@@ -6106,7 +6097,11 @@ void GLCanvas3D::render_thumbnail_internal(ThumbnailData& thumbnail_data, const 
             shader->set_uniform("projection_matrix", projection_matrix);
             const Matrix3d view_normal_matrix = view_matrix.matrix().block(0, 0, 3, 3) * model_matrix.matrix().block(0, 0, 3, 3).inverse().transpose();
             shader->set_uniform("view_normal_matrix", view_normal_matrix);
-            vol->simple_render(shader,  model_objects, extruder_colors, ban_light);
+            {
+                const auto* wf = wxGetApp().preset_bundle->prints.get_edited_preset().config.option<ConfigOptionInt>("wall_filament");
+                const int ow_ext = wf ? wf->value : 1;
+                vol->simple_render(shader, model_objects, extruder_colors, ban_light, ow_ext);
+            }
             vol->is_active = is_active;
         }
         shader->stop_using();

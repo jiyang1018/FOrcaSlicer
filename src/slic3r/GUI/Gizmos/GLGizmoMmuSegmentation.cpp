@@ -208,8 +208,15 @@ void GLGizmoMmuSegmentation::data_changed(bool is_serializing)
     else if (model_object != nullptr && get_extruder_id_for_volumes(*model_object) != m_volumes_extruder_idxs) {
         this->init_model_triangle_selectors();
     }
+    // FOS: update base color when wall_filament changes
+    const int ow_ext_idx = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament") - 1;
+    const int clamped = (ow_ext_idx >= 0 && ow_ext_idx < (int)m_extruders_colors.size()) ? ow_ext_idx : 0;
+    static int last_ow_ext_idx = -1;
+    if (last_ow_ext_idx != clamped) {
+        last_ow_ext_idx = clamped;
+        this->update_triangle_selectors_colors();
+    }
 }
-
 // BBS
 bool GLGizmoMmuSegmentation::on_number_key_down(int number)
 {
@@ -978,9 +985,12 @@ void GLGizmoMmuSegmentation::init_model_triangle_selectors()
         if (!mv->is_model_part())
             continue;
 
-        int extruder_idx = (mv->extruder_id() > 0) ? mv->extruder_id() - 1 : 0;
+        // FOS: use OW extruder color as base for unpainted faces
+        const int ow_ext = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament") - 1;
+        const int base_idx = (ow_ext >= 0 && ow_ext < (int)m_extruders_colors.size()) ? ow_ext : 
+            ((mv->extruder_id() > 0) ? mv->extruder_id() - 1 : 0);
         std::vector<ColorRGBA> ebt_colors;
-        ebt_colors.push_back(m_extruders_colors[size_t(extruder_idx)]);
+        ebt_colors.push_back(m_extruders_colors[size_t(base_idx)]);
         ebt_colors.insert(ebt_colors.end(), m_extruders_colors.begin(), m_extruders_colors.end());
 
         // This mesh does not account for the possible Z up SLA offset.
@@ -1000,9 +1010,11 @@ void GLGizmoMmuSegmentation::update_triangle_selectors_colors()
     for (int i = 0; i < m_triangle_selectors.size(); i++) {
         TriangleSelectorPatch* selector = dynamic_cast<TriangleSelectorPatch*>(m_triangle_selectors[i].get());
         int extruder_idx = m_volumes_extruder_idxs[i];
-        int extruder_color_idx = std::max(0, extruder_idx - 1);
+        // FOS: base color follows OW extruder for visual sync
+        const int ow_ext = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament") - 1;
+        const int base_color_idx = (ow_ext >= 0 && ow_ext < (int)m_extruders_colors.size()) ? ow_ext : std::max(0, extruder_idx - 1);
         std::vector<ColorRGBA> ebt_colors;
-        ebt_colors.push_back(m_extruders_colors[extruder_color_idx]);
+        ebt_colors.push_back(m_extruders_colors[base_color_idx]);
         ebt_colors.insert(ebt_colors.end(), m_extruders_colors.begin(), m_extruders_colors.end());
         selector->set_ebt_colors(ebt_colors);
     }
@@ -1050,7 +1062,6 @@ ColorRGBA GLGizmoMmuSegmentation::get_cursor_hover_color() const
 void GLGizmoMmuSegmentation::on_set_state()
 {
     GLGizmoPainterBase::on_set_state();
-
     if (get_state() == Off) {
         ModelObject* mo = m_c->selection_info()->model_object();
         if (mo) Slic3r::save_object_mesh(*mo);

@@ -412,7 +412,11 @@ void GLVolume::render()
     ModelObjectPtrs&       model_objects = GUI::wxGetApp().model().objects;
     std::vector<ColorRGBA> colors        = get_extruders_colors();
 
-    simple_render(shader, model_objects, colors);
+    {
+        const auto* wf = GUI::wxGetApp().preset_bundle->prints.get_edited_preset().config.option<ConfigOptionInt>("wall_filament");
+        const int ow_ext = wf ? wf->value : 1;
+        simple_render(shader, model_objects, colors, false, ow_ext);
+    }
 }
 
 // BBS: add outline related logic
@@ -431,7 +435,11 @@ void GLVolume::render_with_outline(const GUI::Size& cnv_size)
     const GUI::OpenGLManager::EFramebufferType framebuffers_type = GUI::OpenGLManager::get_framebuffers_type();
     if (framebuffers_type == GUI::OpenGLManager::EFramebufferType::Unknown) {
         // No supported, degrade to normal rendering
-        simple_render(shader, model_objects, colors);
+        {
+            const auto* wf = GUI::wxGetApp().preset_bundle->prints.get_edited_preset().config.option<ConfigOptionInt>("wall_filament");
+            const int ow_ext = wf ? wf->value : 1;
+            simple_render(shader, model_objects, colors, false, ow_ext);
+        }
         return;
     }
 
@@ -487,7 +495,11 @@ void GLVolume::render_with_outline(const GUI::Size& cnv_size)
     glActiveTexture(GL_TEXTURE0);
     glsafe(::glBindTexture(GL_TEXTURE_2D, depth_tex));
     shader->set_uniform("depth_tex", 0);
-    simple_render(shader, model_objects, colors);
+    {
+        const auto* wf = GUI::wxGetApp().preset_bundle->prints.get_edited_preset().config.option<ConfigOptionInt>("wall_filament");
+        const int ow_ext = wf ? wf->value : 1;
+        simple_render(shader, model_objects, colors, false, ow_ext);
+    }
 
     // Some clean up to do
     glsafe(::glBindTexture(GL_TEXTURE_2D, 0));
@@ -509,7 +521,8 @@ void GLVolume::render_with_outline(const GUI::Size& cnv_size)
 void GLVolume::simple_render(GLShaderProgram*        shader,
                              ModelObjectPtrs&        model_objects,
                              std::vector<ColorRGBA>& extruder_colors,
-                             bool                    ban_light)
+                             bool                    ban_light,
+                             int                     ow_extruder)
 {
     if (this->is_left_handed())
         glFrontFace(GL_CW);
@@ -560,6 +573,9 @@ void GLVolume::simple_render(GLShaderProgram*        shader,
                     int extruder_id = model_volume->extruder_id();
                     if (extruder_id <= 0)
                         extruder_id = 1;
+                    // FOS: use OW extruder color for base unpainted faces
+                    if (ow_extruder > 1 && ow_extruder - 1 < (int)extruder_colors.size())
+                        extruder_id = ow_extruder;
                     // to make black not too hard too see
                     ColorRGBA new_color = adjust_color_for_rendering(extruder_colors[extruder_id - 1]);
                     if (ban_light) {
@@ -1206,7 +1222,6 @@ void GLVolumeCollection::update_colors_by_extruder(const DynamicPrintConfig* con
 {
     using ColorItem = std::pair<std::string, ColorRGBA>;
     std::vector<ColorItem> colors;
-
     if (static_cast<PrinterTechnology>(config->opt_int("printer_technology")) == ptSLA) {
         const std::string& txt_color = config->opt_string("material_colour").empty() ?
                                            print_config_def.get("material_colour")->get_default_value<ConfigOptionString>()->value :
@@ -1239,7 +1254,15 @@ void GLVolumeCollection::update_colors_by_extruder(const DynamicPrintConfig* con
         int extruder_id = volume->extruder_id - 1;
         if (extruder_id < 0 || (int) colors.size() <= extruder_id)
             extruder_id = 0;
-
+        // FOS: use OW extruder color for model volumes
+        {
+            const auto* wall_fil = config->option<ConfigOptionInt>("wall_filament");
+            if (wall_fil && wall_fil->value > 1) {
+                int ow_idx = wall_fil->value - 1;
+                if (ow_idx < (int)colors.size())
+                    extruder_id = ow_idx;
+            }
+        }
         const ColorItem& color = colors[extruder_id];
         if (!color.first.empty()) {
             if (!is_update_alpha) {

@@ -1845,42 +1845,29 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
 
     // FOS: when OW nozzle changes, update GL volume colors; warn and erase painting if present
     if (opt_key == "wall_filament") {
-        const int new_ow_extruder = boost::any_cast<int>(value); // 1-based
-        // Read old value from the last saved preset (before this edit)
-        const int old_ow_extruder = wxGetApp().preset_bundle->prints
-            .get_selected_preset().config.opt_int("wall_filament");
-        // Check if any object has MMU painting
-        bool has_painting = false;
-        for (auto* mo : wxGetApp().model().objects)
-            for (auto* mv : mo->volumes)
-                if (mv->is_mm_painted()) { has_painting = true; break; }
-        if (has_painting) {
-            MessageDialog dlg(wxGetApp().plater(),
-                _L("Changing the Outer Wall nozzle will erase all multi-material painting on all objects.\n\nContinue?"),
-                _L("Warning"), wxICON_WARNING | wxYES | wxNO);
-            if (dlg.ShowModal() != wxID_YES) {
-                // Revert the config value back
-                DynamicPrintConfig new_conf = *m_config;
-                new_conf.set_key_value("wall_filament", new ConfigOptionInt(old_ow_extruder));
-                m_config_manipulation.apply(m_config, &new_conf);
-                return;
-            }
-            // Erase all MMU painting
-            for (auto* mo : wxGetApp().model().objects)
-                for (auto* mv : mo->volumes)
-                    if (mv->is_model_part())
-                        mv->mmu_segmentation_facets.reset();
-            wxGetApp().plater()->update();
-        }
-        // Update GL volume colors
-        wxGetApp().CallAfter([new_ow_extruder]() {
-            GLCanvas3D* canvas = wxGetApp().plater()->get_view3D_canvas3D();
-            for (GLVolume* vol : const_cast<GLVolumeCollection&>(canvas->get_volumes()).volumes) {
-                if (vol && !vol->is_modifier && !vol->is_wipe_tower && vol->volume_idx() >= 0)
-                    vol->extruder_id = new_ow_extruder;
-            }
-            canvas->update_volumes_colors_by_extruder();
-        });
+        // FOS: TODO — re-enable painting erase warning after further testing
+        // const int old_ow_extruder = wxGetApp().preset_bundle->prints
+        //     .get_selected_preset().config.opt_int("wall_filament");
+        // bool has_painting = false;
+        // for (auto* mo : wxGetApp().model().objects)
+        //     for (auto* mv : mo->volumes)
+        //         if (mv->is_mm_painted()) { has_painting = true; break; }
+        // if (has_painting) {
+        //     MessageDialog dlg(wxGetApp().plater(),
+        //         _L("Changing the Outer Wall nozzle will erase all multi-material painting on all objects.\n\nContinue?"),
+        //         _L("Warning"), wxICON_WARNING | wxYES | wxNO);
+        //     if (dlg.ShowModal() != wxID_YES) {
+        //         DynamicPrintConfig new_conf = *m_config;
+        //         new_conf.set_key_value("wall_filament", new ConfigOptionInt(old_ow_extruder));
+        //         m_config_manipulation.apply(m_config, &new_conf);
+        //         return;
+        //     }
+        //     for (auto* mo : wxGetApp().model().objects)
+        //         for (auto* mv : mo->volumes)
+        //             if (mv->is_model_part())
+        //                 mv->mmu_segmentation_facets.reset();
+        //     wxGetApp().plater()->update();
+        // }
     }
     if (m_postpone_update_ui) {
         // It means that not all values are rolled to the system/last saved values jet.
