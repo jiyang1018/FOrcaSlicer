@@ -4638,7 +4638,8 @@ bool GLCanvas3D::is_camera_rotate(const wxMouseEvent& evt, const bool buttonsSwa
     if (m_is_touchpad_navigation) {
         return evt.Moving() && evt.AltDown() && !evt.ShiftDown();
     } else {
-        return evt.Dragging() && (buttonsSwapped ? evt.RightIsDown() : evt.LeftIsDown());
+        // FOS: right drag also rotates
+        return evt.Dragging() && (buttonsSwapped ? evt.RightIsDown() : (evt.LeftIsDown() || evt.RightIsDown()));
     }
 }
 
@@ -4647,7 +4648,8 @@ bool GLCanvas3D::is_camera_pan(const wxMouseEvent& evt, const bool buttonsSwappe
     if (m_is_touchpad_navigation) {
         return evt.Moving() && evt.ShiftDown() && !evt.AltDown();
     } else {
-        return evt.Dragging() && (evt.MiddleIsDown() || (buttonsSwapped ? evt.LeftIsDown() : evt.RightIsDown()));
+        // FOS: pan is middle only (right drag now rotates)
+        return evt.Dragging() && (evt.MiddleIsDown() || (buttonsSwapped ? evt.LeftIsDown() : false));
     }
 }
 
