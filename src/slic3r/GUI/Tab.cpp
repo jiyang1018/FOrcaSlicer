@@ -6097,6 +6097,9 @@ void Tab::save_preset(std::string name /*= ""*/, bool detach, bool save_to_proje
     //BBS if create a new prset name, preset changed from preset name to new preset name
     if (!exist_preset) {
         wxGetApp().plater()->sidebar().update_presets_from_to(m_type, curr_preset_name, new_preset->name);
+        // FOS: refresh nozzle settings and PRP when printer preset is saved
+        if (m_type == Preset::TYPE_PRINTER)
+            wxGetApp().plater()->sidebar().update_nozzle_settings(true);
     }
 
     // If current profile is saved, "delete preset" button have to be enabled

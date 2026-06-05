@@ -6163,8 +6163,9 @@ void GUI_App::load_current_presets(bool active_preset_combox/*= false*/, bool ch
         }
 
     // Sidebar nozzle diameter combos depend on visible printer variants; rebuild after import / preset reload.
+    // FOS: pass switch_machine=true so mixed mode auto-detects on startup
     if (plater() != nullptr)
-        plater()->sidebar().update_nozzle_settings();
+        plater()->sidebar().update_nozzle_settings(true);
 
     //load_filament_hot_bed_nozzle_relations();
 }
