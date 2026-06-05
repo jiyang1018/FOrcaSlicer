@@ -196,6 +196,13 @@ void AppConfig::set_defaults()
 
     if (get("swap_mouse_buttons").empty())
         set_bool("swap_mouse_buttons", false);
+    // FOS: mouse button function assignment
+    if (get("mouse_left_btn_fn").empty())
+        set("mouse_left_btn_fn", "rotate");
+    if (get("mouse_middle_btn_fn").empty())
+        set("mouse_middle_btn_fn", "pan");
+    if (get("mouse_right_btn_fn").empty())
+        set("mouse_right_btn_fn", "rotate");
 
     if (get("reverse_mouse_wheel_zoom").empty())
         set_bool("reverse_mouse_wheel_zoom", false);

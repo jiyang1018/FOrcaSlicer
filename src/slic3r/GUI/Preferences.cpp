@@ -1219,7 +1219,66 @@ wxWindow* PreferencesDialog::create_general_page()
 
     auto item_mouse_zoom_settings = create_item_checkbox(_L("Zoom to mouse position"), page, _L("Zoom in towards the mouse pointer's position in the 3D view, rather than the 2D window center."), 50, "zoom_to_mouse");
     auto item_use_free_camera_settings = create_item_checkbox(_L("Use free camera"), page, _L("If enabled, use free camera. If not enabled, use constrained camera."), 50, "use_free_camera");
-    auto swap_pan_rotate = create_item_checkbox(_L("Swap pan and rotate mouse buttons"), page, _L("If enabled, swaps the left and right mouse buttons pan and rotate functions."), 50, "swap_mouse_buttons");
+    // FOS: mouse button assignment — 3 rows, each with rotate/pan toggle
+	auto item_mouse_btn_grid = new wxWindow(page, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+    item_mouse_btn_grid->SetBackgroundColour(*wxWHITE);
+    auto* outer_sizer = new wxBoxSizer(wxHORIZONTAL);
+    outer_sizer->AddSpacer(FromDIP(23));
+    auto* inner_sizer = new wxFlexGridSizer(4, 4, FromDIP(4), 0);
+    inner_sizer->AddGrowableCol(1);
+    inner_sizer->AddGrowableCol(2);
+    inner_sizer->AddGrowableCol(3);
+    auto* hdr_ref = new wxStaticText(item_mouse_btn_grid, wxID_ANY, _L("Not assigned"));
+    hdr_ref->SetFont(::Label::Body_13);
+    int col_w = hdr_ref->GetTextExtent(_L("Not assigned")).x;
+    auto make_hdr = [&](const wxString& t) {
+        auto* st = new wxStaticText(item_mouse_btn_grid, wxID_ANY, t, wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE_HORIZONTAL);
+        st->SetForegroundColour(DESIGN_GRAY900_COLOR);
+        st->SetFont(::Label::Body_13);
+        st->SetMinSize(wxSize(col_w, -1));
+        return st;
+    };
+    inner_sizer->Add(new wxStaticText(item_mouse_btn_grid, wxID_ANY, ""), 0);
+    inner_sizer->Add(make_hdr(_L("Rotate")),       0, wxALIGN_CENTER | wxEXPAND);
+    inner_sizer->Add(make_hdr(_L("Pan")),          0, wxALIGN_CENTER | wxEXPAND);
+    inner_sizer->Add(make_hdr(_L("Not assigned")), 0, wxALIGN_CENTER | wxEXPAND);
+    delete hdr_ref; // only used for measurement
+    const char* btn_keys[3]     = { "mouse_left_btn_fn", "mouse_middle_btn_fn", "mouse_right_btn_fn" };
+    const char* btn_labels[3]   = { "Left drag", "Middle drag", "Right drag" };
+    const char* btn_defaults[3] = { "rotate", "pan", "rotate" };
+    wxRadioButton* rot_rbs[3];
+    wxRadioButton* pan_rbs[3];
+    wxRadioButton* none_rbs[3];
+    for (int i = 0; i < 3; i++) {
+        std::string val = wxGetApp().app_config->get(btn_keys[i]);
+        if (val.empty()) val = btn_defaults[i];
+        auto* row_lbl = new wxStaticText(item_mouse_btn_grid, wxID_ANY, _L(btn_labels[i]));
+        row_lbl->SetForegroundColour(DESIGN_GRAY900_COLOR);
+        row_lbl->SetFont(::Label::Body_13);
+        inner_sizer->Add(row_lbl, 0, wxALIGN_CENTER_VERTICAL);
+        rot_rbs[i]  = new wxRadioButton(item_mouse_btn_grid, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
+        pan_rbs[i]  = new wxRadioButton(item_mouse_btn_grid, wxID_ANY, "");
+        none_rbs[i] = new wxRadioButton(item_mouse_btn_grid, wxID_ANY, "");
+        rot_rbs[i]->SetValue(val == "rotate");
+        pan_rbs[i]->SetValue(val == "pan");
+        none_rbs[i]->SetValue(val == "none" || val.empty());
+        inner_sizer->Add(rot_rbs[i],  0, wxALIGN_CENTER | wxEXPAND);
+        inner_sizer->Add(pan_rbs[i],  0, wxALIGN_CENTER | wxEXPAND);
+        inner_sizer->Add(none_rbs[i], 0, wxALIGN_CENTER | wxEXPAND);
+    }
+    outer_sizer->Add(inner_sizer, 0, wxALIGN_LEFT);
+    item_mouse_btn_grid->SetSizer(outer_sizer);
+    outer_sizer->Fit(item_mouse_btn_grid);
+    for (int i = 0; i < 3; i++) {
+        auto save = [rot_rbs, pan_rbs, btn_keys, i](wxCommandEvent&) {
+            std::string val = rot_rbs[i]->GetValue() ? "rotate" : pan_rbs[i]->GetValue() ? "pan" : "none";
+            wxGetApp().app_config->set(btn_keys[i], val);
+        };
+        rot_rbs[i]->Bind(wxEVT_RADIOBUTTON, save);
+        pan_rbs[i]->Bind(wxEVT_RADIOBUTTON, save);
+        none_rbs[i]->Bind(wxEVT_RADIOBUTTON, save);
+    }
+    auto swap_pan_rotate = item_mouse_btn_grid;
     auto reverse_mouse_zoom = create_item_checkbox(_L("Reverse mouse zoom"), page, _L("If enabled, reverses the direction of zoom with mouse wheel."), 50, "reverse_mouse_wheel_zoom");
     auto camera_orbit_mult = create_camera_orbit_mult_input(_L("Orbit speed multiplier"), page, _L("Multiplies the orbit speed for finer or coarser camera movement."));
 

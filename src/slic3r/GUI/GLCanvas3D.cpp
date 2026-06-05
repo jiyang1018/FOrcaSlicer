@@ -4129,6 +4129,11 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
     }
 
     bool any_gizmo_active = m_gizmos.get_current() != nullptr;
+    // FOS: mouse button assignment
+    std::string mouse_rotate_btn = wxGetApp().app_config->get("mouse_rotate_btn");
+    std::string mouse_pan_btn    = wxGetApp().app_config->get("mouse_pan_btn");
+    if (mouse_rotate_btn.empty()) mouse_rotate_btn = "left";
+    if (mouse_pan_btn.empty())    mouse_pan_btn    = "right";
     bool swap_mouse_buttons = wxGetApp().app_config->get_bool("swap_mouse_buttons");
 
     if (m_mouse.drag.move_requires_threshold && m_mouse.is_move_start_threshold_position_2D_defined() && m_mouse.is_move_threshold_met(pos)) {
@@ -4639,8 +4644,22 @@ bool GLCanvas3D::is_camera_rotate(const wxMouseEvent& evt, const bool buttonsSwa
         return evt.Moving() && evt.AltDown() && !evt.ShiftDown();
     } else {
         // FOS: right drag also rotates
-        return evt.Dragging() && (buttonsSwapped ? evt.RightIsDown() : (evt.LeftIsDown() || evt.RightIsDown()));
-    }
+        // FOS: mouse button function assignment
+        const std::string left_fn   = wxGetApp().app_config->get("mouse_left_btn_fn");
+        const std::string middle_fn = wxGetApp().app_config->get("mouse_middle_btn_fn");
+        const std::string right_fn  = wxGetApp().app_config->get("mouse_right_btn_fn");
+        return evt.Dragging() && (
+            (left_fn   == "rotate")   && evt.LeftIsDown()   ||
+            (middle_fn == "rotate")                      && evt.MiddleIsDown() ||
+            (right_fn  == "rotate")  && evt.RightIsDown());
+    }// FOS: mouse button function assignment
+        const std::string left_fn   = wxGetApp().app_config->get("mouse_left_btn_fn");
+        const std::string middle_fn = wxGetApp().app_config->get("mouse_middle_btn_fn");
+        const std::string right_fn  = wxGetApp().app_config->get("mouse_right_btn_fn");
+        return evt.Dragging() && (
+            (left_fn   == "pan")                       && evt.LeftIsDown()   ||
+            (middle_fn == "pan")  && evt.MiddleIsDown() ||
+            (right_fn  == "pan")                       && evt.RightIsDown());
 }
 
 bool GLCanvas3D::is_camera_pan(const wxMouseEvent& evt, const bool buttonsSwapped) const
@@ -4648,8 +4667,14 @@ bool GLCanvas3D::is_camera_pan(const wxMouseEvent& evt, const bool buttonsSwappe
     if (m_is_touchpad_navigation) {
         return evt.Moving() && evt.ShiftDown() && !evt.AltDown();
     } else {
-        // FOS: pan is middle only (right drag now rotates)
-        return evt.Dragging() && (evt.MiddleIsDown() || (buttonsSwapped ? evt.LeftIsDown() : false));
+        // FOS: mouse button function assignment
+        const std::string left_fn   = wxGetApp().app_config->get("mouse_left_btn_fn");
+        const std::string middle_fn = wxGetApp().app_config->get("mouse_middle_btn_fn");
+        const std::string right_fn  = wxGetApp().app_config->get("mouse_right_btn_fn");
+        return evt.Dragging() && (
+            (left_fn   == "pan")                       && evt.LeftIsDown()   ||
+            (middle_fn == "pan" || middle_fn.empty())  && evt.MiddleIsDown() ||
+            (right_fn  == "pan")                       && evt.RightIsDown());
     }
 }
 
