@@ -769,7 +769,7 @@ private:
     std::vector<EViewType> view_type_items;
     std::vector<std::string> view_type_items_str;
     int       m_view_type_sel = 0;
-    EViewType m_view_type{ EViewType::FeatureType };
+    EViewType m_view_type{ EViewType::ColorPrint };
     std::vector<EMoveType> options_items;
 
     bool m_legend_enabled{ true };

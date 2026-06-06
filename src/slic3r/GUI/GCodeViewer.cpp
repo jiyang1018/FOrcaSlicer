@@ -891,8 +891,9 @@ void GCodeViewer::update_by_mode(ConfigOptionMode mode)
     options_items.clear();
 
     // BBS initialzed view_type items
-    view_type_items.push_back(EViewType::FeatureType);
+	// FOS moved ColorPrint to 1st line
     view_type_items.push_back(EViewType::ColorPrint);
+    view_type_items.push_back(EViewType::FeatureType);
     view_type_items.push_back(EViewType::Feedrate);
     view_type_items.push_back(EViewType::Height);
     view_type_items.push_back(EViewType::Width);
@@ -3032,6 +3033,13 @@ void GCodeViewer::load_toolpaths(const GCodeProcessorResult& gcode_result, const
 
     // roles -> remove duplicates
     sort_remove_duplicates(m_roles);
+    // FOS: move outer wall before inner wall in legend
+    {
+        auto it_outer = std::find(m_roles.begin(), m_roles.end(), erExternalPerimeter);
+        auto it_inner = std::find(m_roles.begin(), m_roles.end(), erPerimeter);
+        if (it_outer != m_roles.end() && it_inner != m_roles.end() && it_inner < it_outer)
+            std::iter_swap(it_inner, it_outer);
+    }
     m_roles.shrink_to_fit();
 
     // extruder ids -> remove duplicates
@@ -4876,8 +4884,8 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
     }
 
     case EViewType::FanSpeed:       { imgui.title(_u8L("Fan Speed (%)")); break; }
-    case EViewType::Temperature:    { imgui.title(_u8L("Temperature (°C)")); break; }
-    case EViewType::VolumetricRate: { imgui.title(_u8L("Volumetric flow rate (mm³/s)")); break; }
+    case EViewType::Temperature:    { imgui.title(_u8L("Temperature (C)")); break; }
+    case EViewType::VolumetricRate: { imgui.title(_u8L("Volumetric flow rate (mm^3/s)")); break; }
     case EViewType::LayerTime:      { imgui.title(_u8L("Layer Time")); break; }
     case EViewType::LayerTimeLog:   { imgui.title(_u8L("Layer Time (log)")); break; }
 
@@ -4900,6 +4908,78 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
     }
     case EViewType::ColorPrint:
     {
+        // FOS: nozzle verification section - shown above filament table when mixed nozzles detected
+        if (wxGetApp().plater() && wxGetApp().plater()->is_nozzle_verify_required()) {
+            const auto* nozzle_diameters = wxGetApp().preset_bundle->printers
+                .get_edited_preset().config.opt<ConfigOptionFloats>("nozzle_diameter");
+            if (nozzle_diameters && nozzle_diameters->values.size() > 1) {
+                float col_w = ImGui::CalcTextSize("Nozzle 22").x + 12.0f * m_scale;
+                float nozzle_start_x = window_padding * 2;
+				float required_w = nozzle_start_x + nozzle_diameters->values.size() * col_w + window_padding;
+                imgui.title(_u8L("Nozzle Verification"));
+                ImGui::Dummy(ImVec2(required_w, 0.0f)); // force window width, zero height
+                // header row: Nozzle 1 - Nozzle N
+                for (size_t i = 0; i < nozzle_diameters->values.size(); i++) {
+                    if (i == 0) ImGui::Dummy({ window_padding, 0.0f });
+                    ImGui::SameLine(nozzle_start_x + (i * col_w));
+                    char buf[16];
+                    ::sprintf(buf, "Nozzle %d", (int)i + 1);
+                    imgui.text(buf);
+                }
+                // diameter row with colored background
+                ImGui::Dummy({ window_padding, window_padding });
+                ImDrawList* draw_list_nozzle = ImGui::GetWindowDrawList();
+                float cell_h = ImGui::GetTextLineHeight() + 4.0f * m_scale;
+                for (size_t i = 0; i < nozzle_diameters->values.size(); i++) {
+                    ImGui::SameLine(nozzle_start_x + (i * col_w));
+                    char buf[16];
+                    ::sprintf(buf, "%.2fmm", nozzle_diameters->values[i]);
+                    float diam = static_cast<float>(nozzle_diameters->values[i]);
+                    float grey = (std::abs(diam - 0.2f) < 0.01f) ? 1.00f :
+                                 (std::abs(diam - 0.4f) < 0.01f) ? 0.90f :
+                                 (std::abs(diam - 0.6f) < 0.01f) ? 0.80f :
+                                 (std::abs(diam - 0.8f) < 0.01f) ? 0.70f : 0.85f;
+                    ImVec2 cell_pos = ImGui::GetCursorScreenPos();
+                    float rect_w = col_w - 4.0f * m_scale;
+                    float text_w = ImGui::CalcTextSize(buf).x;
+                    float text_x = cell_pos.x - 2.0f * m_scale + (rect_w - text_w) * 0.5f;
+                    draw_list_nozzle->AddRectFilled(
+                        ImVec2(cell_pos.x - 2.0f * m_scale, cell_pos.y - 2.0f * m_scale),
+                        ImVec2(cell_pos.x + col_w - 4.0f * m_scale, cell_pos.y + cell_h),
+                        IM_COL32((int)(grey*255), (int)(grey*255), (int)(grey*255), 255), 0.0f);
+                    ImGui::SetCursorScreenPos(ImVec2(text_x, cell_pos.y));
+                    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
+                    imgui.text(buf);
+                    ImGui::PopStyleColor();
+                }
+                // verify button
+                ImGui::Dummy(ImVec2(0.0f, ImGui::GetFontSize() * 0.1));
+                ImGui::Dummy({ window_padding, window_padding });
+                ImGui::SameLine();
+                bool verified = wxGetApp().plater()->is_nozzle_verified();
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, (ImGui::GetFontSize() * 0.5f + 3.0f * m_scale));
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.0f * m_scale, 3.0f * m_scale));
+                if (verified) {
+                    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.45f, 0.45f, 0.45f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.45f, 0.45f, 0.45f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.45f, 0.45f, 0.45f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(0.75f, 0.75f, 0.75f, 1.0f));
+                    imgui.button(_u8L("Nozzle sizes verified [OK]"));
+                    ImGui::PopStyleColor(4);
+                } else {
+                    ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.00f, 0.59f, 0.53f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.59f, 0.53f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.00f, 0.50f, 0.45f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+                    if (imgui.button(_u8L("Verify nozzle sizes"))) {
+                        wxGetApp().plater()->verify_nozzle_sizes();
+                    }
+                    ImGui::PopStyleColor(4);
+                }
+                ImGui::PopStyleVar(2);
+                ImGui::Dummy({ window_padding, window_padding });
+            }
+        }
         std::vector<std::string> total_filaments;
         char buffer[64];
         ::sprintf(buffer, imperial_units ? "%.2f in\n%.2f oz" : "%.2f m\n%.2f g", ps.total_used_filament / /*1000*/koef, ps.total_weight / unit_conver);
@@ -4931,7 +5011,6 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
             color_print_offsets[title_columns[i].first] = offsets_[i];
         }
         append_headers(title_offsets);
-
         break;
     }
     default: { break; }
@@ -5182,7 +5261,6 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
     }
     default: { break; }
     }
-
     // partial estimated printing time section
     if (m_view_type == EViewType::ColorPrint) {
         using Times = std::pair<float, float>;

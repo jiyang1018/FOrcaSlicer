@@ -37,7 +37,7 @@ RequestExecutionLevel admin
 ; No /SOLID to avoid "Internal compiler error #12345: error mmapping datablock"
 SetCompressor lzma
 
-VIProductVersion "2.3.2.5"
+VIProductVersion "2.3.2.7"
 VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
 VIAddVersionKey "Comments" "Snapmaker Orca is an open source slicer for FDM printers"
 VIAddVersionKey "CompanyName" "${PRODUCT_PUBLISHER}"

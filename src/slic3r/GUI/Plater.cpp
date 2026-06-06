@@ -8255,20 +8255,21 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
                     info.filament_color = filament_color;
                     extruders.push_back(info);
                 }
-                if (m_nozzle_verify_dialog == nullptr) {
-                    m_nozzle_verify_dialog = new NozzleVerifyDialog(
-                        q,
-                        extruders,
-                        [this]() {
-                            m_nozzle_verified = true;
-                            wxGetApp().mainframe->set_nozzle_verified(true);
-                        }
-                    );
-                } else {
-                    m_nozzle_verify_dialog->update_extruders(extruders);
-                    m_nozzle_verify_dialog->reset_verification();
-                }
-                m_nozzle_verify_dialog->Show(true);
+                // FOS: NozzleVerifyDialog replaced by in-legend verify button — kept for future reference
+                // if (m_nozzle_verify_dialog == nullptr) {
+                //     m_nozzle_verify_dialog = new NozzleVerifyDialog(
+                //         q,
+                //         extruders,
+                //         [this]() {
+                //             m_nozzle_verified = true;
+                //             wxGetApp().mainframe->set_nozzle_verified(true);
+                //         }
+                //     );
+                // } else {
+                //     m_nozzle_verify_dialog->update_extruders(extruders);
+                //     m_nozzle_verify_dialog->reset_verification();
+                // }
+                // m_nozzle_verify_dialog->Show(true);
 
                 // Gate print button
 				wxGetApp().mainframe->set_nozzle_verify_required(true);
@@ -14080,6 +14081,9 @@ void Plater::reslice()
         return;
     }
 
+    // FOS: reset nozzle verification on new slice
+    p->m_nozzle_verified = false;
+    if (wxGetApp().mainframe) wxGetApp().mainframe->set_nozzle_verified(false);
     // In case SLA gizmo is in editing mode, refuse to continue
     // and notify user that he should leave it first.
     if (get_view3D_canvas3D()->get_gizmos_manager().is_in_editing_mode(true))
@@ -16486,6 +16490,18 @@ wxMenu* Plater::multi_selection_menu()  { return p->menus.multi_selection_menu()
 wxMenu* Plater::filament_action_menu(int active_filament_menu_id) { return p->menus.filament_action_menu(active_filament_menu_id); }
 int     Plater::GetPlateIndexByRightMenuInLeftUI() { return p->m_is_RightClickInLeftUI; }
 void    Plater::SetPlateIndexByRightMenuInLeftUI(int index) { p->m_is_RightClickInLeftUI = index; }
+// FOS: nozzle verify accessors for GCodeViewer legend
+bool Plater::is_nozzle_verify_required() const { return wxGetApp().mainframe && wxGetApp().mainframe->is_nozzle_verify_required(); }
+bool Plater::is_nozzle_verified() const { return p->m_nozzle_verified; }
+void Plater::show_nozzle_verify_dialog() { if (p->m_nozzle_verify_dialog) p->m_nozzle_verify_dialog->Show(true); }
+void Plater::verify_nozzle_sizes() {
+    BOOST_LOG_TRIVIAL(warning) << "FOS verify_nozzle_sizes called";
+    p->m_nozzle_verified = true;
+    if (wxGetApp().mainframe) {
+        // FOS: verify without clearing nozzle_verify_required so button stays visible in [OK] state
+        wxGetApp().mainframe->set_nozzle_verified_only(true);
+    }
+}
 SuppressBackgroundProcessingUpdate::SuppressBackgroundProcessingUpdate() :
     m_was_scheduled(wxGetApp().plater()->is_background_process_update_scheduled())
 {

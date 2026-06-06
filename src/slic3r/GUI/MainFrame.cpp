@@ -4222,6 +4222,18 @@ void MainFrame::set_nozzle_verified(bool verified)
     m_print_enable = get_enable_print_status();
     update_slice_print_status(eEventSliceUpdate, true, true);
 }
+void MainFrame::reset_nozzle_verified()
+{
+    m_nozzle_verified = false;
+    m_print_enable = get_enable_print_status();
+    update_slice_print_status(eEventSliceUpdate, true, true);
+}
+void MainFrame::set_nozzle_verified_only(bool verified)
+{
+    m_nozzle_verified = verified;
+    m_print_enable = get_enable_print_status();
+    update_slice_print_status(eEventSliceUpdate, true, true);
+}
 
 } // GUI
 } // Slic3r

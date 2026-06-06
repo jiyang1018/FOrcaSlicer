@@ -406,6 +406,10 @@ public:
     bool                  m_nozzle_verified{ false };
     void set_nozzle_verify_required(bool required);
     void set_nozzle_verified(bool verified);
+    void reset_nozzle_verified();
+    void set_nozzle_verified_only(bool verified);
+    bool is_nozzle_verify_required() const { return m_nozzle_verify_required; }
+    bool is_nozzle_verified() const { return m_nozzle_verified; }
     bool get_enable_slice_status();
     bool get_enable_print_status();
     //BBS

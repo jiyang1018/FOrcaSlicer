@@ -164,7 +164,6 @@ public:
     // Orca
     void show_SEMM_buttons(bool bshow);
     void update_dynamic_filament_list();
-
     void update_nozzle_settings(bool switch_machine = false);
 
     ObjectList*             obj_list();
@@ -276,7 +275,12 @@ public:
     void reload_gcode_from_disk();
     void refresh_print();
 
-    void update_nozzle_settings();
+    void update_nozzle_settings(bool switch_machine = false);
+    // FOS: nozzle verify accessors for GCodeViewer legend
+    bool is_nozzle_verify_required() const;
+    bool is_nozzle_verified() const;
+    void show_nozzle_verify_dialog();
+    void verify_nozzle_sizes();
 
     // SoftFever
     void calib_pa(const Calib_Params& params);
