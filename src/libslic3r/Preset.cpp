@@ -5,6 +5,7 @@
 #include "Preset.hpp"
 #include "PresetBundle.hpp"
 #include "AppConfig.hpp"
+#include "LocalesUtils.hpp"
 
 #ifdef _MSC_VER
     #define WIN32_LEAN_AND_MEAN
@@ -2715,6 +2716,27 @@ size_t PresetCollection::update_compatible_internal(const PresetWithVendorProfil
         const PresetWithVendorProfile this_preset_with_vendor_profile = this->get_preset_with_vendor_profile(preset_edited);
         bool    was_compatible  = preset_edited.is_compatible;
         preset_edited.is_compatible = is_compatible_with_printer(this_preset_with_vendor_profile, active_printer, &config);
+        // FOS: for filament presets, also mark compatible if it matches any nozzle diameter in a mixed nozzle setup
+        // FOS: for mixed nozzle setups, mark filament presets compatible if their compatible_printers matches any nozzle diameter
+        if (!preset_edited.is_compatible && m_type == Preset::TYPE_FILAMENT) {
+            const auto* nd_opt = active_printer.preset.config.option<ConfigOptionFloats>("nozzle_diameter");
+            if (nd_opt && nd_opt->values.size() > 1) {
+                // check compatible_printers from original preset config
+                const auto* cp = this_preset_with_vendor_profile.preset.config.option<ConfigOptionStrings>("compatible_printers");
+                if (cp && !cp->values.empty()) {
+                    for (const double nd : nd_opt->values) {
+                        std::string nozzle_str = float_to_string_decimal_point(nd, 1);
+                        for (const auto& pname : cp->values) {
+                            if (pname.find(nozzle_str) != std::string::npos) {
+                                preset_edited.is_compatible = true;
+                                goto fos_compat_done;
+                            }
+                        }
+                    }
+                    fos_compat_done:;
+                }
+            }
+        }
         some_compatible |= preset_edited.is_compatible;
 	    if (active_print != nullptr)
 	        preset_edited.is_compatible &= is_compatible_with_print(this_preset_with_vendor_profile, *active_print, active_printer);

@@ -7,6 +7,7 @@
 #include "Model.hpp"
 #include "format.hpp"
 #include "common_func/common_func.hpp"
+#include "LocalesUtils.hpp"
 
 #include <algorithm>
 #include <set>
@@ -3456,10 +3457,47 @@ void PresetBundle::update_compatible(PresetSelectCompatibleType select_other_pri
                         filament_name = this->filaments.first_compatible(
                             PreferedFilamentProfileMatch(preset,
                                 (idx < prefered_filament_profiles.size()) ? prefered_filament_profiles[idx] : prefered_filament_profile)).name;
+                    }
+            }
+        }
+        // FOS: always ensure filament presets match slot nozzle diameter for mixed nozzle setups
+        {
+            const auto* nd_opt = printer_preset.config.option<ConfigOptionFloats>("nozzle_diameter");
+            if (nd_opt && nd_opt->values.size() > 1) {
+                const std::string prefered_filament_profile = prefered_filament_profiles.empty() ? std::string() : prefered_filament_profiles.front();
+                for (size_t idx = 0; idx < this->filament_presets.size(); ++idx) {
+                    std::string &filament_name = this->filament_presets[idx];
+                    Preset *preset = this->filaments.find_preset(filament_name, false);
+                    if (preset == nullptr) continue;
+                    size_t nozzle_idx = std::min(idx, nd_opt->values.size() - 1);
+                    std::string slot_nozzle = float_to_string_decimal_point(nd_opt->values[nozzle_idx], 1);
+                    const auto* cp = preset->config.option<ConfigOptionStrings>("compatible_printers");
+                    if (!cp || cp->values.empty()) continue;
+                    bool nozzle_match = false;
+                    for (const auto& pname : cp->values)
+                        if (pname.find(slot_nozzle) != std::string::npos) { nozzle_match = true; break; }
+                    if (!nozzle_match) {
+                        const std::string cur_alias = preset->alias;
+                        const std::string cur_type = preset->config.opt_string("filament_type", 0u);
+                        filament_name = this->filaments.first_compatible(
+                            [&cur_alias, &cur_type, &slot_nozzle](const Preset &p) -> int {
+                                if (p.is_default || p.is_external) return 0;
+                                const auto* cp2 = p.config.option<ConfigOptionStrings>("compatible_printers");
+                                if (!cp2 || cp2->values.empty()) return 0;
+                                bool nd_match = false;
+                                for (const auto& pname : cp2->values)
+                                    if (pname.find(slot_nozzle) != std::string::npos) { nd_match = true; break; }
+                                if (!nd_match) return 0;
+                                int score = 1;
+                                if (!cur_alias.empty() && cur_alias == p.alias) score += 1000;
+                                if (!cur_type.empty() && cur_type == p.config.opt_string("filament_type", 0u)) score += 10;
+                                return score;
+                            }).name;
+                    }
                 }
             }
         }
-		break;
+                break;
     }
     case ptSLA:
     {

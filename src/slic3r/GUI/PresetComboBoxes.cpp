@@ -1003,9 +1003,32 @@ void PlaterPresetComboBox::show_edit_menu()
 
 wxString PlaterPresetComboBox::get_preset_name(const Preset& preset)
 {
+// FOS: in mixed nozzle mode, show full name with nozzle diameter suffix for clarity
+    if (m_type == Preset::TYPE_FILAMENT) {
+        const auto* nd_opt = m_preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+        if (nd_opt && nd_opt->values.size() > 1) {
+            const auto* cp = preset.config.option<ConfigOptionStrings>("compatible_printers");
+            if (cp && !cp->values.empty()) {
+                std::string printer_model = m_preset_bundle->printers.get_edited_preset().config.opt_string("printer_model");
+                for (const double nd : nd_opt->values) {
+                    std::string nozzle_str = float_to_string_decimal_point(nd, 1);
+                    for (const auto& pname : cp->values) {
+                        if (pname.find(nozzle_str) != std::string::npos &&
+                            (printer_model.empty() || pname.find(printer_model) != std::string::npos)) {
+                            // append nozzle diameter if not already in preset name
+                            std::string full_name = preset.name;
+                            if (full_name.find(nozzle_str) == std::string::npos)
+                                full_name += " @U1 " + nozzle_str + " nozzle";
+                            return from_u8(full_name);
+                        }
+                    }
+                }
+            }
+            return from_u8(preset.name);
+        }
+    }
     return from_u8(preset.label(false));
 }
-
 // Only the compatible presets are shown.
 // If an incompatible preset is selected, it is shown as well.
 void PlaterPresetComboBox::update()
@@ -1077,7 +1100,29 @@ void PlaterPresetComboBox::update()
 
         if (!preset.is_visible || (!preset.is_compatible && !is_selected))
             continue;
-
+        // FOS: per-slot nozzle diameter filter for mixed nozzle setups
+        if (m_type == Preset::TYPE_FILAMENT && !is_selected) {
+            const auto* nd_opt = m_preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+            if (nd_opt && nd_opt->values.size() > 1) {
+                size_t nozzle_idx = std::min((size_t)m_filament_idx, nd_opt->values.size() - 1);
+                float slot_nozzle = (float)nd_opt->values[nozzle_idx];
+                const auto* cp = preset.config.option<ConfigOptionStrings>("compatible_printers");
+                if (cp && !cp->values.empty()) {
+                    std::string nozzle_str = float_to_string_decimal_point(slot_nozzle, 1);
+                    std::string printer_model = m_preset_bundle->printers.get_edited_preset().config.opt_string("printer_model");
+                    bool nozzle_match = false;
+                    for (const auto& printer_name : cp->values) {
+                        if (printer_name.find(nozzle_str) != std::string::npos &&
+                            (printer_model.empty() || printer_name.find(printer_model) != std::string::npos)) {
+                            nozzle_match = true;
+                            break;
+                        }
+                    }
+                    if (!nozzle_match)
+                        continue;
+                }
+            }
+        }
         bool single_bar = false;
         if (m_type == Preset::TYPE_FILAMENT)
         {
