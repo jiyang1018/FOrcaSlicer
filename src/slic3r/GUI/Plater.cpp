@@ -954,7 +954,10 @@ struct DynamicFilamentList : DynamicList
         for (int i = 0; i < presets.size(); ++i) {
             wxString str;
             std::string type;
-            wxGetApp().preset_bundle->filaments.find_preset(presets[i])->get_filament_type(type);
+            // FOS: guard against nullptr during preset selection state transition
+auto* filament_preset = wxGetApp().preset_bundle->filaments.find_preset(presets[i]);
+if (filament_preset)
+    filament_preset->get_filament_type(type);
             str << type;
             items.push_back({str, icons[i]});
         }
@@ -1001,7 +1004,9 @@ struct DynamicFilamentList1Based : DynamicFilamentList
         for (int i = 0; i < presets.size(); ++i) {
             wxString str;
             std::string type;
-            wxGetApp().preset_bundle->filaments.find_preset(presets[i])->get_filament_type(type);
+            // FOS: guard against nullptr during preset selection state transition
+auto* fp = wxGetApp().preset_bundle->filaments.find_preset(presets[i]);
+if (fp) fp->get_filament_type(type);
             str << type;
             items.push_back({str, icons[i]});
         }
@@ -8032,9 +8037,9 @@ void Plater::priv::on_select_preset(wxCommandEvent &evt)
 
     if (preset_type == Preset::TYPE_FILAMENT) {
         wxGetApp().preset_bundle->set_filament_preset(idx, preset_name);
-        wxGetApp().plater()->update_project_dirty_from_presets();
-        wxGetApp().preset_bundle->export_selections(*wxGetApp().app_config);
-        sidebar->update_dynamic_filament_list();
+wxGetApp().plater()->update_project_dirty_from_presets();
+wxGetApp().preset_bundle->export_selections(*wxGetApp().app_config);
+sidebar->update_dynamic_filament_list();
         bool flag_is_change = is_support_filament(idx);
         if (flag != flag_is_change) {
             sidebar->auto_calc_flushing_volumes(idx);
@@ -8043,8 +8048,10 @@ void Plater::priv::on_select_preset(wxCommandEvent &evt)
     bool select_preset = !combo->selection_is_changed_according_to_physical_printers();
     // TODO: ?
     if (preset_type == Preset::TYPE_FILAMENT && sidebar->is_multifilament()) {
-        // Only update the plater UI for the 2nd and other filaments.
-        combo->update();
+        // FOS: defer combo update to avoid corrupting dropdown state during selection event
+        wxTheApp->CallAfter([combo]() {
+            combo->update();
+        });
     }
     else if (select_preset) {
         if (preset_type == Preset::TYPE_PRINTER) {

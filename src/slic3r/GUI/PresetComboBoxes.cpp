@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <boost/algorithm/string.hpp>
+#include <regex>
 
 #include <wx/sizer.h>
 #include <wx/stattext.h>
@@ -891,9 +892,16 @@ bool PlaterPresetComboBox::switch_to_tab()
     if (m_type == Preset::TYPE_FILAMENT)
     {
         const std::string& selected_preset = GetString(GetSelection()).ToUTF8().data();
-        if (!boost::algorithm::starts_with(selected_preset, Preset::suffix_modified()))
-        {
-            const std::string& preset_name = wxGetApp().preset_bundle->filaments.get_preset_name_by_alias(selected_preset);
+if (!boost::algorithm::starts_with(selected_preset, Preset::suffix_modified()))
+{
+    // FOS: display name may have fabricated @U1 X.X nozzle suffix for mixed nozzle mode
+    // strip it if no preset with that full name exists in the bundle
+    std::string resolved_preset = selected_preset;
+    if (wxGetApp().preset_bundle->filaments.find_preset(selected_preset) == nullptr) {
+        static const std::regex fos_nozzle_suffix(R"( @U1 \d+\.\d+ nozzle$)");
+        resolved_preset = std::regex_replace(selected_preset, fos_nozzle_suffix, "");
+    }
+    const std::string& preset_name = wxGetApp().preset_bundle->filaments.get_preset_name_by_alias(resolved_preset);
             if (wxGetApp().get_tab(m_type)->select_preset(preset_name))
                 wxGetApp().get_tab(m_type)->get_combo_box()->set_filament_idx(m_filament_idx);
             else {
@@ -1003,29 +1011,13 @@ void PlaterPresetComboBox::show_edit_menu()
 
 wxString PlaterPresetComboBox::get_preset_name(const Preset& preset)
 {
-// FOS: in mixed nozzle mode, show full name with nozzle diameter suffix for clarity
+    // FOS: in mixed nozzle mode, show full preset name to avoid alias collisions between nozzle variants
+    // Only append nozzle suffix for display if the preset name already contains it (non-0.4mm presets)
+    // 0.4mm base presets (e.g. "Generic PLA") are shown as-is — no fabricated suffix
     if (m_type == Preset::TYPE_FILAMENT) {
         const auto* nd_opt = m_preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
-        if (nd_opt && nd_opt->values.size() > 1) {
-            const auto* cp = preset.config.option<ConfigOptionStrings>("compatible_printers");
-            if (cp && !cp->values.empty()) {
-                std::string printer_model = m_preset_bundle->printers.get_edited_preset().config.opt_string("printer_model");
-                for (const double nd : nd_opt->values) {
-                    std::string nozzle_str = float_to_string_decimal_point(nd, 1);
-                    for (const auto& pname : cp->values) {
-                        if (pname.find(nozzle_str) != std::string::npos &&
-                            (printer_model.empty() || pname.find(printer_model) != std::string::npos)) {
-                            // append nozzle diameter if not already in preset name
-                            std::string full_name = preset.name;
-                            if (full_name.find(nozzle_str) == std::string::npos)
-                                full_name += " @U1 " + nozzle_str + " nozzle";
-                            return from_u8(full_name);
-                        }
-                    }
-                }
-            }
+        if (nd_opt && nd_opt->values.size() > 1)
             return from_u8(preset.name);
-        }
     }
     return from_u8(preset.label(false));
 }
