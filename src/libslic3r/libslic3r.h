@@ -2,7 +2,10 @@
 #define _libslic3r_h_
 
 #include "common_func/common_func.hpp"
-#define SLIC3R_APP_FULL_NAME "Snapmaker Orca"
+// FOS: display name of the fork. Drives the Help > About menu item, the About dialog
+// title, error captions and MessageDialog titles. Paths/datadir are driven by
+// SLIC3R_APP_KEY ("FOrcaSlicer"), so this is display-only.
+#define SLIC3R_APP_FULL_NAME "FOrcaSlicer"
 #define GCODEVIEWER_APP_NAME "Snapmaker_Orca G-code Viewer"
 #define GCODEVIEWER_APP_KEY  "Snapmaker_OrcaGcodeViewer"
 #define GCODEVIEWER_BUILD_ID std::string("Snapmaker_Orca G-code Viewer-") + std::string(SLIC3R_VERSION) + std::string("-RC")

@@ -242,9 +242,12 @@ AboutDialog::AboutDialog()
     // version
     {
         vesizer->Add(0, FromDIP(165), 1, wxEXPAND, FromDIP(5));
-        auto version_string = _L("Snapmaker Orca ") + " " + std::string(Snapmaker_VERSION);
-        wxStaticText* version = new wxStaticText(this, wxID_ANY, version_string.c_str(), wxDefaultPosition, wxDefaultSize);
-        wxStaticText* bs_version = new wxStaticText(this, wxID_ANY, wxString::Format("Based on Orca Slicer"), wxDefaultPosition, wxDefaultSize);
+        // FOS: identify the fork by name and fork version. Snapmaker_VERSION (2.3.2) is the
+        // upstream base and stays out of the title; it is still what gets written into 3mf
+        // metadata and project settings.
+        auto version_string = wxString::Format("FOrcaSlicer %s", FOS_VERSION);
+        wxStaticText* version = new wxStaticText(this, wxID_ANY, version_string, wxDefaultPosition, wxDefaultSize);
+        wxStaticText* bs_version = new wxStaticText(this, wxID_ANY, wxString::Format("Based on Snapmaker Orca %s / Orca Slicer", Snapmaker_VERSION), wxDefaultPosition, wxDefaultSize);
         bs_version->SetFont(Label::Body_12);
         wxFont version_font = GetFont();
         #ifdef __WXMSW__
@@ -333,7 +336,12 @@ AboutDialog::AboutDialog()
 
     copyright_hor_sizer->Add(copyright_ver_sizer, 0, wxLEFT, FromDIP(20));
 
-    wxStaticText *html_text = new wxStaticText(this, wxID_ANY, "Copyright © 2024-2026 Snapmaker. All rights reserved.", wxDefaultPosition, wxDefaultSize);
+    // FOS: the copyright sign was a raw U+00A9 in a narrow literal. The source is UTF-8
+    // (/utf-8), so the bytes are C2 A9, but wxString built from a const char* decodes with
+    // the current locale, not UTF-8 - under a GBK codepage C2 A9 renders as the CJK glyph
+    // "lou". Keep the literal pure ASCII and decode it as UTF-8 explicitly.
+    const wxString copyright_text = wxString::FromUTF8("Copyright \xC2\xA9 2024-2026 Snapmaker. All rights reserved.");
+    wxStaticText *html_text = new wxStaticText(this, wxID_ANY, copyright_text, wxDefaultPosition, wxDefaultSize);
     html_text->SetForegroundColour(wxColour(107, 107, 107));
 
     copyright_ver_sizer->Add(html_text, 0, wxALL , 0);
