@@ -2629,13 +2629,10 @@ void TabPrint::build()
                         grp->activate();
                         grp->update_visibility(comAdvanced);
                     };
-                    auto slot_lh = std::make_shared<ConfigOptionsGroup>(tab_panel, _L("Layer height"), "param_layer_height", &m_fos_slot_configs[n], true);
-                    slot_lh->append_single_option_line("layer_height", "quality_settings_layer_height");
-                    slot_lh->append_single_option_line("initial_layer_print_height", "quality_settings_layer_height");
-                    setup_slot_group(slot_lh);
-                    slot_vsizer->Add(slot_lh->sizer, 0, wxEXPAND);
-                    m_fos_slot_optgroups[n].push_back(slot_lh);
-                    slot_vsizer->AddSpacer(FromDIP(10));
+                    // FOS 8.5: layer height / initial layer height are NOT per-nozzle in 8.x
+                    // (all nozzles synced; the engine reads the global layer_height, and the
+                    // fos_nozzle_layer_heights arrays feed nothing). They are placed as a single
+                    // global group below the notebook instead of once per tab.
                     auto slot_lw = std::make_shared<ConfigOptionsGroup>(tab_panel, _L("Line width"), "param_line_width", &m_fos_slot_configs[n], true);
                     slot_lw->append_single_option_line("line_width", "quality_settings_line_width");
                     slot_lw->append_single_option_line("initial_layer_line_width", "quality_settings_line_width");
@@ -2654,6 +2651,12 @@ void TabPrint::build()
                 return wrap;
             };
             nb_group->append_line(nb_line);
+            // FOS 8.5: global Layer height, placed directly below the nozzle notebook. Bound to
+            // m_config (page default here, before the merged-config switch below), so it edits
+            // through standard Tab machinery and invalidates natively - no per-nozzle sync.
+            auto lh_group = page->new_optgroup(L("Layer height"), "param_layer_height");
+            lh_group->append_single_option_line("layer_height", "quality_settings_layer_height");
+            lh_group->append_single_option_line("initial_layer_print_height", "quality_settings_layer_height");
         } // end FOS per-nozzle block
         // FOS: Other line widths use proxy config sourced from per-feature nozzle slot
         page->set_config(&m_fos_merged_config);
