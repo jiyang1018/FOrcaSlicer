@@ -462,6 +462,7 @@ public:
         void            clear_pages() override;
         bool            supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
         void            fos_reload_slot_config(int slot_idx);
+        void            fos_resolve_nozzle_arrays(); // FOS 8.5: re-resolve arrays from current slot configs (no PRP reload)
         void            fos_rebuild_merged_config();
         DynamicPrintConfig* fos_config_for_filament(const std::string& filament_key);
         void            activate_selected_page(std::function<void()> throw_if_canceled) override;

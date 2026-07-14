@@ -2595,6 +2595,9 @@ void TabPrint::build()
                                     m_config->set_key_value(opt_key, val->clone());
                                 update_dirty();
                                 on_value_change(opt_key, value);
+                                // FOS 8.5: re-resolve arrays so a per-nozzle value typed on the
+                                // N1 tab (e.g. tower_line_width) reaches the engine too.
+                                fos_resolve_nozzle_arrays();
                             };
                             grp->m_get_initial_config = [this]() {
                                 return m_presets->get_selected_preset().config;
@@ -2619,8 +2622,12 @@ void TabPrint::build()
                                 }
                                 m_fos_feature_dirty[std::to_string(n) + ":" + opt_key] = dirty;
                                 fos_decorate_slot(n);
-                                fos_trigger_reslice();
-                                fos_trigger_reslice();
+                                // FOS 8.5: re-resolve arrays from the edited slot config so a
+                                // hand-typed N2-N4 width/speed/tower value reaches the engine.
+                                // (Without this the arrays only refresh on PRP load / tab switch,
+                                // so typed values silently never took - the s49 blocker.)
+                                // This also bumps the serial and schedules the reslice.
+                                fos_resolve_nozzle_arrays();
                             };
                             grp->m_get_initial_config = [this, n]() { return m_fos_slot_baselines[n]; };
                             grp->m_get_sys_config = [this, n]() { return m_fos_slot_configs[n]; };
@@ -3484,11 +3491,18 @@ void TabPrint::fos_reload_slot_config(int slot_idx)
     } else {
         preset_name = nt->selected_preset_name();
         if (preset_name.empty()) return;
-        const Preset* slot_preset = m_preset_bundle->prints.find_preset(preset_name, false);
-        if (!slot_preset) return;
-        m_fos_slot_configs[slot_idx] = slot_preset->config;
-        m_fos_slot_baselines[slot_idx] = slot_preset->config;
-        m_fos_slot_preset_names[slot_idx] = preset_name;
+        // FOS 8.5: only reload from the PRP when the selection actually CHANGED. Tab activation
+        // (Quality<->Speed) re-runs this for every slot with the SAME PRP; overwriting here wipes
+        // hand-edits held in m_fos_slot_configs[slot_idx] back to preset defaults (AP-66 family).
+        // A genuine PRP switch (name differs) still reloads and intentionally resets to the new
+        // preset. First load: stored name is empty != preset_name, so it loads.
+        if (preset_name != m_fos_slot_preset_names[slot_idx]) {
+            const Preset* slot_preset = m_preset_bundle->prints.find_preset(preset_name, false);
+            if (!slot_preset) return;
+            m_fos_slot_configs[slot_idx] = slot_preset->config;
+            m_fos_slot_baselines[slot_idx] = slot_preset->config;
+            m_fos_slot_preset_names[slot_idx] = preset_name;
+        }
     }
 
     // FOS: sync mode - all slots mirror slot 0
@@ -3504,7 +3518,18 @@ void TabPrint::fos_reload_slot_config(int slot_idx)
         if (!grp || !grp->custom_ctrl) continue;
         grp->reload_config();
     }
-// FOS: sync fos_nozzle_layer_heights and fos_nozzle_initial_layer_heights for MAPS
+
+    // FOS 8.5: resolve the per-nozzle arrays from the (now current) slot configs. Extracted so
+    // notebook FIELD EDITS in N2-N4 can re-resolve WITHOUT reloading from the PRP (which would
+    // overwrite the edit). fos_reload_slot_config runs on PRP load / tab activation; the slot
+    // on_change lambdas call fos_resolve_nozzle_arrays() directly.
+    fos_resolve_nozzle_arrays();
+}
+
+void TabPrint::fos_resolve_nozzle_arrays()
+{
+    // FOS: sync fos_nozzle_layer_heights and fos_nozzle_initial_layer_heights (engine-dead in
+    // 8.5 - layer height is global - but kept written for provenance/inspection).
     // Use unified 0-based slot index, dynamic size
     if (m_preset_bundle) {
         int n = (int)m_fos_slot_configs.size();
