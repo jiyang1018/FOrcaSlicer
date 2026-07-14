@@ -1968,8 +1968,36 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
     if(opt_key=="layer_height"){
         auto min_layer_height_from_nozzle=wxGetApp().preset_bundle->full_config().option<ConfigOptionFloats>("min_layer_height")->values;
         auto max_layer_height_from_nozzle=wxGetApp().preset_bundle->full_config().option<ConfigOptionFloats>("max_layer_height")->values;
-        auto layer_height_floor = *std::min_element(min_layer_height_from_nozzle.begin(), min_layer_height_from_nozzle.end());
-        auto layer_height_ceil  = *std::max_element(max_layer_height_from_nozzle.begin(), max_layer_height_from_nozzle.end());
+        // FOS 8.5: with one global layer height across unequal nozzles, the binding limit is the
+        // SMALLEST used nozzle (a 0.2 tip cannot lay a 0.6 layer). Guard by the INTERSECTION of the
+        // used nozzles' ranges: ceil = min(max_layer_height), floor = max(min_layer_height) over the
+        // nozzles the print actually uses (the filament-assignment tools). This makes the ceiling
+        // the smallest used nozzle's max. Stock used min-of-mins / max-of-maxes (most permissive),
+        // which let the small nozzle be asked for an unprintable layer.
+        double layer_height_floor = *std::min_element(min_layer_height_from_nozzle.begin(), min_layer_height_from_nozzle.end());
+        double layer_height_ceil  = *std::max_element(max_layer_height_from_nozzle.begin(), max_layer_height_from_nozzle.end());
+        {
+            // Fold each nozzle the print uses (from the filament-assignment keys) into the range.
+            const int nn = (int)max_layer_height_from_nozzle.size();
+            bool any = false; double flo = 0.0, cei = 1e9;
+            auto add = [&](const char* key, bool enabled = true) {
+                if (!enabled) return;
+                auto* o = m_config->option<ConfigOptionInt>(key);
+                if (!o || o->value <= 0) return; // 0 = unset -> NOT a used nozzle, skip (do not map to tool 1)
+                int i = o->value - 1;
+                if (i < 0 || i >= nn) return;
+                flo = std::max(flo, min_layer_height_from_nozzle[i]);
+                cei = std::min(cei, max_layer_height_from_nozzle[i]);
+                any = true;
+            };
+            add("wall_filament"); add("inner_wall_filament");
+            add("sparse_infill_filament"); add("solid_infill_filament");
+            const bool sup = m_config->option<ConfigOptionBool>("enable_support") && m_config->opt_bool("enable_support");
+            add("support_filament", sup); add("support_interface_filament", sup);
+            const bool tower = m_config->option<ConfigOptionBool>("enable_prime_tower") && m_config->opt_bool("enable_prime_tower");
+            add("wipe_tower_filament", tower);
+            if (any) { layer_height_floor = flo; layer_height_ceil = cei; }
+        }
         const auto lh = m_config->opt_float("layer_height");
         bool exceed_minimum_flag = lh < layer_height_floor;
         bool exceed_maximum_flag = lh > layer_height_ceil;

@@ -199,7 +199,32 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
     }
 
     //BBS: limite the max layer_herght
-    auto max_lh = gpreset.config.opt_float("max_layer_height",0);
+    // FOS 8.5: stock read max_layer_height[0] (nozzle 1) hardcoded, so on a mixed machine a 0.2
+    // nozzle 1 capped EVERY layer height to ~0.2 regardless of which nozzles the print uses. Cap
+    // instead by the SMALLEST USED nozzle's max_layer_height (min of max over the assignment tools).
+    double max_lh = gpreset.config.opt_float("max_layer_height", 0);
+    {
+        const auto* mx = gpreset.config.option<ConfigOptionFloats>("max_layer_height");
+        if (mx) {
+            const int nn = (int)mx->values.size();
+            bool any = false; double cei = 1e9;
+            auto add = [&](const char* key, bool enabled = true) {
+                if (!enabled) return;
+                auto* o = config->option<ConfigOptionInt>(key);
+                if (!o || o->value <= 0) return; // 0 = unset -> not a used nozzle, skip
+                int i = o->value - 1;
+                if (i < 0 || i >= nn) return;
+                cei = std::min(cei, mx->values[i]); any = true;
+            };
+            add("wall_filament"); add("inner_wall_filament");
+            add("sparse_infill_filament"); add("solid_infill_filament");
+            const bool sup = config->option<ConfigOptionBool>("enable_support") && config->opt_bool("enable_support");
+            add("support_filament", sup); add("support_interface_filament", sup);
+            const bool tower = config->option<ConfigOptionBool>("enable_prime_tower") && config->opt_bool("enable_prime_tower");
+            add("wipe_tower_filament", tower);
+            if (any) max_lh = cei;
+        }
+    }
     if (max_lh > 0.2 && layer_height > max_lh+ EPSILON)
     {
         const wxString msg_text = wxString::Format(L"Too large layer height.\nReset to %0.3f.", max_lh);
