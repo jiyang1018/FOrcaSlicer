@@ -7209,5 +7209,23 @@ bool is_support_filament(int extruder_id)
     return support_option->get_at(0);
 };
 
+// FOS: see GUI_App.hpp. Uniformity test matches PresetBundle::full_config() and
+// DynamicPrintConfig::normalize_fdm_1() so the GUI and the slicer never disagree.
+bool has_mixed_nozzle_sizes()
+{
+    auto *bundle = Slic3r::GUI::wxGetApp().preset_bundle;
+    if (bundle == nullptr) return false;
+
+    const auto *nd = bundle->printers.get_edited_preset().config.option<Slic3r::ConfigOptionFloats>("nozzle_diameter");
+    if (nd == nullptr || nd->values.size() < 2) return false;
+
+    const double first = nd->values[0];
+    for (size_t i = 1; i < nd->values.size(); ++i)
+        if (std::abs(nd->values[i] - first) > 1e-4)
+            return true;
+
+    return false;
+}
+
 } // GUI
 } //Slic3r

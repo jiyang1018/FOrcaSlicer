@@ -653,8 +653,13 @@ void TreeSupport::detect_overhangs(bool check_support_necessity/* = false*/)
     const PrintObjectConfig& config = m_object->config();
     SupportType stype = support_type;
     const coordf_t radius_sample_resolution = g_config_tree_support_collision_resolution;
-    const double nozzle_diameter = m_object->print()->config().nozzle_diameter.get_at(0);
-    const coordf_t extrusion_width = config.get_abs_value("line_width", nozzle_diameter);
+    // FOS: was get_at(0) - hardcoded to nozzle 1. extrusion_width here sets the tree's collision
+    // resolution and branch spacing, so under mixed nozzles a tree printed by a 0.6 tool was being
+    // built to 0.2-nozzle dimensions. Take the nozzle that prints the support, and re-derive the
+    // preset's nozzle-1 absolute width for it.
+    const PrintConfig &fos_print_config = m_object->print()->config();
+    const double nozzle_diameter = fos_print_config.nozzle_diameter.get_at(config.support_filament - 1);
+    const coordf_t extrusion_width = fos_abs_width_for_nozzle(config.line_width, fos_print_config, nozzle_diameter);
     const coordf_t extrusion_width_scaled = scale_(extrusion_width);
     const coordf_t max_bridge_length = scale_(config.max_bridge_length.value);
     const bool bridge_no_support = max_bridge_length > 0;
@@ -1949,8 +1954,10 @@ void TreeSupport::draw_circles()
     const coordf_t layer_height = config.layer_height.value;
     const size_t   top_interface_layers = config.support_interface_top_layers.value;
     const size_t   bottom_interface_layers = config.support_interface_bottom_layers.value < 0 ? top_interface_layers : config.support_interface_bottom_layers.value;
-    const double nozzle_diameter = m_object->print()->config().nozzle_diameter.get_at(0);
-    const coordf_t line_width = config.get_abs_value("support_line_width", nozzle_diameter);
+    // FOS: was get_at(0) - hardcoded to nozzle 1. See generate_toolpaths(); same rule.
+    const PrintConfig &fos_print_config = m_object->print()->config();
+    const double nozzle_diameter = fos_print_config.nozzle_diameter.get_at(config.support_filament - 1);
+    const coordf_t line_width = fos_abs_width_for_nozzle(config.support_line_width, fos_print_config, nozzle_diameter);
     const coordf_t line_width_scaled           = scale_(line_width);
     const bool with_lightning_infill = m_support_params.base_fill_pattern == ipLightning;
     coordf_t support_extrusion_width = m_support_params.support_extrusion_width;

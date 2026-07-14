@@ -1095,6 +1095,31 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
     if (extruders.empty())
         return { L("No extrusions under current settings.") };
 
+    // FOS: with mixed nozzle sizes, support has no valid "Default" filament. Support paths are
+    // generated once at slicing time with a single flow and the tool is not chosen until G-code
+    // export, so a path built for one nozzle could be handed to a nozzle of a different diameter.
+    // The dropdown offers no "Default" row; a 0 here means the user has not chosen yet. Refuse to
+    // slice rather than silently falling back to nozzle 1.
+    if (m_config.has_mixed_nozzle_sizes.value) {
+        for (PrintObject *object : m_objects) {
+            const PrintObjectConfig &cfg = object->config();
+            const bool has_support = cfg.enable_support.value || cfg.raft_layers.value > 0;
+            if (!has_support)
+                continue;
+            if (cfg.support_filament.value == 0)
+                return {L("Mixed nozzle sizes are in use, so support cannot be printed by whichever "
+                          "filament happens to be loaded. Select a filament for Support/raft base.")};
+            if (cfg.support_interface_filament.value == 0)
+                return {L("Mixed nozzle sizes are in use, so support cannot be printed by whichever "
+                          "filament happens to be loaded. Select a filament for Support/raft interface.")};
+        }
+        // Same reasoning for the prime/wipe tower perimeter and brim: WipeTower2 holds a single
+        // m_perimeter_width, so the wall cannot be left to whichever tool happens to be mounted.
+        if (this->has_wipe_tower() && m_config.wipe_tower_filament.value == 0)
+            return {L("Mixed nozzle sizes are in use, so the prime tower wall cannot be printed by "
+                      "whichever filament happens to be loaded. Select a filament for Wipe tower.")};
+    }
+
     if (nozzles < 2 && extruders.size() > 1 && m_config.print_sequence != PrintSequence::ByObject) {
         auto ret = check_multi_filament_valid(*this);
         if (!ret.string.empty())

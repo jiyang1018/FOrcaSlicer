@@ -960,6 +960,12 @@ DECLARE_APP(GUI_App)
 wxDECLARE_EVENT(EVT_CONNECT_LAN_MODE_PRINT, wxCommandEvent);
 
 bool is_support_filament(int extruder_id);
+
+// FOS: true when the selected printer's nozzle_diameter vector is non-uniform.
+// GUI-side mirror of the has_mixed_nozzle_sizes print-config flag, which is only materialised
+// in the resolved full_config (PresetBundle::full_config / normalize_fdm_1) and is therefore
+// not readable from a single preset.
+bool has_mixed_nozzle_sizes();
 } // namespace GUI
 } // Slic3r
 

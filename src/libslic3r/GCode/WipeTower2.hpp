@@ -265,6 +265,32 @@ private:
 		return layer_height * ( m_perimeter_width - layer_height * (1.f-float(M_PI)/4.f)) / filament_area();
 	}
 
+	// FOS: per-tool extrusion geometry, for mixed nozzle sizes.
+	//
+	// m_perimeter_width above is the tower's STRUCTURE width: footprint, box margins, brim spacing,
+	// and the finish_layer perimeter + sparse fill. Those are all printed by one tool - the
+	// wipe_tower_filament, which set_extruder() marks as the only non-soluble filament so that
+	// first_toolchange_to_nonsoluble() lands finish_layer on it - so a single scalar is correct
+	// there, and set_extruder() binds it to that filament's nozzle.
+	//
+	// The ramming and wiping lines are different: they are laid by whichever tool is being changed
+	// out or in. Upstream extruded those at the structure width too, which on a 0.2/0.4/0.6/0.8
+	// machine had the 0.2 nozzle laying 1.0 mm beads and 2.0 mm ramming lines. These give each tool
+	// the width and flow its own nozzle can actually produce. m_filpar[tool].nozzle_diameter has
+	// been populated all along for exactly this ("to be used in future with (non-single)
+	// multiextruder MM") and was never read.
+	float tool_line_width(size_t tool) const
+	{
+		return (tool < m_filpar.size() && m_filpar[tool].nozzle_diameter > 0.f) ?
+			m_filpar[tool].nozzle_diameter * Width_To_Nozzle_Ratio :
+			m_perimeter_width;
+	}
+	float tool_extrusion_flow(size_t tool, float layer_height) const
+	{
+		const float w = tool_line_width(tool);
+		return layer_height * ( w - layer_height * (1.f-float(M_PI)/4.f)) / filament_area();
+	}
+
 
 	// Calculates depth for all layers and propagates them downwards
 	void plan_tower();

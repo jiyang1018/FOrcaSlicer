@@ -158,9 +158,14 @@ struct SupportParameters {
             assert(slicing_params.raft_layers() == 0);
         }
 
-	    const auto     nozzle_diameter = print_config.nozzle_diameter.get_at(object_config.support_interface_filament - 1);
-        const coordf_t extrusion_width = object_config.line_width.get_abs_value(nozzle_diameter);
-        support_extrusion_width        = object_config.support_line_width.get_abs_value(nozzle_diameter);
+        // FOS: support_extrusion_width sizes the support BASE (TreeSupport uses it for branch
+        // geometry and base toolpaths), so it must come from support_filament - not from
+        // support_interface_filament, which is what upstream read. And the width itself is an
+        // absolute value authored against nozzle 1, so under mixed nozzles it has to be re-derived
+        // for the nozzle that actually prints it. Both are no-ops on a uniform machine.
+	    const auto     nozzle_diameter = print_config.nozzle_diameter.get_at(object_config.support_filament - 1);
+        const coordf_t extrusion_width = fos_abs_width_for_nozzle(object_config.line_width, print_config, nozzle_diameter);
+        support_extrusion_width        = fos_abs_width_for_nozzle(object_config.support_line_width, print_config, nozzle_diameter);
         support_extrusion_width        = support_extrusion_width > 0 ? support_extrusion_width : extrusion_width;
 
         independent_layer_height = print_config.independent_support_layer_height;

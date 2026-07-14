@@ -9,6 +9,9 @@
 namespace Slic3r {
 
 class PrintObject;
+// FOS: only used by reference in fos_width_for_nozzle() below. Forward-declared rather than
+// including PrintConfig.hpp, which includes this header.
+class PrintConfig;
 
 // Extra spacing of bridge threads, in mm.
 #define BRIDGE_EXTRA_SPACING 0.05
@@ -143,6 +146,24 @@ extern Flow support_material_flow(const PrintObject* object, float layer_height 
 extern Flow support_transition_flow(const PrintObject *object); //BBS
 extern Flow support_material_1st_layer_flow(const PrintObject *object, float layer_height = 0.f);
 extern Flow support_material_interface_flow(const PrintObject *object, float layer_height = 0.f);
+
+// FOS: absolute line widths in a process preset are authored against nozzle 1 (the reference
+// nozzle the preset was resolved with). Under mixed nozzle sizes, a feature printed by a different
+// tool must have that width re-derived for its own nozzle, or it gets nozzle-1 geometry out of a
+// wider or narrower tip. Percent widths need no fixup - get_abs_value() already ratios over the
+// nozzle it is given. Returns config_width unchanged when nozzles are uniform.
+//
+// This is the same rule PrintRegion::flow() applies to wall/infill roles; it lives here so the
+// support flows below, SupportParameters, and TreeSupport all derive widths identically.
+extern ConfigOptionFloatOrPercent fos_width_for_nozzle(const ConfigOptionFloatOrPercent &config_width,
+                                                      const PrintConfig               &print_config,
+                                                      float                            nozzle_diameter);
+
+// Convenience overload: resolve a preset width to an absolute mm value for the nozzle that will
+// actually print it, in one step.
+extern double fos_abs_width_for_nozzle(const ConfigOptionFloatOrPercent &config_width,
+                                       const PrintConfig               &print_config,
+                                       double                           nozzle_diameter);
 
 }
 

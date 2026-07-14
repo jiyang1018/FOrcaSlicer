@@ -1016,8 +1016,46 @@ if (fp) fp->get_filament_type(type);
 };
 
 
+// FOS: filament list for the options where "Default" (value 0) means "do not force a tool change -
+// whichever filament is already mounted prints this". Currently Support/raft base, Support/raft
+// interface, and the prime/wipe tower perimeter.
+//
+// That choice is only sound when every nozzle has the same diameter. Support paths are generated
+// once, at slicing time, with a single flow, and the tool is not chosen until G-code export
+// (ToolOrdering set_support_extruder_override reassigns the tool on already-built extrusions -
+// nothing re-renders them). The tower has the same problem from the other end: WipeTower2 keeps a
+// single m_perimeter_width. Under mixed nozzle sizes a path built for a 0.2 tip can therefore be
+// handed to a 0.8 tip.
+//
+// So when nozzles are mixed, row 0 stops offering "Default" and instead reads "Empty": value 0
+// changes meaning from "use whichever tool is mounted" to "the user has not chosen yet".
+// Print::validate() refuses to slice while it is still 0, so the user is forced to pick.
+//
+// Note we keep the 0-based index mapping of the base class rather than dropping the row and going
+// 1-based. Dropping it leaves the combobox with no selection at all for a stored 0, which renders
+// as a bare "0" and cannot be styled - a labelled row is both clearer and less fragile.
+struct DynamicFilamentListGated : DynamicFilamentList
+{
+    void apply_on(Choice *c) override
+    {
+        if (items.empty())
+            update(true);
+        auto cb = dynamic_cast<ComboBox *>(c->window);
+        auto n  = cb->GetSelection();
+        cb->Clear();
+        cb->Append(has_mixed_nozzle_sizes() ? _L("Empty") : _L("Default"));
+        for (auto i : items) {
+            cb->Append(i.first, *i.second);
+        }
+        if (n < cb->GetCount())
+            cb->SetSelection(n);
+    }
+    // get_value() / index_of() inherited: index == value, 0 == Default/Empty.
+};
+
 static DynamicFilamentList dynamic_filament_list;
 static DynamicFilamentList1Based dynamic_filament_list_1_based;
+static DynamicFilamentListGated dynamic_filament_list_gated;
 
 static wxString nozzle_type_key_to_label(const std::string& key)
 {
@@ -1035,13 +1073,14 @@ static wxString nozzle_type_key_to_label(const std::string& key)
 Sidebar::Sidebar(Plater *parent)
     : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(42 * wxGetApp().em_unit(), -1)), p(new priv(parent))
 {
-    Choice::register_dynamic_list("support_filament", &dynamic_filament_list);
-    Choice::register_dynamic_list("support_interface_filament", &dynamic_filament_list);
+    // FOS: these lose the "Default" row under mixed nozzle sizes and read "Empty" until chosen.
+    Choice::register_dynamic_list("support_filament", &dynamic_filament_list_gated);
+    Choice::register_dynamic_list("support_interface_filament", &dynamic_filament_list_gated);
+    Choice::register_dynamic_list("wipe_tower_filament", &dynamic_filament_list_gated);
 	Choice::register_dynamic_list("wall_filament", &dynamic_filament_list_1_based);
     Choice::register_dynamic_list("inner_wall_filament", &dynamic_filament_list_1_based);
     Choice::register_dynamic_list("sparse_infill_filament", &dynamic_filament_list_1_based);
     Choice::register_dynamic_list("solid_infill_filament", &dynamic_filament_list_1_based);
-    Choice::register_dynamic_list("wipe_tower_filament", &dynamic_filament_list);
 
     p->scrolled = new wxPanel(this);
     //    p->scrolled->SetScrollbars(0, 100, 1, 2); // ys_DELETE_after_testing. pixelsPerUnitY = 100
@@ -2567,6 +2606,7 @@ void Sidebar::on_filaments_delete(size_t filament_id)
     p->m_panel_filament_title->Refresh();
     update_ui_from_settings();
     dynamic_filament_list.update();
+    dynamic_filament_list_gated.update();
 }
 
 void Sidebar::edit_filament() {
@@ -2820,6 +2860,9 @@ void Sidebar::update_dynamic_filament_list()
 {
     dynamic_filament_list.update();
     dynamic_filament_list_1_based.update();
+    // FOS: the support list also has to rebuild when nozzle diameters change, not just when the
+    // filament count does - that is what adds or removes its "Default" row.
+    dynamic_filament_list_gated.update();
 }
 
 void Sidebar::update_nozzle_settings(bool switch_machine)
@@ -3099,6 +3142,10 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
     } else {
         p->combo_printer->GetParent()->SetFocus();
     }
+
+    // FOS: nozzle diameters may have just changed, which is what decides whether the support
+    // filament dropdowns carry a "Default" row. Rebuild them.
+    dynamic_filament_list_gated.update();
 }
 ObjectList* Sidebar::obj_list()
 {

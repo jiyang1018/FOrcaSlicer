@@ -449,6 +449,12 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
     }
 
     // BBS
+    // FOS: under mixed nozzle sizes 0 no longer means "Default" (use whichever tool is mounted) -
+    // that choice is unsound because support geometry is baked at slicing time with a single flow.
+    // 0 now means UNSET. We deliberately do NOT coerce it to a filament: silently landing on
+    // nozzle 1 is how the user ends up with support they never chose. The dropdown renders 0 as a
+    // blank selection (DynamicFilamentListSupport::index_of returns -1) and Print::validate()
+    // refuses to slice until the user picks one.
     static const char* keys[] = { "support_filament", "support_interface_filament"};
     for (int i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
         std::string key = std::string(keys[i]);

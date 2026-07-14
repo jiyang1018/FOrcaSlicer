@@ -212,14 +212,41 @@ double Flow::mm3_per_mm() const
     return res;
 }
 
+// FOS: see Flow.hpp. Mirrors the rescale in PrintRegion::flow(), which covers wall/infill roles
+// only - support and tree support never went through it.
+ConfigOptionFloatOrPercent fos_width_for_nozzle(const ConfigOptionFloatOrPercent &config_width,
+                                                const PrintConfig               &print_config,
+                                                float                            nozzle_diameter)
+{
+    ConfigOptionFloatOrPercent out = config_width;
+    if (!print_config.has_mixed_nozzle_sizes.value || out.percent || out.value <= 0)
+        return out;
+    const float ref_nozzle = float(print_config.nozzle_diameter.get_at(0));
+    if (ref_nozzle > 0.f)
+        out.value = (out.value / ref_nozzle) * nozzle_diameter;
+    return out;
+}
+
+double fos_abs_width_for_nozzle(const ConfigOptionFloatOrPercent &config_width,
+                                const PrintConfig               &print_config,
+                                double                           nozzle_diameter)
+{
+    return fos_width_for_nozzle(config_width, print_config, float(nozzle_diameter)).get_abs_value(nozzle_diameter);
+}
+
 Flow support_material_flow(const PrintObject *object, float layer_height)
 {
+    const PrintConfig &print_config = object->print()->config();
+    // if object->config().support_filament == 0 (which means to not trigger tool change, but use the current extruder instead), get_at will return the 0th component.
+    const float nozzle_diameter = float(print_config.nozzle_diameter.get_at(object->config().support_filament - 1));
+    // The width parameter accepted by new_from_config_width is of type ConfigOptionFloatOrPercent, the Flow class takes care of the percent to value substitution.
+    const ConfigOptionFloatOrPercent &raw_width =
+        (object->config().support_line_width.value > 0) ? object->config().support_line_width : object->config().line_width;
+
     return Flow::new_from_config_width(
         frSupportMaterial,
-        // The width parameter accepted by new_from_config_width is of type ConfigOptionFloatOrPercent, the Flow class takes care of the percent to value substitution.
-        (object->config().support_line_width.value > 0) ? object->config().support_line_width : object->config().line_width,
-        // if object->config().support_filament == 0 (which means to not trigger tool change, but use the current extruder instead), get_at will return the 0th component.
-        float(object->print()->config().nozzle_diameter.get_at(object->config().support_filament-1)),
+        fos_width_for_nozzle(raw_width, print_config, nozzle_diameter),
+        nozzle_diameter,
         (layer_height > 0.f) ? layer_height : float(object->config().layer_height.value));
 }
 //BBS
@@ -234,22 +261,28 @@ Flow support_material_1st_layer_flow(const PrintObject *object, float layer_heig
 {
     const PrintConfig &print_config = object->print()->config();
     const auto &width = (print_config.initial_layer_line_width.value > 0) ? print_config.initial_layer_line_width : object->config().support_line_width;
+    const float nozzle_diameter = float(print_config.nozzle_diameter.get_at(object->config().support_filament - 1));
     return Flow::new_from_config_width(
         frSupportMaterial,
         // The width parameter accepted by new_from_config_width is of type ConfigOptionFloatOrPercent, the Flow class takes care of the percent to value substitution.
-        (width.value > 0) ? width : object->config().line_width,
-        float(print_config.nozzle_diameter.get_at(object->config().support_filament-1)),
+        // FOS: re-derive an absolute width resolved against nozzle 1 for the nozzle that actually prints support.
+        fos_width_for_nozzle((width.value > 0) ? width : object->config().line_width, print_config, nozzle_diameter),
+        nozzle_diameter,
         (layer_height > 0.f) ? layer_height : float(print_config.initial_layer_print_height.value));
 }
 
 Flow support_material_interface_flow(const PrintObject *object, float layer_height)
 {
+    const PrintConfig &print_config = object->print()->config();
+    // if object->config().support_interface_filament == 0 (which means to not trigger tool change, but use the current extruder instead), get_at will return the 0th component.
+    const float nozzle_diameter = float(print_config.nozzle_diameter.get_at(object->config().support_interface_filament - 1));
     return Flow::new_from_config_width(
         frSupportMaterialInterface,
         // The width parameter accepted by new_from_config_width is of type ConfigOptionFloatOrPercent, the Flow class takes care of the percent to value substitution.
-        (object->config().support_line_width > 0) ? object->config().support_line_width : object->config().line_width,
-        // if object->config().support_interface_filament == 0 (which means to not trigger tool change, but use the current extruder instead), get_at will return the 0th component.
-        float(object->print()->config().nozzle_diameter.get_at(object->config().support_interface_filament-1)),
+        // FOS: re-derive an absolute width resolved against nozzle 1 for the nozzle that actually prints the interface.
+        fos_width_for_nozzle((object->config().support_line_width > 0) ? object->config().support_line_width : object->config().line_width,
+                             print_config, nozzle_diameter),
+        nozzle_diameter,
         (layer_height > 0.f) ? layer_height : float(object->config().layer_height.value));
 }
 
