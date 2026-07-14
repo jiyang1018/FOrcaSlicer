@@ -48,18 +48,12 @@ Flow PrintRegion::flow(const PrintObject &object, FlowRole role, double layer_he
 
     auto nozzle_diameter = float(print_config.nozzle_diameter.get_at(this->extruder(role) - 1));
 
-    // Mixed nozzle: re-derive width from correct nozzle diameter using the preset percentage
-    // config_width may have been resolved against nozzle 1 already; recompute using actual extruder's nozzle
-    if (print_config.has_mixed_nozzle_sizes.value &&
-        (role == frExternalPerimeter || role == frPerimeter ||
-         role == frInfill || role == frSolidInfill || role == frTopSolidInfill)) {
-        float ref_nozzle = float(print_config.nozzle_diameter.get_at(0)); // nozzle used during preset resolution
-        if (ref_nozzle > 0 && config_width.value > 0) {
-            float ratio = config_width.value / ref_nozzle;
-            config_width.value = ratio * nozzle_diameter;
-        }
-    }
-    
+    // FOS 8.5: the 8.4 mixed-nozzle width ratio was REMOVED here. Per-nozzle widths are now
+    // authored per slot and resolved to absolute mm at config materialization
+    // (fos_stamp_per_nozzle_region), so config_width already carries the correct width for the
+    // actual extruder. Re-deriving by ratio here would double-apply. In uniform-nozzle mode the
+    // old block was a no-op (has_mixed_nozzle_sizes false), so this is byte-identical there.
+
     return Flow::new_from_config_width(role, config_width, nozzle_diameter, float(layer_height));
 }
 

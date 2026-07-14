@@ -317,6 +317,12 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
             || opt_key == "wipe_tower_rib_width"
             || opt_key == "wipe_tower_fillet_wall"
             || opt_key == "wipe_tower_filament"
+            // FOS 8.5: per-tool prime tower widths. Print-scope (WipeTower2 needs all tools'
+            // widths at once), so unlike the region/object per-nozzle keys it does NOT
+            // invalidate natively - it is routed here explicitly, to the same tower/skirt
+            // steps as wipe_tower_filament. NOT posSlice: the tower is regenerated, object
+            // geometry is untouched.
+            || opt_key == "fos_nozzle_tower_line_widths"
             || opt_key == "wiping_volumes_extruders"
             || opt_key == "enable_filament_ramming"
             || opt_key == "purge_in_prime_tower"

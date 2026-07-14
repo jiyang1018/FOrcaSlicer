@@ -240,12 +240,17 @@ Flow support_material_flow(const PrintObject *object, float layer_height)
     // if object->config().support_filament == 0 (which means to not trigger tool change, but use the current extruder instead), get_at will return the 0th component.
     const float nozzle_diameter = float(print_config.nozzle_diameter.get_at(object->config().support_filament - 1));
     // The width parameter accepted by new_from_config_width is of type ConfigOptionFloatOrPercent, the Flow class takes care of the percent to value substitution.
+    // FOS 8.5: support_line_width is already resolved to absolute mm for the support nozzle
+    // (fos_stamp_per_nozzle_object, with a line_width fallback baked in on the GUI side), so it
+    // is used directly - the 8.4 fos_width_for_nozzle ratio would double-apply. line_width
+    // remains the fallback only if the resolve produced nothing (e.g. a legacy 3mf predating
+    // 8.5, which has no fos_nozzle_* arrays).
     const ConfigOptionFloatOrPercent &raw_width =
         (object->config().support_line_width.value > 0) ? object->config().support_line_width : object->config().line_width;
 
     return Flow::new_from_config_width(
         frSupportMaterial,
-        fos_width_for_nozzle(raw_width, print_config, nozzle_diameter),
+        raw_width,
         nozzle_diameter,
         (layer_height > 0.f) ? layer_height : float(object->config().layer_height.value));
 }
@@ -260,13 +265,21 @@ Flow support_transition_flow(const PrintObject* object)
 Flow support_material_1st_layer_flow(const PrintObject *object, float layer_height)
 {
     const PrintConfig &print_config = object->print()->config();
-    const auto &width = (print_config.initial_layer_line_width.value > 0) ? print_config.initial_layer_line_width : object->config().support_line_width;
     const float nozzle_diameter = float(print_config.nozzle_diameter.get_at(object->config().support_filament - 1));
+    // FOS 8.5: initial_layer_line_width is print-scope and NOT per-nozzle resolved (initial-layer
+    // widths are out of 8.5 scope), so it still goes through the 8.4 ratio for the support nozzle.
+    // support_line_width IS resolved, so it is used raw. line_width is the last-resort fallback and
+    // is unresolved, so it also keeps the ratio.
+    ConfigOptionFloatOrPercent width;
+    if (print_config.initial_layer_line_width.value > 0)
+        width = fos_width_for_nozzle(print_config.initial_layer_line_width, print_config, nozzle_diameter);
+    else if (object->config().support_line_width.value > 0)
+        width = object->config().support_line_width;
+    else
+        width = fos_width_for_nozzle(object->config().line_width, print_config, nozzle_diameter);
     return Flow::new_from_config_width(
         frSupportMaterial,
-        // The width parameter accepted by new_from_config_width is of type ConfigOptionFloatOrPercent, the Flow class takes care of the percent to value substitution.
-        // FOS: re-derive an absolute width resolved against nozzle 1 for the nozzle that actually prints support.
-        fos_width_for_nozzle((width.value > 0) ? width : object->config().line_width, print_config, nozzle_diameter),
+        width,
         nozzle_diameter,
         (layer_height > 0.f) ? layer_height : float(print_config.initial_layer_print_height.value));
 }
@@ -276,12 +289,24 @@ Flow support_material_interface_flow(const PrintObject *object, float layer_heig
     const PrintConfig &print_config = object->print()->config();
     // if object->config().support_interface_filament == 0 (which means to not trigger tool change, but use the current extruder instead), get_at will return the 0th component.
     const float nozzle_diameter = float(print_config.nozzle_diameter.get_at(object->config().support_interface_filament - 1));
+    // FOS 8.5: the interface reuses support_line_width (there is no separate interface width key),
+    // but it is resolved for the SUPPORT nozzle, while the interface may print on a DIFFERENT
+    // nozzle. 8.4 fixed exactly this (interface 0.22 -> 0.44). Preserve it by RETARGETING the
+    // resolved support width from the support nozzle to the interface nozzle by diameter ratio -
+    // this is a nozzle->nozzle conversion, not the retired author-against-N1 ratio.
+    ConfigOptionFloatOrPercent width;
+    if (object->config().support_line_width.value > 0) {
+        const float support_nozzle = float(print_config.nozzle_diameter.get_at(object->config().support_filament - 1));
+        width = object->config().support_line_width; // resolved absolute mm for the support nozzle
+        if (!width.percent && support_nozzle > 0.f && nozzle_diameter > 0.f && support_nozzle != nozzle_diameter)
+            width.value = width.value * (nozzle_diameter / support_nozzle);
+    } else {
+        // line_width fallback is unresolved (authored against N1) -> keep the 8.4 ratio.
+        width = fos_width_for_nozzle(object->config().line_width, print_config, nozzle_diameter);
+    }
     return Flow::new_from_config_width(
         frSupportMaterialInterface,
-        // The width parameter accepted by new_from_config_width is of type ConfigOptionFloatOrPercent, the Flow class takes care of the percent to value substitution.
-        // FOS: re-derive an absolute width resolved against nozzle 1 for the nozzle that actually prints the interface.
-        fos_width_for_nozzle((object->config().support_line_width > 0) ? object->config().support_line_width : object->config().line_width,
-                             print_config, nozzle_diameter),
+        width,
         nozzle_diameter,
         (layer_height > 0.f) ? layer_height : float(object->config().layer_height.value));
 }

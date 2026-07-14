@@ -3525,21 +3525,101 @@ void TabPrint::fos_reload_slot_config(int slot_idx)
             }
         }
     }
+
+    // FOS 8.5: resolve per-nozzle width/speed arrays from each slot's PRP.
+    // WIDTHS resolve to absolute mm against THAT slot's own nozzle diameter - this is where
+    // 8.4's PrintRegion::flow()/fos_width_for_nozzle() ratio moved to; the engine now stamps
+    // the resolved value straight into the scalar and does NOT re-derive. SPEEDS are plain
+    // floats, copied verbatim. A value of 0 means "not authored / not covered": the engine
+    // read path leaves the scalar untouched, so an unresolved key degrades to the region
+    // default (= today's behavior) and the support_filament==0 "Empty" gate needs no special
+    // case here (Print::validate blocks the slice anyway).
+    if (m_preset_bundle) {
+        const int n = (int)m_fos_slot_configs.size();
+        const auto* nd = m_preset_bundle->printers.get_edited_preset()
+            .config.option<ConfigOptionFloats>("nozzle_diameter");
+        auto slot_nozzle = [&](int i) -> double {
+            if (nd && i < (int)nd->values.size()) return nd->values[i];
+            return (nd && !nd->values.empty()) ? nd->values[0] : 0.4;
+        };
+        // Widths resolve against the slot's nozzle. A 0/auto value falls back to the slot's
+        // own line_width (mirrors PrintRegion::flow()'s `if (width==0) width=line_width`), so
+        // the resolved array is always positive and the engine stamp always fires - the 8.4
+        // ratio that used to rescale the line_width fallback is gone. tower_line_width has no
+        // line_width fallback (its own default 125% always resolves > 0).
+        auto write_width = [&](const char* arr_key, const char* src_key, bool lw_fallback = true) {
+            auto* opt = m_preset_bundle->project_config.option<ConfigOptionFloats>(arr_key, true);
+            opt->values.resize(n, 0.f);
+            for (int i = 0; i < n; ++i) {
+                float v = 0.f;
+                if (const auto* w = m_fos_slot_configs[i].option<ConfigOptionFloatOrPercent>(src_key))
+                    if (w->value > 0) v = (float)w->get_abs_value(slot_nozzle(i));
+                if (v <= 0.f && lw_fallback)
+                    if (const auto* lw = m_fos_slot_configs[i].option<ConfigOptionFloatOrPercent>("line_width"))
+                        if (lw->value > 0) v = (float)lw->get_abs_value(slot_nozzle(i));
+                opt->values[i] = v;
+            }
+        };
+        auto write_speed = [&](const char* arr_key, const char* src_key) {
+            auto* opt = m_preset_bundle->project_config.option<ConfigOptionFloats>(arr_key, true);
+            opt->values.resize(n, 0.f);
+            for (int i = 0; i < n; ++i)
+                opt->values[i] = m_fos_slot_configs[i].has(src_key)
+                    ? (float)m_fos_slot_configs[i].opt_float(src_key) : 0.f;
+        };
+        // region + object widths
+        write_width("fos_nozzle_outer_wall_line_width",            "outer_wall_line_width");
+        write_width("fos_nozzle_inner_wall_line_width",            "inner_wall_line_width");
+        write_width("fos_nozzle_top_surface_line_width",           "top_surface_line_width");
+        write_width("fos_nozzle_sparse_infill_line_width",         "sparse_infill_line_width");
+        write_width("fos_nozzle_internal_solid_infill_line_width", "internal_solid_infill_line_width");
+        write_width("fos_nozzle_support_line_width",               "support_line_width");
+        // region + object speeds (plain floats)
+        write_speed("fos_nozzle_outer_wall_speed",            "outer_wall_speed");
+        write_speed("fos_nozzle_inner_wall_speed",            "inner_wall_speed");
+        write_speed("fos_nozzle_sparse_infill_speed",         "sparse_infill_speed");
+        write_speed("fos_nozzle_internal_solid_infill_speed", "internal_solid_infill_speed");
+        write_speed("fos_nozzle_top_surface_speed",           "top_surface_speed");
+        write_speed("fos_nozzle_gap_infill_speed",            "gap_infill_speed");
+        write_speed("fos_nozzle_ironing_speed",               "ironing_speed");
+        write_speed("fos_nozzle_support_speed",               "support_speed");
+        write_speed("fos_nozzle_support_interface_speed",     "support_interface_speed");
+        // prime tower per-tool width (default 125% ratios over the slot's nozzle; no lw fallback)
+        write_width("fos_nozzle_tower_line_widths",           "tower_line_width", false);
+    }
+
     // FOS: rebuild merged config so Other line widths/speeds reflect new PRP values
     fos_rebuild_merged_config();
     // FOS: only trigger a reslice if the slice-relevant per-nozzle layer heights actually
     // changed. Tab activation (Quality/Speed) calls this with identical values; bumping the
     // serial unconditionally greened the Slice button on a no-change activation. Guard on the
     // recomputed nlh array so a genuine PRP change still triggers but a no-op activation does not.
+    // FOS 8.5: the signature now spans EVERY resolved per-nozzle array, not just layer heights,
+    // so a width- or speed-only notebook edit still schedules an apply. The invalidation itself
+    // is native (region/object-scope keys), but the apply must be scheduled - a no-op tab
+    // activation recomputes identical arrays and correctly does not.
     {
-        std::vector<float> nlh_now;
+        static const char* sig_keys[] = {
+            "fos_nozzle_layer_heights", "fos_nozzle_initial_layer_heights",
+            "fos_nozzle_outer_wall_line_width", "fos_nozzle_inner_wall_line_width",
+            "fos_nozzle_top_surface_line_width", "fos_nozzle_sparse_infill_line_width",
+            "fos_nozzle_internal_solid_infill_line_width", "fos_nozzle_support_line_width",
+            "fos_nozzle_outer_wall_speed", "fos_nozzle_inner_wall_speed",
+            "fos_nozzle_sparse_infill_speed", "fos_nozzle_internal_solid_infill_speed",
+            "fos_nozzle_top_surface_speed", "fos_nozzle_gap_infill_speed",
+            "fos_nozzle_ironing_speed", "fos_nozzle_support_speed",
+            "fos_nozzle_support_interface_speed", "fos_nozzle_tower_line_widths",
+        };
+        std::vector<float> sig_now;
         if (m_preset_bundle) {
-            if (auto* nlh = m_preset_bundle->project_config
-                    .option<ConfigOptionFloats>("fos_nozzle_layer_heights", true))
-                nlh_now.assign(nlh->values.begin(), nlh->values.end());
+            for (const char* k : sig_keys) {
+                sig_now.push_back(-1.f); // key separator so [1,0] and [0,1] differ across keys
+                if (auto* o = m_preset_bundle->project_config.option<ConfigOptionFloats>(k, true))
+                    sig_now.insert(sig_now.end(), o->values.begin(), o->values.end());
+            }
         }
-        if (nlh_now != m_fos_last_applied_nlh) {
-            m_fos_last_applied_nlh = nlh_now;
+        if (sig_now != m_fos_last_applied_nlh) {
+            m_fos_last_applied_nlh = sig_now;
             fos_trigger_reslice();
         }
     }

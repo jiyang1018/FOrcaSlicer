@@ -914,7 +914,19 @@ bool PrintObject::invalidate_state_by_config_options(
 
     std::vector<PrintObjectStep> steps;
     bool invalidated = false;
-    for (const t_config_option_key &opt_key : opt_keys) {
+
+    // FOS 8.5: a per-nozzle array (fos_nozzle_<scalar>) invalidates exactly like its scalar.
+    // Strip the prefix so the dispatch chain below routes each array to the same step its
+    // scalar routes to - no hand-maintained step table, and it auto-tracks any upstream retune.
+    // The value-lookup branches (brim_type, gap_infill_speed) read the scalar key's old/new
+    // value, which is unchanged when only the array changed, so they degrade conservatively.
+    // tower_line_widths is print-scope and never reaches this function (Print:: handles it).
+    std::vector<t_config_option_key> effective_keys;
+    effective_keys.reserve(opt_keys.size());
+    for (const t_config_option_key &k : opt_keys)
+        effective_keys.push_back(k.rfind("fos_nozzle_", 0) == 0 ? k.substr(11) : k);
+
+    for (const t_config_option_key &opt_key : effective_keys) {
         if (   opt_key == "brim_width"
             || opt_key == "brim_object_gap"
             || opt_key == "brim_type"
@@ -3194,6 +3206,10 @@ void PrintObject::bridge_over_infill()
 
 } // void PrintObject::bridge_over_infill()
 
+// FOS 8.5: per-nozzle stamp helpers (defined below).
+void fos_stamp_per_nozzle_object(PrintObjectConfig &c);
+void fos_stamp_per_nozzle_region(PrintRegionConfig &c);
+
 static void clamp_exturder_to_default(ConfigOptionInt &opt, size_t num_extruders)
 {
     if (opt.value > (int)num_extruders)
@@ -3212,11 +3228,71 @@ PrintObjectConfig PrintObject::object_config_from_model_object(const PrintObject
     // Clamp invalid extruders to the default extruder (with index 1).
     clamp_exturder_to_default(config.support_filament,           num_extruders);
     clamp_exturder_to_default(config.support_interface_filament, num_extruders);
+
+    // FOS 8.5: stamp per-nozzle resolved widths/speeds into the scalars the engine reads.
+    // The arrays are resolved absolute mm (percent already ratioed against the owning slot's
+    // nozzle in the GUI), so the old PrintRegion::flow()/fos_width_for_nozzle() ratio is gone
+    // and must NOT run on top of these. A 0 (or out-of-range) entry means "not authored":
+    // leave the scalar as-is, so uncovered keys and the support_filament==0 gate degrade to
+    // the region/object default.
+    fos_stamp_per_nozzle_object(config);
     return config;
+}
+
+// FOS 8.5: filament->key mapping per SKILL-architecture. Object-scope keys only.
+void fos_stamp_per_nozzle_object(PrintObjectConfig &c)
+{
+    auto W = [](const ConfigOptionFloats &arr, ConfigOptionFloatOrPercent &dst, int filament) {
+        int i = filament - 1;
+        if (i >= 0 && i < (int)arr.values.size() && arr.values[i] > 0) {
+            dst.value = arr.values[i]; dst.percent = false;
+        }
+    };
+    auto S = [](const ConfigOptionFloats &arr, ConfigOptionFloat &dst, int filament) {
+        int i = filament - 1;
+        if (i >= 0 && i < (int)arr.values.size() && arr.values[i] > 0)
+            dst.value = arr.values[i];
+    };
+    W(c.fos_nozzle_support_line_width,      c.support_line_width,      c.support_filament.value);
+    S(c.fos_nozzle_support_speed,           c.support_speed,           c.support_filament.value);
+    S(c.fos_nozzle_support_interface_speed, c.support_interface_speed, c.support_interface_filament.value);
 }
 
 const std::string                                                    key_extruder { "extruder" };
 static constexpr const std::initializer_list<const std::string_view> keys_extruders { "sparse_infill_filament"sv, "solid_infill_filament"sv, "wall_filament"sv, "inner_wall_filament"sv };
+
+// FOS 8.5: filament->key mapping per SKILL-architecture. Region-scope keys only.
+// inner_wall_filament is not clamped upstream, so the helper bounds-checks the index.
+void fos_stamp_per_nozzle_region(PrintRegionConfig &c)
+{
+    auto W = [](const ConfigOptionFloats &arr, ConfigOptionFloatOrPercent &dst, int filament) {
+        int i = filament - 1;
+        if (i >= 0 && i < (int)arr.values.size() && arr.values[i] > 0) {
+            dst.value = arr.values[i]; dst.percent = false;
+        }
+    };
+    auto S = [](const ConfigOptionFloats &arr, ConfigOptionFloat &dst, int filament) {
+        int i = filament - 1;
+        if (i >= 0 && i < (int)arr.values.size() && arr.values[i] > 0)
+            dst.value = arr.values[i];
+    };
+    const int wall   = c.wall_filament.value;
+    const int inner  = c.inner_wall_filament.value;
+    const int solid  = c.solid_infill_filament.value;
+    const int sparse = c.sparse_infill_filament.value;
+    W(c.fos_nozzle_outer_wall_line_width,            c.outer_wall_line_width,            wall);
+    W(c.fos_nozzle_inner_wall_line_width,            c.inner_wall_line_width,            inner);
+    W(c.fos_nozzle_top_surface_line_width,           c.top_surface_line_width,           solid);
+    W(c.fos_nozzle_internal_solid_infill_line_width, c.internal_solid_infill_line_width, solid);
+    W(c.fos_nozzle_sparse_infill_line_width,         c.sparse_infill_line_width,         sparse);
+    S(c.fos_nozzle_outer_wall_speed,            c.outer_wall_speed,            wall);
+    S(c.fos_nozzle_inner_wall_speed,            c.inner_wall_speed,            inner);
+    S(c.fos_nozzle_top_surface_speed,           c.top_surface_speed,           solid);
+    S(c.fos_nozzle_internal_solid_infill_speed, c.internal_solid_infill_speed, solid);
+    S(c.fos_nozzle_ironing_speed,               c.ironing_speed,               solid);
+    S(c.fos_nozzle_sparse_infill_speed,         c.sparse_infill_speed,         sparse);
+    S(c.fos_nozzle_gap_infill_speed,            c.gap_infill_speed,            wall);
+}
 
 static void apply_to_print_region_config(PrintRegionConfig &out, const DynamicPrintConfig &in)
 {
@@ -3266,6 +3342,11 @@ PrintRegionConfig region_config_from_model_volume(const PrintRegionConfig &defau
     clamp_exturder_to_default(config.sparse_infill_filament,       num_extruders);
     clamp_exturder_to_default(config.wall_filament,    num_extruders);
     clamp_exturder_to_default(config.solid_infill_filament, num_extruders);
+
+    // FOS 8.5: stamp per-nozzle resolved widths/speeds into the region scalars. See the
+    // object-scope helper for the contract (resolved absolute mm; 0 = leave as-is; the old
+    // ratio path is gone and must not re-derive on top).
+    fos_stamp_per_nozzle_region(config);
     if (config.sparse_infill_density.value < 0.00011f)
         // Switch of infill for very low infill rates, also avoid division by zero in infill generator for these very low rates.
         // See GH issue #5910.
