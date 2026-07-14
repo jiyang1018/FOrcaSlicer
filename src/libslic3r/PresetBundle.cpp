@@ -47,6 +47,26 @@ static std::vector<std::string> s_project_options {
     "fos_nozzle_layer_heights",
     "fos_nozzle_initial_layer_heights",
     "fos_slot_config_serial",
+    // FOS 8.5: resolved per-nozzle width/speed arrays (region/object scope) + tower.
+    // tower_line_width itself is NOT here - it is a per-slot PRESET key, not a project key.
+    "fos_nozzle_outer_wall_line_width",
+    "fos_nozzle_inner_wall_line_width",
+    "fos_nozzle_top_surface_line_width",
+    "fos_nozzle_sparse_infill_line_width",
+    "fos_nozzle_internal_solid_infill_line_width",
+    "fos_nozzle_outer_wall_speed",
+    "fos_nozzle_inner_wall_speed",
+    "fos_nozzle_small_perimeter_speed",
+    "fos_nozzle_small_perimeter_threshold",
+    "fos_nozzle_sparse_infill_speed",
+    "fos_nozzle_internal_solid_infill_speed",
+    "fos_nozzle_top_surface_speed",
+    "fos_nozzle_gap_infill_speed",
+    "fos_nozzle_ironing_speed",
+    "fos_nozzle_support_line_width",
+    "fos_nozzle_support_speed",
+    "fos_nozzle_support_interface_speed",
+    "fos_nozzle_tower_line_widths",
 };
 
 // SM_FEATURE: add Snapmaker machine as default

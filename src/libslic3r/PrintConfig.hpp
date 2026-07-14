@@ -965,7 +965,20 @@ PRINT_CONFIG_CLASS_DEFINE(
     // Orca: internal use only
     ((ConfigOptionBool,  calib_flowrate_topinfill_special_order)) // ORCA: special flag for flow rate calibration
 
-
+    // FOS 8.5: per-nozzle resolved width/speed arrays, OBJECT scope.
+    // Declared here (not in PrintConfig) so they reach
+    // PrintObject::invalidate_state_by_config_options and invalidate natively - a
+    // PrintConfig-scope key would only reach Print::invalidate_state_by_config_options
+    // and produce the AP-104 fake slice. STORED in project_config (s_project_options);
+    // m_default_object_config.diff(new_full_config) is driven by the keys THIS class
+    // declares, so declaration scope and storage location are independent.
+    // Naming is load-bearing: fos_nozzle_<scalar_key>. invalidate_state_by_config_options
+    // strips the prefix and re-dispatches on the scalar, so each array routes to exactly
+    // the step its scalar routes to. Do NOT rename without updating that strip.
+    // Values are RESOLVED mm (percent widths already ratioed against that slot's nozzle).
+    ((ConfigOptionFloats,              fos_nozzle_support_line_width))
+    ((ConfigOptionFloats,              fos_nozzle_support_speed))
+    ((ConfigOptionFloats,              fos_nozzle_support_interface_speed))
 )
 
 // This object is mapped to Perl as Slic3r::Config::PrintRegion.
@@ -1112,6 +1125,26 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloatOrPercent,       scarf_joint_speed))
     ((ConfigOptionFloat,                scarf_joint_flow_ratio))
     ((ConfigOptionPercent,              scarf_overhang_threshold))
+
+    // FOS 8.5: per-nozzle resolved width/speed arrays, REGION scope.
+    // See the PrintObjectConfig block for why these are declared here rather than in
+    // PrintConfig (native invalidation vs the AP-104 fake slice) and why the
+    // fos_nozzle_<scalar_key> naming is load-bearing.
+    // Values are RESOLVED mm (percent widths already ratioed against that slot's nozzle).
+    ((ConfigOptionFloats,               fos_nozzle_outer_wall_line_width))
+    ((ConfigOptionFloats,               fos_nozzle_inner_wall_line_width))
+    ((ConfigOptionFloats,               fos_nozzle_top_surface_line_width))
+    ((ConfigOptionFloats,               fos_nozzle_sparse_infill_line_width))
+    ((ConfigOptionFloats,               fos_nozzle_internal_solid_infill_line_width))
+    ((ConfigOptionFloats,               fos_nozzle_outer_wall_speed))
+    ((ConfigOptionFloats,               fos_nozzle_inner_wall_speed))
+    ((ConfigOptionFloats,               fos_nozzle_small_perimeter_speed))
+    ((ConfigOptionFloats,               fos_nozzle_small_perimeter_threshold))
+    ((ConfigOptionFloats,               fos_nozzle_sparse_infill_speed))
+    ((ConfigOptionFloats,               fos_nozzle_internal_solid_infill_speed))
+    ((ConfigOptionFloats,               fos_nozzle_top_surface_speed))
+    ((ConfigOptionFloats,               fos_nozzle_gap_infill_speed))
+    ((ConfigOptionFloats,               fos_nozzle_ironing_speed))
 )
 
 PRINT_CONFIG_CLASS_DEFINE(
@@ -1463,6 +1496,17 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
 
     // FOS: per-nozzle slot plumbing (fos.8.5)
     ((ConfigOptionStrings,             print_filament_presets))
+    // Authored per-slot in the nozzle notebook; lives in each slot's PRP.
+    // Default 125% - percent ratios over the nozzle it is handed (8.4 rule), so it
+    // self-scales per slot with no sentinel and no auto-mode.
+    ((ConfigOptionFloatOrPercent,      tower_line_width))
+    // Resolved per-slot tower widths. PRINT scope on purpose: WipeTower2 needs ALL
+    // tools' widths at once (per-tool ramming/wipe on one tower), so this one CANNOT
+    // flatten to a scalar the way the region/object keys do. Being print-scope it does
+    // NOT invalidate natively - it needs an explicit branch in
+    // Print::invalidate_state_by_config_options (AP-104), routed to the tower/G-code
+    // step, NOT posSlice.
+    ((ConfigOptionFloats,              fos_nozzle_tower_line_widths))
     ((ConfigOptionFloats,              fos_nozzle_layer_heights))
     ((ConfigOptionFloats,              fos_nozzle_initial_layer_heights))
     ((ConfigOptionInt,                 fos_slot_config_serial))

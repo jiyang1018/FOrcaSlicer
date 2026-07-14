@@ -4015,6 +4015,65 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionInt(0));
 
+    // FOS 8.5: authored per-slot prime tower line width. Percent ratios over the nozzle
+    // it is handed (8.4 rule), so 125% self-scales per slot.
+    def = this->add("tower_line_width", coFloatOrPercent);
+    def->label = L("Prime tower line width");
+    def->tooltip = L("Line width used by this nozzle on the prime tower. A percentage is "
+                     "relative to this nozzle's diameter, so the default 125% scales with "
+                     "the nozzle. The tower's structure (footprint, walls, brim) is printed "
+                     "at the wipe tower filament's value; every other tool uses its own for "
+                     "ramming and wiping.");
+    def->sidetext = L("mm or %");
+    def->ratio_over = "nozzle_diameter";
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloatOrPercent(125, true));
+
+    // FOS 8.5: per-nozzle RESOLVED arrays. All are written by the GUI from the live
+    // m_fos_slot_configs (so unsaved notebook edits are captured), stored in
+    // project_config, and consumed by the engine. Widths are resolved to mm - any
+    // percent is already ratioed against that slot's own nozzle diameter.
+    //
+    // NAMING IS LOAD-BEARING: fos_nozzle_<scalar_key>.
+    // PrintObject::invalidate_state_by_config_options strips the "fos_nozzle_" prefix and
+    // re-dispatches on the scalar, so each array automatically routes to exactly the step
+    // its scalar routes to. That is why there is no hand-maintained step table here: a
+    // hand table would be 17 chances to pick the wrong step, and it would rot silently the
+    // moment upstream retunes one. Rename a key and you break the strip.
+    {
+        auto fos_add_nozzle_array = [this](const char *key, const char *label) {
+            ConfigOptionDef *d = this->add(key, coFloats);
+            d->label   = L(label);
+            d->tooltip = L("FOS: resolved per-nozzle value. Index 0 = Nozzle 1, 1-3 = Nozzle 2-4. "
+                           "Written by the GUI from each slot's PRP; not user-editable here.");
+            d->mode    = comAdvanced;
+            d->set_default_value(new ConfigOptionFloats({0.f, 0.f, 0.f, 0.f}));
+            return d;
+        };
+        // region scope
+        fos_add_nozzle_array("fos_nozzle_outer_wall_line_width",            "FOS per-nozzle outer wall line width");
+        fos_add_nozzle_array("fos_nozzle_inner_wall_line_width",            "FOS per-nozzle inner wall line width");
+        fos_add_nozzle_array("fos_nozzle_top_surface_line_width",           "FOS per-nozzle top surface line width");
+        fos_add_nozzle_array("fos_nozzle_sparse_infill_line_width",         "FOS per-nozzle sparse infill line width");
+        fos_add_nozzle_array("fos_nozzle_internal_solid_infill_line_width", "FOS per-nozzle internal solid infill line width");
+        fos_add_nozzle_array("fos_nozzle_outer_wall_speed",                 "FOS per-nozzle outer wall speed");
+        fos_add_nozzle_array("fos_nozzle_inner_wall_speed",                 "FOS per-nozzle inner wall speed");
+        fos_add_nozzle_array("fos_nozzle_small_perimeter_speed",            "FOS per-nozzle small perimeter speed");
+        fos_add_nozzle_array("fos_nozzle_small_perimeter_threshold",        "FOS per-nozzle small perimeter threshold");
+        fos_add_nozzle_array("fos_nozzle_sparse_infill_speed",              "FOS per-nozzle sparse infill speed");
+        fos_add_nozzle_array("fos_nozzle_internal_solid_infill_speed",      "FOS per-nozzle internal solid infill speed");
+        fos_add_nozzle_array("fos_nozzle_top_surface_speed",                "FOS per-nozzle top surface speed");
+        fos_add_nozzle_array("fos_nozzle_gap_infill_speed",                 "FOS per-nozzle gap infill speed");
+        fos_add_nozzle_array("fos_nozzle_ironing_speed",                    "FOS per-nozzle ironing speed");
+        // object scope
+        fos_add_nozzle_array("fos_nozzle_support_line_width",               "FOS per-nozzle support line width");
+        fos_add_nozzle_array("fos_nozzle_support_speed",                    "FOS per-nozzle support speed");
+        fos_add_nozzle_array("fos_nozzle_support_interface_speed",          "FOS per-nozzle support interface speed");
+        // print scope (tower - cannot flatten; see PrintConfig.hpp)
+        fos_add_nozzle_array("fos_nozzle_tower_line_widths",                "FOS per-nozzle prime tower line width");
+    }
+
     def = this->add("notes", coString);
     def->label = L("Configuration notes");
     def->tooltip = L("You can put here your personal notes. This text will be added to the G-code "
