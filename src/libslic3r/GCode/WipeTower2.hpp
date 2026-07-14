@@ -154,6 +154,7 @@ public:
         float               max_e_speed = std::numeric_limits<float>::max();
         std::vector<float>  ramming_speed;
         float               nozzle_diameter;
+        float               tower_line_width = 0.f; // FOS 8.5: resolved per-tool tower width (0 = fall back to 1.25*nozzle)
         float               filament_area;
 		bool			    multitool_ramming;
 		float               multitool_ramming_time = 0.f;
@@ -281,6 +282,11 @@ private:
 	// multiextruder MM") and was never read.
 	float tool_line_width(size_t tool) const
 	{
+		// FOS 8.5: prefer the resolved per-tool tower width authored in the nozzle notebook
+		// (fos_nozzle_tower_line_widths). 0 = not authored -> fall back to the 8.4 rule
+		// (1.25 * this tool's nozzle), then to the structure width.
+		if (tool < m_filpar.size() && m_filpar[tool].tower_line_width > 0.f)
+			return m_filpar[tool].tower_line_width;
 		return (tool < m_filpar.size() && m_filpar[tool].nozzle_diameter > 0.f) ?
 			m_filpar[tool].nozzle_diameter * Width_To_Nozzle_Ratio :
 			m_perimeter_width;

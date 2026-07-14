@@ -1380,6 +1380,10 @@ void WipeTower2::set_extruder(size_t idx, const PrintConfig& config)
         pow(config.filament_diameter.get_at(idx), 2)); // all extruders are assumed to have the same filament diameter at this point
     float nozzle_diameter         = float(config.nozzle_diameter.get_at(idx));
     m_filpar[idx].nozzle_diameter = nozzle_diameter; // to be used in future with (non-single) multiextruder MM
+    // FOS 8.5: resolved per-tool prime tower width from the nozzle notebook. 0/absent -> 0,
+    // which tool_line_width() falls back to the 1.25*nozzle rule for.
+    if (idx < config.fos_nozzle_tower_line_widths.values.size())
+        m_filpar[idx].tower_line_width = float(config.fos_nozzle_tower_line_widths.get_at(idx));
 
     float max_vol_speed = float(config.filament_max_volumetric_speed.get_at(idx));
     if (max_vol_speed != 0.f)
@@ -1399,8 +1403,13 @@ void WipeTower2::set_extruder(size_t idx, const PrintConfig& config)
         const size_t wall_idx    = wt_filament > 0 ? size_t(wt_filament - 1) : 0;
         // set_extruder() is called with idx ascending, so seeding on idx 0 leaves a sane fallback
         // if wall_idx is never reached (e.g. a stale config naming a filament that is not loaded).
+        // FOS 8.5: the structure width is the wall filament's AUTHORED tower width (notebook), same
+        // source as the per-tool widths so the wall and the tool that prints it agree; fall back to
+        // the 8.4 1.25*nozzle rule when unauthored.
         if (idx == 0 || idx == wall_idx)
-            m_perimeter_width = nozzle_diameter * Width_To_Nozzle_Ratio;
+            m_perimeter_width = (m_filpar[idx].tower_line_width > 0.f)
+                ? m_filpar[idx].tower_line_width
+                : nozzle_diameter * Width_To_Nozzle_Ratio;
     }
 
     if (m_semm) {
