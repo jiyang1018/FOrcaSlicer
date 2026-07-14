@@ -2636,6 +2636,8 @@ void TabPrint::build()
                     auto slot_lw = std::make_shared<ConfigOptionsGroup>(tab_panel, _L("Line width"), "param_line_width", &m_fos_slot_configs[n], true);
                     slot_lw->append_single_option_line("line_width", "quality_settings_line_width");
                     slot_lw->append_single_option_line("initial_layer_line_width", "quality_settings_line_width");
+                    // FOS 8.5: per-nozzle prime tower line width (default 125% of this nozzle).
+                    slot_lw->append_single_option_line("tower_line_width", "quality_settings_line_width");
                     setup_slot_group(slot_lw);
                     slot_vsizer->Add(slot_lw->sizer, 0, wxEXPAND);
                     m_fos_slot_optgroups[n].push_back(slot_lw);

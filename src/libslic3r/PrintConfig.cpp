@@ -4019,16 +4019,19 @@ void PrintConfigDef::init_fff_params()
     // it is handed (8.4 rule), so 125% self-scales per slot.
     def = this->add("tower_line_width", coFloatOrPercent);
     def->label = L("Prime tower line width");
-    def->tooltip = L("Line width used by this nozzle on the prime tower. A percentage is "
-                     "relative to this nozzle's diameter, so the default 125% scales with "
-                     "the nozzle. The tower's structure (footprint, walls, brim) is printed "
-                     "at the wipe tower filament's value; every other tool uses its own for "
-                     "ramming and wiping.");
+    def->tooltip = L("Line width used by this nozzle on the prime tower. Set 0 for auto "
+                     "(1.25 x this nozzle's diameter). A percentage is relative to this "
+                     "nozzle's diameter. The tower's structure (footprint, walls, brim) is "
+                     "printed at the wipe tower filament's value; every other tool uses its "
+                     "own for ramming and wiping.");
     def->sidetext = L("mm or %");
     def->ratio_over = "nozzle_diameter";
     def->min = 0;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloatOrPercent(125, true));
+    // FOS 8.5: default 0 = auto, consistent with every other *_line_width field. 0 resolves to
+    // 1.25 * this nozzle via the WipeTower2 fallback (tool_line_width), so the sliced result is
+    // identical to an explicit 125% while the field reads in mm like its siblings.
+    def->set_default_value(new ConfigOptionFloatOrPercent(0, false));
 
     // FOS 8.5: per-nozzle RESOLVED arrays. All are written by the GUI from the live
     // m_fos_slot_configs (so unsaved notebook edits are captured), stored in
