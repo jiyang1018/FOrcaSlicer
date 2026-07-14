@@ -273,6 +273,21 @@ void ConfigManipulation::update_print_fff_config(DynamicPrintConfig* config, con
         is_msg_dlg_already_exist = false;
     }
 
+    // FOS 8.5: cap the first layer height by the SMALLEST USED nozzle's max_layer_height too
+    // (same max_lh computed above for layer_height). Stock only floored it at >0; a 0.2 tip cannot
+    // lay a thick first layer any more than a thick regular layer.
+    if (max_lh > 0.2 && config->option<ConfigOptionFloat>("initial_layer_print_height")->value > max_lh + EPSILON)
+    {
+        const wxString msg_text = wxString::Format(L"First layer height is too large for the smallest used nozzle.\nReset to %0.3f.", max_lh);
+        MessageDialog dialog(nullptr, msg_text, "", wxICON_WARNING | wxOK);
+        DynamicPrintConfig new_conf = *config;
+        is_msg_dlg_already_exist = true;
+        dialog.ShowModal();
+        new_conf.set_key_value("initial_layer_print_height", new ConfigOptionFloat(max_lh));
+        apply(config, &new_conf);
+        is_msg_dlg_already_exist = false;
+    }
+
     if (abs(config->option<ConfigOptionFloat>("xy_hole_compensation")->value) > 2)
     {
         const wxString msg_text = _(L("This setting is only used for model size tunning with small value in some cases.\n"
