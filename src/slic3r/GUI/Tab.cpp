@@ -25,7 +25,6 @@
 #include <wx/filedlg.h>
 #include <iomanip>
 #include <sstream>
-
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include "libslic3r/libslic3r.h"
@@ -425,6 +424,17 @@ void Tab::create_preset_tab()
     m_main_sizer = new wxBoxSizer( wxVERTICAL );
     m_top_sizer = new wxBoxSizer( wxHORIZONTAL );
 
+    // FOS: nozzle label for per-nozzle PRP rows
+    if (m_type == Preset::TYPE_PRINT) {
+        int nozzle_num = 1;
+        if (auto* nt = dynamic_cast<TabPrintNozzle*>(this))
+            nozzle_num = nt->nozzle_idx() + 1;
+        auto* lbl = new wxStaticText(m_top_panel, wxID_ANY,
+            wxString::Format(_L("Nozzle %d"), nozzle_num));
+        lbl->SetFont(Label::Body_14);
+        m_top_sizer->Add(lbl, 0, wxALIGN_CENTER_VERTICAL | wxLEFT,
+            FromDIP(SidebarProps::ContentMargin()));
+    }
     m_top_sizer->Add(m_undo_btn, 0, wxLEFT | wxALIGN_CENTER_VERTICAL, FromDIP(SidebarProps::ContentMargin()));
     // BBS: model config
     if (m_presets_choice) {
@@ -895,9 +905,211 @@ void Tab::decorate()
 
     }
 
+    // FOS: decorate custom nozzle slot + feature fields (invisible to preset diff)
+    if (auto* tp = dynamic_cast<TabPrint*>(this))
+        tp->fos_decorate();
+
     if (m_active_page)
         m_active_page->refresh();
 }
+
+// FOS: manual decoration for custom nozzle slot + feature optgroups.
+// Tab::decorate() only decorates fields whose status lives in m_options_list
+// (driven by the preset diff). Slot fields (m_fos_slot_configs) and feature
+// fields (m_fos_merged_config) are invisible to that diff, so we set their
+// undo bitmap + label colour here from the m_fos_feature_dirty cache, which is
+// written at edit time. Uses the same bitmap/colour members as Tab::decorate()
+// so dots are visually consistent.
+// FOS: feature field -> filament assignment key (shared with fos_rebuild_merged_config's map)
+static std::string fos_filament_key_for_feature(const std::string& opt_key)
+{
+    static const std::map<std::string,std::string> m = {
+        {"outer_wall_line_width",            "wall_filament"},
+        {"inner_wall_line_width",            "inner_wall_filament"},
+        {"top_surface_line_width",           "solid_infill_filament"},
+        {"sparse_infill_line_width",         "sparse_infill_filament"},
+        {"internal_solid_infill_line_width", "solid_infill_filament"},
+        {"support_line_width",               "support_filament"},
+        {"outer_wall_speed",                 "wall_filament"},
+        {"inner_wall_speed",                 "inner_wall_filament"},
+        {"small_perimeter_speed",            "wall_filament"},
+        {"small_perimeter_threshold",        "wall_filament"},
+        {"sparse_infill_speed",              "sparse_infill_filament"},
+        {"internal_solid_infill_speed",      "solid_infill_filament"},
+        {"top_surface_speed",                "solid_infill_filament"},
+        {"gap_infill_speed",                 "wall_filament"},
+        {"ironing_speed",                    "solid_infill_filament"},
+        {"support_speed",                    "support_filament"},
+        {"support_interface_speed",          "support_interface_filament"},
+    };
+    auto it = m.find(opt_key);
+    return it != m.end() ? it->second : std::string();
+}
+
+// FOS: resolve a feature key to its 0-based nozzle slot via filament assignment.
+int TabPrint::fos_slot_idx_for_feature_key(const std::string& opt_key)
+{
+    if (!m_config) return 0;
+    std::string filament_key = fos_filament_key_for_feature(opt_key);
+    if (filament_key.empty()) return 0;
+    auto* opt = m_config->option<ConfigOptionInt>(filament_key);
+    int slot = opt ? opt->value - 1 : 0; // 1-based filament -> 0-based slot
+    if (slot < 0 || slot >= (int)m_fos_slot_configs.size()) return 0;
+    return slot;
+}
+
+void TabPrint::fos_decorate()
+{
+    const ScalableBitmap* icon_mod   = &m_bmp_value_revert;
+    const ScalableBitmap* icon_clean = &m_bmp_white_bullet;
+    const wxString*       tt_mod     = &m_tt_value_revert;
+    const wxString*       tt_clean   = &m_tt_white_bullet;
+
+    // slot >= 0: slot-scoped key "slot:opt_key" (notebook tabs).
+    // slot <  0: feature optgroup; key resolves to its filament-assigned slot.
+    auto decorate_group = [&](ConfigOptionsGroupShp grp, int slot) {
+        if (!grp)
+            return;
+        for (const Line& line : grp->get_lines()) {
+            for (const Option& opt : line.get_options()) {
+                const std::string& key = opt.opt_id;
+                Field* field = grp->get_field(key);
+                if (!field)
+                    continue;
+                int eff_slot = (slot >= 0) ? slot : fos_slot_idx_for_feature_key(key);
+                std::string cache_key = std::to_string(eff_slot) + ":" + key;
+                auto it = m_fos_feature_dirty.find(cache_key);
+                bool dirty = (it != m_fos_feature_dirty.end() && it->second);
+                field->m_is_modified_value = dirty;
+                field->set_undo_bitmap(dirty ? icon_mod : icon_clean);
+                field->set_undo_to_sys_bitmap(icon_clean);
+                field->set_undo_tooltip(dirty ? tt_mod : tt_clean);
+                field->set_undo_to_sys_tooltip(tt_clean);
+                field->set_label_colour(dirty ? &m_modified_label_clr : &m_default_text_clr);
+            }
+        }
+    };
+
+    // Slot 0 (N1): dirty state from m_options_list (standard preset diff)
+    if (!m_fos_slot_optgroups.empty()) {
+        for (auto& grp : m_fos_slot_optgroups[0]) {
+            if (!grp) continue;
+            for (const Line& line : grp->get_lines()) {
+                for (const Option& opt : line.get_options()) {
+                    const std::string& key = opt.opt_id;
+                    Field* field = grp->get_field(key);
+                    if (!field) continue;
+                    auto it = m_options_list.find(key);
+                    bool dirty = (it != m_options_list.end()) && ((it->second & osInitValue) == 0);
+                    field->m_is_modified_value = dirty;
+                    field->set_undo_bitmap(dirty ? icon_mod : icon_clean);
+                    field->set_undo_to_sys_bitmap(icon_clean);
+                    field->set_undo_tooltip(dirty ? tt_mod : tt_clean);
+                    field->set_undo_to_sys_tooltip(tt_clean);
+                    field->set_label_colour(dirty ? &m_modified_label_clr : &m_default_text_clr);
+                }
+            }
+        }
+    }
+
+    // Slots 1..n-1: dirty state from m_fos_feature_dirty cache
+    for (size_t s = 1; s < m_fos_slot_optgroups.size(); ++s)
+        for (auto& grp : m_fos_slot_optgroups[s])
+            decorate_group(grp, (int)s);
+
+    // Feature optgroups (Other line widths / Other layer speeds)
+    for (auto& grp : m_fos_feature_optgroups)
+        decorate_group(grp, -1);
+}
+
+void TabPrint::fos_trigger_reslice()
+{
+    if (m_preset_bundle) {
+        auto* serial = m_preset_bundle->project_config
+            .option<ConfigOptionInt>("fos_slot_config_serial", true);
+        if (serial) {
+            serial->value++;
+            wxGetApp().plater()->on_config_change(m_preset_bundle->project_config);
+        }
+    }
+}
+
+void TabPrint::fos_decorate_slot(int slot)
+{
+    if (slot < 0 || slot >= (int)m_fos_slot_optgroups.size()) return;
+    // FOS: light nozzle tab undo button based on any dirty field in this slot
+    auto* pp = wxGetApp().params_panel();
+    if (pp) {
+        auto* nt = pp->get_nozzle_tab(slot);
+        if (nt) {
+            bool any_dirty = false;
+            for (auto& kvp : m_fos_feature_dirty) {
+                if (kvp.first.rfind(std::to_string(slot) + ":", 0) == 0 && kvp.second) {
+                    any_dirty = true;
+                    break;
+                }
+            }
+            nt->set_fos_dirty(any_dirty);
+        }
+    }
+    const ScalableBitmap* icon_mod   = &m_bmp_value_revert;
+    const ScalableBitmap* icon_clean = &m_bmp_white_bullet;
+    const wxString*       tt_mod     = &m_tt_value_revert;
+    const wxString*       tt_clean   = &m_tt_white_bullet;
+    for (auto& grp : m_fos_slot_optgroups[slot]) {
+        if (!grp || !grp->custom_ctrl) continue;
+        for (auto& kvp : grp->opt_map()) {
+            const std::string& key = kvp.first;
+            Field* field = grp->get_fieldc(key, -1);
+            if (!field) continue;
+            std::string cache_key = std::to_string(slot) + ":" + key;
+            auto it = m_fos_feature_dirty.find(cache_key);
+            bool dirty = (it != m_fos_feature_dirty.end() && it->second);
+            field->m_is_modified_value = dirty;
+            field->set_undo_bitmap(dirty ? icon_mod : icon_clean);
+            field->set_undo_to_sys_bitmap(icon_clean);
+            field->set_undo_tooltip(dirty ? tt_mod : tt_clean);
+            field->set_undo_to_sys_tooltip(tt_clean);
+            field->set_label_colour(dirty ? &m_modified_label_clr : &m_default_text_clr);
+            if (Line* ln = grp->get_line(key)) {
+                ln->set_undo_bitmap(dirty ? icon_mod : icon_clean);
+                ln->set_undo_to_sys_bitmap(icon_clean);
+                ln->set_undo_tooltip(dirty ? tt_mod : tt_clean);
+                ln->set_undo_to_sys_tooltip(tt_clean);
+            }
+        }
+        grp->custom_ctrl->Refresh();
+    }
+}
+
+void TabPrintNozzle::fos_roll_back()
+{
+    if (!m_fos_dirty) return;
+    auto* tab_print = dynamic_cast<TabPrint*>(wxGetApp().get_tab(Preset::TYPE_PRINT));
+    if (tab_print) {
+        tab_print->fos_clear_slot_preset_name(m_nozzle_idx - 1);
+        tab_print->fos_begin_slot_reload();
+        wxGetApp().CallAfter([tab_print, idx = m_nozzle_idx - 1]() {
+            tab_print->fos_reload_slot_config(idx);
+        });
+    }
+    set_fos_dirty(false);
+    // FOS: clear dirty cache for this slot
+    auto* tp = dynamic_cast<TabPrint*>(wxGetApp().get_tab(Preset::TYPE_PRINT));
+    if (tp) {
+        std::string prefix = std::to_string(m_nozzle_idx - 1) + ":";
+        for (auto it = tp->m_fos_feature_dirty.begin(); it != tp->m_fos_feature_dirty.end(); ++it)
+            if (it->first.rfind(prefix, 0) == 0)
+                it->second = false;
+        tp->fos_decorate();
+    }
+}
+
+void TabPrintNozzle::on_roll_back_value(const bool to_sys)
+{
+    fos_roll_back();
+}
+
 // Update UI according to changes
 void Tab::update_changed_ui()
 {
@@ -1163,14 +1375,34 @@ void Tab::on_roll_back_value(const bool to_sys /*= true*/)
         }
         for (const auto &kvp : group->opt_map()) {
             const std::string& opt_key = kvp.first;
+            // FOS: never revert nozzle assignments via PRP undo
+            static const std::vector<std::string> fos_nozzle_keys = {
+                "wall_filament", "inner_wall_filament", "sparse_infill_filament",
+                "solid_infill_filament", "support_filament", "support_interface_filament"
+            };
+            if (std::find(fos_nozzle_keys.begin(), fos_nozzle_keys.end(), opt_key) != fos_nozzle_keys.end())
+                continue;
             if ((m_options_list[opt_key] & os) == 0)
                 to_sys ? group->back_to_sys_value(opt_key) : group->back_to_initial_value(opt_key);
         }
     }
 
     // BBS: restore all pages in preset
+    // FOS: discard_current_changes reverts m_config wholesale to the stored preset,
+    // which would wipe the per-feature nozzle assignments (now preset-scope keys).
+    // Preserve them across the discard, mirroring the fos_nozzle_keys guard above.
+    static const std::vector<std::string> fos_nozzle_keys = {
+        "wall_filament", "inner_wall_filament", "sparse_infill_filament",
+        "solid_infill_filament", "support_filament", "support_interface_filament"
+    };
+    std::vector<std::pair<std::string, int>> fos_saved_nozzle_assignments;
+    for (const std::string& k : fos_nozzle_keys) {
+        if (m_config->has(k))
+            fos_saved_nozzle_assignments.emplace_back(k, m_config->option<ConfigOptionInt>(k)->value);
+    }
     m_presets->discard_current_changes();
-
+    for (const auto& kv : fos_saved_nozzle_assignments)
+        m_config->option<ConfigOptionInt>(kv.first, true)->value = kv.second;
     m_postpone_update_ui = false;
 
     // When all values are rolled, then we have to update whole tab in respect to the reverted values
@@ -1845,7 +2077,7 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
 
     // FOS: when OW nozzle changes, update GL volume colors; warn and erase painting if present
     if (opt_key == "wall_filament") {
-        // FOS: TODO — re-enable painting erase warning after further testing
+        // FOS: TODO - re-enable painting erase warning after further testing
         // const int old_ow_extruder = wxGetApp().preset_bundle->prints
         //     .get_selected_preset().config.opt_int("wall_filament");
         // bool has_painting = false;
@@ -2206,6 +2438,100 @@ void Tab::update_frequently_changed_parameters()
 }
 
 //BBS: BBS new parameter list
+void TabPrintNozzle::create_preset_tab()
+{
+    // FOS: call full Tab::create_preset_tab() to get header row correctly
+    // build() is overridden to be empty so no pages are created
+    Tab::create_preset_tab();
+    // FOS: remove from tabs_list - nozzle tabs are not global tabs
+    auto& tl = wxGetApp().tabs_list;
+    tl.erase(std::remove(tl.begin(), tl.end(), this), tl.end());
+    // FOS: reduce vertical padding on nozzle rows to match FLP/nozzle diameter spacing (4px)
+    if (m_main_sizer) {
+        auto* item = m_main_sizer->GetItem(m_top_panel);
+        if (item) {
+            item->SetFlag(wxEXPAND);
+            item->SetBorder(0);
+        }
+        m_main_sizer->Layout();
+    }
+    // FOS: set nozzle slot for PRP filtering and populate combo
+    if (m_presets_choice) {
+        auto* nozzle_combo = static_cast<TabPresetComboBox*>(m_presets_choice);
+        nozzle_combo->set_nozzle_slot(m_nozzle_idx);
+        // FOS: override selection handler - nozzle tabs store per-slot PRP, don't modify global preset
+        m_presets_choice->set_selection_changed_function([this](int selection) {
+            std::string preset_name = m_presets_choice->GetString(selection).ToUTF8().data();
+            m_selected_preset_name = Preset::remove_suffix_modified(preset_name);
+            // FOS: only invalidate the slice when the PRP selection actually changed
+            const bool fos_prp_changed = (m_selected_preset_name != m_fos_last_applied_prp);
+            m_fos_last_applied_prp = m_selected_preset_name;
+            // FOS: write per-slot PRP selection into project config for slicing pipeline
+            if (auto* app = &wxGetApp(); app && app->preset_bundle) {
+                auto* opt = app->preset_bundle->project_config
+                    .option<ConfigOptionStrings>("print_filament_presets", true);
+                if (opt) {
+                    while ((int)opt->values.size() <= m_nozzle_idx)
+                        opt->values.push_back("");
+                    opt->values[m_nozzle_idx] = m_selected_preset_name;
+                }
+                // FOS 8.5: fos_inner_lh_max is a MAPS key (per-nozzle inner-wall layer height).
+                // Layer heights are SYNCED in 8.5, so there is no per-nozzle inner lh to resolve.
+                // Removed with the MAPS pipeline; do not reintroduce.
+
+                // FOS: update fos_nozzle_layer_heights for all slots
+                {
+                    auto* nlh_opt = app->preset_bundle->project_config
+                        .option<ConfigOptionFloats>("fos_nozzle_layer_heights", true);
+                    if (nlh_opt) {
+                        nlh_opt->values.resize(4, 0.f);
+                        // Slot 0 = Nozzle 1 — from main preset
+                        nlh_opt->values[0] = static_cast<float>(
+                            app->preset_bundle->prints.get_edited_preset().config.opt_float("layer_height"));
+                        // Slots 1-3 = Nozzle 2-4 — from per-slot PRP selections
+                        auto* pfp_opt = app->preset_bundle->project_config
+                            .option<ConfigOptionStrings>("print_filament_presets");
+                        if (pfp_opt) {
+                            for (int i = 1; i <= 3; ++i) {
+                                // Use current selection directly for this slot
+                                const std::string& preset_name = (i == m_nozzle_idx)
+                                    ? m_selected_preset_name
+                                    : (i < (int)pfp_opt->values.size() ? pfp_opt->values[i] : "");
+                                if (!preset_name.empty()) {
+                                    const Preset* p = app->preset_bundle->prints
+                                        .find_preset(preset_name, false);
+                                    if (p)
+                                        nlh_opt->values[i] = static_cast<float>(
+                                            p->config.opt_float("layer_height"));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // FOS: reload slot tab values from newly selected PRP
+            // m_nozzle_idx is 0-based (0=N1, 1=N2, ...) = unified slot index directly
+            if (auto* tab_print = dynamic_cast<TabPrint*>(wxGetApp().get_tab(Preset::TYPE_PRINT)))
+                tab_print->fos_reload_slot_config(m_nozzle_idx);
+            // FOS: on a real PRP change, mark the current plate's slice stale and refresh the
+            // slice button, so it greens regardless of which tab is active. Runs in the
+            // synchronous selection-event context (not the async apply path that re-validates).
+            if (fos_prp_changed) {
+                if (auto* pl = wxGetApp().plater()) {
+                    if (auto* plate = pl->get_partplate_list().get_curr_plate())
+                        plate->update_slice_result_valid_state(false);
+                    if (wxGetApp().mainframe)
+                        wxGetApp().mainframe->update_slice_print_status(MainFrame::SlicePrintEventType::eEventSliceUpdate, true, false);
+                }
+            }
+        });
+        m_presets_choice->update();
+    }
+    // FOS: bind undo button to slot-aware rollback
+    if (m_undo_btn)
+        m_undo_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { fos_roll_back(); });
+}
+
 void TabPrint::build()
 {
     BOOST_LOG_TRIVIAL(info) << "TabPrint::build() starting";
@@ -2213,21 +2539,166 @@ void TabPrint::build()
         m_presets = &m_preset_bundle->prints;
     load_initial_data();
 
+    // FOS: pre-populate slot configs so optgroups never read from empty config
+    // Values are corrected by fos_reload_slot_config CallAfter before user sees them
+    {
+        const auto* nd_opt = m_preset_bundle ? m_preset_bundle->printers.get_edited_preset()
+            .config.option<ConfigOptionFloats>("nozzle_diameter") : nullptr;
+        int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 4;
+        m_fos_slot_configs.assign(nozzle_count, *m_config);
+        m_fos_slot_baselines.assign(nozzle_count, *m_config);
+        m_fos_slot_preset_names.resize(nozzle_count);
+        m_fos_slot_optgroups.resize(nozzle_count);
+        m_fos_merged_config = *m_config;
+        m_fos_merged_baseline = *m_config;
+    }
+
     auto page = add_options_page(L("Quality"), "custom-gcode_quality"); // ORCA: icon only visible on placeholders
-        auto optgroup = page->new_optgroup(L("Layer height"), L"param_layer_height");
-        optgroup->append_single_option_line("layer_height","quality_settings_layer_height");
-        optgroup->append_single_option_line("initial_layer_print_height","quality_settings_layer_height");
-
-        optgroup = page->new_optgroup(L("Line width"), L"param_line_width");
-        optgroup->append_single_option_line("line_width","quality_settings_line_width");
-        optgroup->append_single_option_line("initial_layer_line_width","quality_settings_line_width");
-        optgroup->append_single_option_line("outer_wall_line_width","quality_settings_line_width");
-        optgroup->append_single_option_line("inner_wall_line_width","quality_settings_line_width");
-        optgroup->append_single_option_line("top_surface_line_width","quality_settings_line_width");
-        optgroup->append_single_option_line("sparse_infill_line_width","quality_settings_line_width");
-        optgroup->append_single_option_line("internal_solid_infill_line_width","quality_settings_line_width");
-        optgroup->append_single_option_line("support_line_width","quality_settings_line_width");
-
+        // FOS: per-nozzle 4-tab panel for Layer height and Line width - main TabPrint only
+        // TODO Step 3: each tab will show per-nozzle values once ALHS is implemented
+        // For now all tabs show the same global config values
+        if (dynamic_cast<TabPrintModel*>(this) == nullptr) {
+            // FOS: notebook created inside a Line widget so it participates in page activate/clear lifecycle
+            auto nb_group = page->new_optgroup(wxEmptyString);
+            Line nb_line { wxEmptyString, wxEmptyString };
+            nb_line.full_width = 1;
+            nb_line.widget = [this](wxWindow* parent) -> wxSizer* {
+                auto* nozzle_notebook = new wxNotebook(parent, wxID_ANY);
+                const auto* nd_opt = m_preset_bundle->printers.get_edited_preset()
+                    .config.option<ConfigOptionFloats>("nozzle_diameter");
+                int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 1;
+// FOS: unified loop over all nozzle slots (0=N1, 1=N2, ...)
+                // Resize vectors to nozzle_count on first build
+                if ((int)m_fos_slot_configs.size() < nozzle_count) {
+                    m_fos_slot_configs.resize(nozzle_count);
+                    m_fos_slot_baselines.resize(nozzle_count);
+                    m_fos_slot_preset_names.resize(nozzle_count);
+                    m_fos_slot_optgroups.resize(nozzle_count);
+                }
+                for (int n = 0; n < nozzle_count; ++n) {
+                    // Slot 0 (N1) mirrors m_config; others start as copy of m_config until PRP loaded
+                    auto* tab_panel = new wxPanel(nozzle_notebook, wxID_ANY);
+                    tab_panel->SetBackgroundColour(*wxWHITE);
+                    auto* slot_vsizer = new wxBoxSizer(wxVERTICAL);
+                    slot_vsizer->AddSpacer(FromDIP(10));
+                    auto setup_slot_group = [this, n](std::shared_ptr<ConfigOptionsGroup> grp) {
+                        grp->set_config_category_and_type(_L("Quality"), static_cast<int>(m_type));
+                        grp->label_width = 20;
+                        grp->split_multi_line = true;
+                        grp->option_label_at_right = true;
+                        if (n == 0) {
+                            // FOS: N1 changes go through standard Tab machinery
+                            // Sync edit back to m_config so preset diff sees it as dirty
+                            grp->m_on_change = [this](t_config_option_key opt_key, boost::any value) {
+                                const ConfigOption* val = m_fos_slot_configs[0].option(opt_key);
+                                if (val && m_config->option(opt_key))
+                                    m_config->set_key_value(opt_key, val->clone());
+                                update_dirty();
+                                on_value_change(opt_key, value);
+                            };
+                            grp->m_get_initial_config = [this]() {
+                                return m_presets->get_selected_preset().config;
+                            };
+                            grp->m_get_sys_config = [this]() {
+                                return m_presets->get_selected_preset_parent()->config;
+                            };
+                            grp->have_sys_config = [this]() {
+                                return m_presets->get_selected_preset_parent() != nullptr;
+                            };
+                        } else {
+                            grp->m_on_change = [this, n](t_config_option_key opt_key, boost::any value) {
+                                // FOS: edit-time dirty capture for reset dot (Tab::decorate cannot see slot configs).
+                                // change_opt_value() in ConfigOptionsGroup::on_change_OG runs before this lambda,
+                                // so m_fos_slot_configs[n] already holds the new value for scalar (in-map) keys.
+                                bool dirty = true;
+                                if (n >= 0 && n < (int)m_fos_slot_baselines.size()) {
+                                    const ConfigOption *base = m_fos_slot_baselines[n].option(opt_key);
+                                    const ConfigOption *cur  = m_fos_slot_configs[n].option(opt_key);
+                                    if (base && cur)
+                                        dirty = (*cur != *base);
+                                }
+                                m_fos_feature_dirty[std::to_string(n) + ":" + opt_key] = dirty;
+                                fos_decorate_slot(n);
+                                fos_trigger_reslice();
+                                fos_trigger_reslice();
+                            };
+                            grp->m_get_initial_config = [this, n]() { return m_fos_slot_baselines[n]; };
+                            grp->m_get_sys_config = [this, n]() { return m_fos_slot_configs[n]; };
+                            grp->have_sys_config = [this, n]() { return true; };
+                        }
+                        grp->activate();
+                        grp->update_visibility(comAdvanced);
+                    };
+                    auto slot_lh = std::make_shared<ConfigOptionsGroup>(tab_panel, _L("Layer height"), "param_layer_height", &m_fos_slot_configs[n], true);
+                    slot_lh->append_single_option_line("layer_height", "quality_settings_layer_height");
+                    slot_lh->append_single_option_line("initial_layer_print_height", "quality_settings_layer_height");
+                    setup_slot_group(slot_lh);
+                    slot_vsizer->Add(slot_lh->sizer, 0, wxEXPAND);
+                    m_fos_slot_optgroups[n].push_back(slot_lh);
+                    slot_vsizer->AddSpacer(FromDIP(10));
+                    auto slot_lw = std::make_shared<ConfigOptionsGroup>(tab_panel, _L("Line width"), "param_line_width", &m_fos_slot_configs[n], true);
+                    slot_lw->append_single_option_line("line_width", "quality_settings_line_width");
+                    slot_lw->append_single_option_line("initial_layer_line_width", "quality_settings_line_width");
+                    setup_slot_group(slot_lw);
+                    slot_vsizer->Add(slot_lw->sizer, 0, wxEXPAND);
+                    m_fos_slot_optgroups[n].push_back(slot_lw);
+                    wxGetApp().CallAfter([this, n]() {
+                        fos_reload_slot_config(n);
+                    });
+                    tab_panel->SetSizer(slot_vsizer);
+                    nozzle_notebook->AddPage(tab_panel, wxString::Format(_L("Nozzle %d"), n + 1));
+                }
+                nozzle_notebook->SetMinSize(wxSize(FromDIP(69), -1));
+                auto* wrap = new wxBoxSizer(wxVERTICAL);
+                wrap->Add(nozzle_notebook, 1, wxEXPAND);
+                return wrap;
+            };
+            nb_group->append_line(nb_line);
+        } // end FOS per-nozzle block
+        // FOS: Other line widths use proxy config sourced from per-feature nozzle slot
+        page->set_config(&m_fos_merged_config);
+        auto optgroup = page->new_optgroup(L("Other line widths"), "param_line_width");
+        optgroup->append_single_option_line("outer_wall_line_width", "quality_settings_line_width");
+        optgroup->append_single_option_line("inner_wall_line_width", "quality_settings_line_width");
+        optgroup->append_single_option_line("top_surface_line_width", "quality_settings_line_width");
+        optgroup->append_single_option_line("sparse_infill_line_width", "quality_settings_line_width");
+        optgroup->append_single_option_line("internal_solid_infill_line_width", "quality_settings_line_width");
+        optgroup->append_single_option_line("support_line_width", "quality_settings_line_width");
+        optgroup->m_on_change = [this](t_config_option_key opt_key, boost::any value) {
+            // FOS: sync edit to correct slot config and write dirty cache
+            int slot = fos_slot_idx_for_feature_key(opt_key);
+            const ConfigOption* val = m_fos_merged_config.option(opt_key);
+            if (val) {
+                if (m_fos_slot_configs[slot].option(opt_key))
+                    m_fos_slot_configs[slot].set_key_value(opt_key, val->clone());
+                const ConfigOption* base = m_fos_merged_baseline.option(opt_key);
+                bool dirty = !base || (*val != *base);
+                std::string cache_key = std::to_string(slot) + ":" + opt_key;
+                m_fos_feature_dirty[cache_key] = dirty;
+            }
+            fos_decorate();
+            // FOS: light the nozzle tab undo button for the affected slot
+            auto* pp = wxGetApp().params_panel();
+            if (pp) {
+                int slot = fos_slot_idx_for_feature_key(opt_key);
+                auto* nt = pp->get_nozzle_tab(slot);
+                if (nt) {
+                    bool any_dirty = false;
+                    for (auto& kvp : m_fos_feature_dirty)
+                        if (kvp.first.rfind(std::to_string(slot) + ":", 0) == 0 && kvp.second)
+                            { any_dirty = true; break; }
+                    nt->set_fos_dirty(any_dirty);
+                }
+            }
+            fos_trigger_reslice();
+            update_dirty();
+            on_value_change(opt_key, value);
+        };
+        optgroup->m_get_initial_config = [this]() { return m_fos_merged_baseline; };
+        optgroup->m_get_sys_config     = [this]() { return m_fos_merged_config; };
+        optgroup->have_sys_config      = [this]() { return true; };
+        m_fos_feature_optgroups.push_back(optgroup);
+        page->set_config(m_config); // FOS: restore page config
         optgroup = page->new_optgroup(L("Seam"), L"param_seam");
         optgroup->append_single_option_line("seam_position", "quality_settings_seam#seam-position");
         optgroup->append_single_option_line("staggered_inner_seams", "quality_settings_seam#staggered-inner-seams");
@@ -2331,6 +2802,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("detect_thin_wall", "strength_settings_walls#detect-thin-wall");
 
         optgroup = page->new_optgroup(L("Top/bottom shells"), L"param_shell");
+        // FOS 8.5: top_layer_accuracy is a MAPS-only key; not carried into the 8.x line.
         optgroup->append_single_option_line("top_surface_pattern", "fill-patterns#Infill of the top surface and bottom surface");
         optgroup->append_single_option_line("top_shell_layers");
         optgroup->append_single_option_line("top_shell_thickness");
@@ -2377,12 +2849,121 @@ void TabPrint::build()
         optgroup->append_single_option_line("ensure_vertical_shell_thickness", "strength_settings_advanced#ensure-vertical-shell-thickness");
 
     page = add_options_page(L("Speed"), "custom-gcode_speed"); // ORCA: icon only visible on placeholders
-        optgroup = page->new_optgroup(L("Initial layer speed"), L"param_speed_first", 15);
-    optgroup->append_single_option_line("initial_layer_speed", "speed_settings_initial_layer_speed#initial-layer");
-        optgroup->append_single_option_line("initial_layer_infill_speed", "speed_settings_initial_layer_speed#initial-layer-infill");
-        optgroup->append_single_option_line("initial_layer_travel_speed", "speed_settings_initial_layer_speed#initial-layer-travel-speed");
-        optgroup->append_single_option_line("slow_down_layers", "speed_settings_initial_layer_speed#number-of-slow-layers");
-        optgroup = page->new_optgroup(L("Other layers speed"), L"param_speed", 15);
+        // FOS: per-nozzle 4-tab panel for Initial layer speed, Other layers speed, Overhang speed
+        // TODO Step 3: each tab will show per-nozzle values once ALHS is implemented
+        // For now all tabs show the same global config values
+        if (dynamic_cast<TabPrintModel*>(this) == nullptr) {
+            auto speed_nb_group = page->new_optgroup(wxEmptyString);
+            Line speed_nb_line { wxEmptyString, wxEmptyString };
+            speed_nb_line.full_width = 1;
+            speed_nb_line.widget = [this](wxWindow* parent) -> wxSizer* {
+            auto* speed_notebook = new wxNotebook(parent, wxID_ANY);
+            // FOS: set uniform tab width based on widest label "Nozzle 2"
+            //{
+            //    wxClientDC dc(speed_notebook);
+            //dc.SetFont(speed_notebook->GetFont());
+            //wxSize text_sz = dc.GetTextExtent("Nozzle 22");
+            //int tab_w = std::max(60, text_sz.x + FromDIP(4));
+            //speed_notebook->SetTabSize(wxSize(tab_w, text_sz.y + FromDIP(4)));
+            //}
+            const auto* nd_opt = m_preset_bundle->printers.get_edited_preset()
+                .config.option<ConfigOptionFloats>("nozzle_diameter");
+            int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 1;
+            // FOS: unified loop over all nozzle slots (0=N1, 1=N2, ...)
+            if ((int)m_fos_slot_configs.size() < nozzle_count) {
+                m_fos_slot_configs.resize(nozzle_count);
+                m_fos_slot_baselines.resize(nozzle_count);
+                m_fos_slot_preset_names.resize(nozzle_count);
+                m_fos_slot_optgroups.resize(nozzle_count);
+            }
+            for (int n = 0; n < nozzle_count; ++n) {
+                auto* tab_panel = new wxPanel(speed_notebook, wxID_ANY);
+                tab_panel->SetBackgroundColour(*wxWHITE);
+                auto* slot_vsizer = new wxBoxSizer(wxVERTICAL);
+                slot_vsizer->AddSpacer(FromDIP(10));
+                auto setup_slot_speed_group = [this, n](std::shared_ptr<ConfigOptionsGroup> grp) {
+                    grp->set_config_category_and_type(_L("Speed"), static_cast<int>(m_type));
+                    grp->label_width = 20;
+                    grp->split_multi_line = true;
+                    grp->option_label_at_right = true;
+                    if (n == 0) {
+                        grp->m_on_change = [this](t_config_option_key opt_key, boost::any value) {
+                            const ConfigOption* val = m_fos_slot_configs[0].option(opt_key);
+                            if (val && m_config->option(opt_key))
+                                m_config->set_key_value(opt_key, val->clone());
+                            update_dirty();
+                            on_value_change(opt_key, value);
+                        };
+                        grp->m_get_initial_config = [this]() {
+                            return m_presets->get_selected_preset().config;
+                        };
+                        grp->m_get_sys_config = [this]() {
+                            return m_presets->get_selected_preset_parent()->config;
+                        };
+                        grp->have_sys_config = [this]() {
+                            return m_presets->get_selected_preset_parent() != nullptr;
+                        };
+                    } else {
+                        grp->m_on_change = [this, n](t_config_option_key opt_key, boost::any value) {
+                            // FOS: edit-time dirty capture for reset dot (Tab::decorate cannot see slot configs).
+                            bool dirty = true;
+                            if (n >= 0 && n < (int)m_fos_slot_baselines.size()) {
+                                const ConfigOption *base = m_fos_slot_baselines[n].option(opt_key);
+                                const ConfigOption *cur  = m_fos_slot_configs[n].option(opt_key);
+                                if (base && cur)
+                                    dirty = (*cur != *base);
+                            }
+                            m_fos_feature_dirty[std::to_string(n) + ":" + opt_key] = dirty;
+                            fos_decorate_slot(n);
+                            fos_trigger_reslice();
+
+                        };
+                        grp->m_get_initial_config = [this, n]() { return m_fos_slot_baselines[n]; };
+                        grp->m_get_sys_config = [this, n]() { return m_fos_slot_configs[n]; };
+                        grp->have_sys_config = [this, n]() { return true; };
+                    }
+                    grp->activate();
+                    grp->update_visibility(comAdvanced);
+                };
+                auto slot_ils = std::make_shared<ConfigOptionsGroup>(tab_panel, _L("Initial layer speed"), "param_speed_first", &m_fos_slot_configs[n], true);
+                slot_ils->append_single_option_line("initial_layer_speed", "speed_settings_initial_layer_speed#initial-layer");
+                slot_ils->append_single_option_line("initial_layer_infill_speed", "speed_settings_initial_layer_speed#initial-layer-infill");
+                slot_ils->append_single_option_line("initial_layer_travel_speed", "speed_settings_initial_layer_speed#initial-layer-travel-speed");
+                slot_ils->append_single_option_line("slow_down_layers", "speed_settings_initial_layer_speed#number-of-slow-layers");
+                setup_slot_speed_group(slot_ils);
+                slot_vsizer->Add(slot_ils->sizer, 0, wxEXPAND);
+                m_fos_slot_optgroups[n].push_back(slot_ils);
+                slot_vsizer->AddSpacer(FromDIP(10));
+                auto slot_ohs = std::make_shared<ConfigOptionsGroup>(tab_panel, _L("Overhang speed"), "param_overhang_speed", &m_fos_slot_configs[n], true);
+                slot_ohs->append_single_option_line("enable_overhang_speed", "speed_settings_overhang_speed#slow-down-for-overhang");
+                slot_ohs->append_single_option_line("slowdown_for_curled_perimeters", "speed_settings_overhang_speed#slow-down-for-curled-perimeters");
+                slot_ohs->append_single_option_line("overhang_1_4_speed", "speed_settings_overhang_speed#slow-down-for-overhang");
+                slot_ohs->append_single_option_line("overhang_2_4_speed", "speed_settings_overhang_speed#slow-down-for-overhang");
+                slot_ohs->append_single_option_line("overhang_3_4_speed", "speed_settings_overhang_speed#slow-down-for-overhang");
+                slot_ohs->append_single_option_line("overhang_4_4_speed", "speed_settings_overhang_speed#slow-down-for-overhang");
+                slot_ohs->append_separator();
+                slot_ohs->append_single_option_line("bridge_speed", "speed_settings_overhang_speed#slow-down-for-overhang");
+                slot_ohs->append_single_option_line("internal_bridge_speed", "speed_settings_overhang_speed#slow-down-for-overhang");
+                setup_slot_speed_group(slot_ohs);
+                slot_vsizer->Add(slot_ohs->sizer, 0, wxEXPAND);
+                m_fos_slot_optgroups[n].push_back(slot_ohs);
+                wxGetApp().CallAfter([this, n]() {
+                    fos_reload_slot_config(n);
+                });
+                tab_panel->SetSizer(slot_vsizer);
+                speed_notebook->SetPadding(wxSize(FromDIP(6), FromDIP(3)));
+                speed_notebook->AddPage(tab_panel, wxString::Format(_L("Nozzle %d"), n + 1));
+            }
+            speed_notebook->SetMinSize(wxSize(FromDIP(69), -1));
+            auto* wrap = new wxBoxSizer(wxVERTICAL);
+            wrap->Add(speed_notebook, 1, wxEXPAND);
+            return wrap;
+            }; // end widget lambda
+            speed_nb_group->append_line(speed_nb_line);
+        } // end FOS speed per-nozzle block
+        // FOS: Other layer speeds use proxy config sourced from per-feature nozzle slot
+        page->set_config(&m_fos_merged_config);
+        optgroup = page->new_optgroup(L("Other layer speeds"), "param_speed");
         optgroup->append_single_option_line("outer_wall_speed", "speed_settings_other_layers_speed#outer-wall");
         optgroup->append_single_option_line("inner_wall_speed", "speed_settings_other_layers_speed#inner-wall");
         optgroup->append_single_option_line("small_perimeter_speed", "speed_settings_other_layers_speed#small-perimeters");
@@ -2394,26 +2975,45 @@ void TabPrint::build()
         optgroup->append_single_option_line("ironing_speed", "speed_settings_other_layers_speed#ironing-speed");
         optgroup->append_single_option_line("support_speed", "speed_settings_other_layers_speed#support");
         optgroup->append_single_option_line("support_interface_speed", "speed_settings_other_layers_speed#support-interface");
-        optgroup = page->new_optgroup(L("Overhang speed"), L"param_overhang_speed", 15);
-        optgroup->append_single_option_line("enable_overhang_speed", "speed_settings_overhang_speed#slow-down-for-overhang");
-        optgroup->append_single_option_line("slowdown_for_curled_perimeters", "speed_settings_overhang_speed#slow-down-for-curled-perimeters");
-        Line line = { L("Overhang speed"), L("This is the speed for various overhang degrees. Overhang degrees are expressed as a percentage of line width. 0 speed means no slowing down for the overhang degree range and wall speed is used") };
-        line.label_path = "slow-down-for-overhang";
-        line.append_option(optgroup->get_option("overhang_1_4_speed"));
-        line.append_option(optgroup->get_option("overhang_2_4_speed"));
-        line.append_option(optgroup->get_option("overhang_3_4_speed"));
-        line.append_option(optgroup->get_option("overhang_4_4_speed"));
-        optgroup->append_line(line);
-        optgroup->append_separator();
-        line = { L("Bridge"), L("Set speed for external and internal bridges") };
-        line.append_option(optgroup->get_option("bridge_speed"));
-        line.append_option(optgroup->get_option("internal_bridge_speed"));
-        optgroup->append_line(line);
-
-        optgroup = page->new_optgroup(L("Travel speed"), L"param_travel_speed", 15);
+        optgroup->m_on_change = [this](t_config_option_key opt_key, boost::any value) {
+            // FOS: sync edit to correct slot config and write dirty cache
+            int slot = fos_slot_idx_for_feature_key(opt_key);
+            const ConfigOption* val = m_fos_merged_config.option(opt_key);
+            if (val) {
+                if (m_fos_slot_configs[slot].option(opt_key))
+                    m_fos_slot_configs[slot].set_key_value(opt_key, val->clone());
+                const ConfigOption* base = m_fos_merged_baseline.option(opt_key);
+                bool dirty = !base || (*val != *base);
+                std::string cache_key = std::to_string(slot) + ":" + opt_key;
+                m_fos_feature_dirty[cache_key] = dirty;
+            }
+            fos_decorate();
+            // FOS: light the nozzle tab undo button for the affected slot
+            auto* pp = wxGetApp().params_panel();
+            if (pp) {
+                int slot = fos_slot_idx_for_feature_key(opt_key);
+                auto* nt = pp->get_nozzle_tab(slot);
+                if (nt) {
+                    bool any_dirty = false;
+                    for (auto& kvp : m_fos_feature_dirty)
+                        if (kvp.first.rfind(std::to_string(slot) + ":", 0) == 0 && kvp.second)
+                            { any_dirty = true; break; }
+                    nt->set_fos_dirty(any_dirty);
+                }
+            }
+            fos_trigger_reslice();
+            update_dirty();
+            on_value_change(opt_key, value);
+        };
+        optgroup->m_get_initial_config = [this]() { return m_fos_merged_baseline; };
+        optgroup->m_get_sys_config     = [this]() { return m_fos_merged_config; };
+        optgroup->have_sys_config      = [this]() { return true; };
+        m_fos_feature_optgroups.push_back(optgroup);
+        page->set_config(m_config); // FOS: restore page config
+        optgroup = page->new_optgroup(L("Travel speed"), L"param_travel_speed", 20);
         optgroup->append_single_option_line("travel_speed", "speed_settings_travel");
 
-        optgroup = page->new_optgroup(L("Acceleration"), L"param_acceleration", 15);
+        optgroup = page->new_optgroup(L("Acceleration"), L"param_acceleration", 20);
         optgroup->append_single_option_line("default_acceleration", "speed_settings_acceleration#normal-printing");
         optgroup->append_single_option_line("outer_wall_acceleration", "speed_settings_acceleration#outer-wall");
         optgroup->append_single_option_line("inner_wall_acceleration", "speed_settings_acceleration#inner-wall");
@@ -2426,7 +3026,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("accel_to_decel_enable", "speed_settings_acceleration");
         optgroup->append_single_option_line("accel_to_decel_factor", "speed_settings_acceleration");
 
-        optgroup = page->new_optgroup(L("Jerk(XY)"), L"param_jerk", 15);
+        optgroup = page->new_optgroup(L("Jerk(XY)"), L"param_jerk", 20);
         optgroup->append_single_option_line("default_jerk", "speed_settings_jerk_xy#default");
         optgroup->append_single_option_line("outer_wall_jerk", "speed_settings_jerk_xy#outer-wall");
         optgroup->append_single_option_line("inner_wall_jerk", "speed_settings_jerk_xy#inner-wall");
@@ -2436,7 +3036,7 @@ void TabPrint::build()
         optgroup->append_single_option_line("travel_jerk", "speed_settings_jerk_xy#travel");
         optgroup->append_single_option_line("default_junction_deviation", "speed_settings_jerk_xy#junction-deviation");
 
-        optgroup = page->new_optgroup(L("Advanced"), L"param_advanced", 15);
+        optgroup = page->new_optgroup(L("Advanced"), L"param_advanced", 20);
         optgroup->append_single_option_line("max_volumetric_extrusion_rate_slope", "speed_settings_advanced");
         optgroup->append_single_option_line("max_volumetric_extrusion_rate_slope_segment_length", "speed_settings_advanced");
         optgroup->append_single_option_line("extrusion_rate_smoothing_external_perimeter_only", "speed_settings_advanced");
@@ -2654,8 +3254,11 @@ void TabPrint::reload_config()
 {
 
 this->compatible_widget_reload(m_compatible_printers);
-    if (m_config->option("inner_wall_filament") == nullptr)
-        m_config->set_key_value("inner_wall_filament", new ConfigOptionInt(1));
+    // FOS: ensure inner_wall_filament is set - defaults to wall_filament value
+    if (m_config->option("inner_wall_filament") == nullptr) {
+        int wall_fil = m_config->option("wall_filament") ? m_config->option("wall_filament")->getInt() : 1;
+        m_config->set_key_value("inner_wall_filament", new ConfigOptionInt(wall_fil));
+    }
     if (m_config->option("outer_wall_layer_height_max") == nullptr)
         m_config->set_key_value("outer_wall_layer_height_max", new ConfigOptionFloat(0.f));
     if (m_config->option("outer_wall_seam_position") == nullptr)
@@ -2665,8 +3268,11 @@ this->compatible_widget_reload(m_compatible_printers);
     if (m_config->option("color_patch_enabled") == nullptr)
         m_config->set_key_value("color_patch_enabled", new ConfigOptionBools({false, false, false, false}));
     Tab::reload_config();
+    // FOS: sync slot 0 (N1) from m_config before reloading optgroups
+    wxGetApp().CallAfter([this]() {
+        fos_reload_slot_config(0);
+    });
 }
-
 void TabPrint::update_description_lines()
 {
     Tab::update_description_lines();
@@ -2823,12 +3429,192 @@ void TabPrint::update()
 
 void TabPrint::clear_pages()
 {
+    // FOS: detach optgroups before page clear destroys their parent windows
+    // Release without destroying - windows are owned by wx parent hierarchy
+    // FOS: detach all slot optgroups
+    for (auto& slot_grps : m_fos_slot_optgroups) {
+        for (auto& grp : slot_grps) {
+            if (grp && grp->custom_ctrl)
+                grp->custom_ctrl->opt_group = nullptr;
+            if (grp) {
+                grp->sizer = nullptr;
+                grp->custom_ctrl = nullptr;
+            }
+        }
+        slot_grps.clear();
+    }
     Tab::clear_pages();
-
     m_recommended_thin_wall_thickness_description_line = nullptr;
     m_top_bottom_shell_thickness_explanation = nullptr;
 }
 
+void TabPrint::fos_reload_slot_config(int slot_idx)
+{
+    if (slot_idx < 0) return;
+    // FOS: resize vectors if not yet sized (e.g. called before build loop runs)
+    const auto* nd_opt = m_preset_bundle ? m_preset_bundle->printers.get_edited_preset()
+        .config.option<ConfigOptionFloats>("nozzle_diameter") : nullptr;
+    int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 4;
+    if ((int)m_fos_slot_configs.size() < nozzle_count) {
+        m_fos_slot_configs.resize(nozzle_count);
+        m_fos_slot_baselines.resize(nozzle_count);
+        m_fos_slot_preset_names.resize(nozzle_count);
+        m_fos_slot_optgroups.resize(nozzle_count);
+    }
+    if (slot_idx >= (int)m_fos_slot_optgroups.size()) return;
+    if (m_fos_slot_optgroups[slot_idx].empty()) return;
+
+    // FOS: all slots use TabPrintNozzle; N1 (slot 0) TabPrintNozzle reflects main preset selection
+    auto* pp = wxGetApp().params_panel();
+    if (!pp) return;
+    auto* nt = pp->get_nozzle_tab(slot_idx);
+    if (!nt) return;
+    std::string preset_name;
+    if (slot_idx == 0) {
+        // FOS: N1 preset name comes from main preset, not TabPrintNozzle
+        preset_name = m_presets->get_selected_preset().name;
+        m_fos_slot_configs[0] = *m_config;
+        m_fos_slot_baselines[0] = m_presets->get_selected_preset().config;
+        m_fos_slot_preset_names[0] = preset_name;
+    } else {
+        preset_name = nt->selected_preset_name();
+        if (preset_name.empty()) return;
+        const Preset* slot_preset = m_preset_bundle->prints.find_preset(preset_name, false);
+        if (!slot_preset) return;
+        m_fos_slot_configs[slot_idx] = slot_preset->config;
+        m_fos_slot_baselines[slot_idx] = slot_preset->config;
+        m_fos_slot_preset_names[slot_idx] = preset_name;
+    }
+
+    // FOS: sync mode - all slots mirror slot 0
+    bool mixed_mode = pp ? pp->is_fos_mixed_nozzle_mode() : false;
+    if (!mixed_mode) {
+        for (int i = 1; i < (int)m_fos_slot_configs.size(); ++i) {
+            m_fos_slot_configs[i] = m_fos_slot_configs[0];
+            m_fos_slot_baselines[i] = m_fos_slot_baselines[0];
+        }
+    }
+
+    for (auto& grp : m_fos_slot_optgroups[slot_idx]) {
+        if (!grp || !grp->custom_ctrl) continue;
+        grp->reload_config();
+    }
+// FOS: sync fos_nozzle_layer_heights and fos_nozzle_initial_layer_heights for MAPS
+    // Use unified 0-based slot index, dynamic size
+    if (m_preset_bundle) {
+        int n = (int)m_fos_slot_configs.size();
+        auto* nlh_opt = m_preset_bundle->project_config
+            .option<ConfigOptionFloats>("fos_nozzle_layer_heights", true);
+        if (nlh_opt) {
+            nlh_opt->values.resize(n, 0.f);
+            for (int i = 0; i < n; ++i) {
+                nlh_opt->values[i] = m_fos_slot_configs[i].has("layer_height")
+                    ? static_cast<float>(m_fos_slot_configs[i].opt_float("layer_height")) : 0.f;
+            }
+        }
+        auto* nilh_opt = m_preset_bundle->project_config
+            .option<ConfigOptionFloats>("fos_nozzle_initial_layer_heights", true);
+        if (nilh_opt) {
+            nilh_opt->values.resize(n, 0.f);
+            for (int i = 0; i < n; ++i) {
+                float ilh = m_fos_slot_configs[i].has("initial_layer_print_height")
+                    ? static_cast<float>(m_fos_slot_configs[i].opt_float("initial_layer_print_height")) : 0.f;
+                if (ilh <= 0.f && m_fos_slot_configs[i].has("layer_height"))
+                    ilh = static_cast<float>(m_fos_slot_configs[i].opt_float("layer_height"));
+                nilh_opt->values[i] = ilh;
+            }
+        }
+    }
+    // FOS: rebuild merged config so Other line widths/speeds reflect new PRP values
+    fos_rebuild_merged_config();
+    // FOS: only trigger a reslice if the slice-relevant per-nozzle layer heights actually
+    // changed. Tab activation (Quality/Speed) calls this with identical values; bumping the
+    // serial unconditionally greened the Slice button on a no-change activation. Guard on the
+    // recomputed nlh array so a genuine PRP change still triggers but a no-op activation does not.
+    {
+        std::vector<float> nlh_now;
+        if (m_preset_bundle) {
+            if (auto* nlh = m_preset_bundle->project_config
+                    .option<ConfigOptionFloats>("fos_nozzle_layer_heights", true))
+                nlh_now.assign(nlh->values.begin(), nlh->values.end());
+        }
+        if (nlh_now != m_fos_last_applied_nlh) {
+            m_fos_last_applied_nlh = nlh_now;
+            fos_trigger_reslice();
+        }
+    }
+}
+
+DynamicPrintConfig* TabPrint::fos_config_for_filament(const std::string& filament_key)
+{
+    if (!m_config) return &m_fos_slot_configs[0];
+    auto* opt = m_config->option<ConfigOptionInt>(filament_key);
+    int slot = opt ? opt->value - 1 : 0; // FOS: filament keys are 1-based, convert to 0-based slot
+    if (slot < 0 || slot >= (int)m_fos_slot_configs.size()) return &m_fos_slot_configs[0];
+    return &m_fos_slot_configs[slot];
+}
+
+void TabPrint::fos_rebuild_merged_config()
+{
+    if (!m_config) return;
+
+    // FOS: feature field -> filament assignment key mapping
+    static const std::vector<std::pair<std::string,std::string>> feature_map = {
+        {"outer_wall_line_width",            "wall_filament"},
+        {"inner_wall_line_width",            "inner_wall_filament"},
+        {"top_surface_line_width",           "solid_infill_filament"},
+        {"sparse_infill_line_width",         "sparse_infill_filament"},
+        {"internal_solid_infill_line_width", "solid_infill_filament"},
+        {"support_line_width",               "support_filament"},
+        {"outer_wall_speed",                 "wall_filament"},
+        {"inner_wall_speed",                 "inner_wall_filament"},
+        {"small_perimeter_speed",            "wall_filament"},
+        {"small_perimeter_threshold",        "wall_filament"},
+        {"sparse_infill_speed",              "sparse_infill_filament"},
+        {"internal_solid_infill_speed",      "solid_infill_filament"},
+        {"top_surface_speed",                "solid_infill_filament"},
+        {"gap_infill_speed",                 "wall_filament"},
+        {"ironing_speed",                    "solid_infill_filament"},
+        {"support_speed",                    "support_filament"},
+        {"support_interface_speed",          "support_interface_filament"},
+    };
+
+    // FOS: copy each feature field from the correct slot config
+    for (const auto& kv : feature_map) {
+        const std::string& opt_key     = kv.first;
+        const std::string& filament_key = kv.second;
+        DynamicPrintConfig* src = fos_config_for_filament(filament_key);
+        if (!src) continue;
+        const ConfigOption* val = src->option(opt_key);
+        if (!val) val = m_config->option(opt_key); // FOS: fallback to N1
+        if (val) m_fos_merged_config.set_key_value(opt_key, val->clone());
+    }
+
+    // FOS: snapshot baseline for reset dot comparison
+    if (!m_fos_user_edit_rebuild)
+        m_fos_merged_baseline = m_fos_merged_config;
+    m_fos_user_edit_rebuild = false;
+
+    // FOS: reload feature optgroups
+    for (auto& grp : m_fos_feature_optgroups) {
+        if (!grp || !grp->custom_ctrl) continue;
+        grp->reload_config();
+        grp->custom_ctrl->Refresh();
+    }
+    // FOS: re-evaluate dot state after rebuild
+    fos_decorate();
+}
+
+void TabPrint::activate_selected_page(std::function<void()> throw_if_canceled)
+{
+    Tab::activate_selected_page(throw_if_canceled);
+    // FOS: reload nozzle notebook optgroups after page activation
+    wxGetApp().CallAfter([this]() {
+        for (auto& slot_grps : m_fos_slot_optgroups)
+            for (auto& grp : slot_grps)
+                if (grp && grp->custom_ctrl) grp->reload_config();
+    });
+}
 
 //BBS: GUI refactor
 
@@ -3924,6 +4710,11 @@ void TabFilament::build()
 }
 
 // Reload current config (aka presets->edited_preset->config) into the UI fields.
+void TabFilament::activate_selected_page(std::function<void()> throw_if_canceled)
+{
+    Tab::activate_selected_page(throw_if_canceled);
+}
+
 void TabFilament::reload_config()
 {
     this->compatible_widget_reload(m_compatible_printers);
@@ -6648,12 +7439,11 @@ void Page::update_visibility(ConfigOptionMode mode, bool update_contolls_visibil
 
     m_show = ret_val;
 #ifdef __WXMSW__
-    if (!m_show) return;
     // BBS: fix field control position
-    auto groups = this->m_optgroups;
-    wxTheApp->CallAfter([groups]() {
-        for (auto group : groups) {
-            if (group->custom_ctrl) group->custom_ctrl->fixup_items_positions();
+    wxTheApp->CallAfter([this]() {
+        for (auto group : m_optgroups) {
+            if (group->custom_ctrl)
+                group->custom_ctrl->fixup_items_positions();
         }
     });
 #endif

@@ -1461,7 +1461,11 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionPoint,               bed_mesh_probe_distance))
     ((ConfigOptionFloat,               adaptive_bed_mesh_margin))
 
-
+    // FOS: per-nozzle slot plumbing (fos.8.5)
+    ((ConfigOptionStrings,             print_filament_presets))
+    ((ConfigOptionFloats,              fos_nozzle_layer_heights))
+    ((ConfigOptionFloats,              fos_nozzle_initial_layer_heights))
+    ((ConfigOptionInt,                 fos_slot_config_serial))
 )
 
 // This object is mapped to Perl as Slic3r::Config::Full.

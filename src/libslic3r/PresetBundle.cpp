@@ -42,6 +42,11 @@ static std::vector<std::string> s_project_options {
     "wipe_tower_rotation_angle",
     "curr_bed_type",
     "flush_multiplier",
+    // FOS: per-nozzle slot plumbing (fos.8.5)
+    "print_filament_presets",
+    "fos_nozzle_layer_heights",
+    "fos_nozzle_initial_layer_heights",
+    "fos_slot_config_serial",
 };
 
 // SM_FEATURE: add Snapmaker machine as default

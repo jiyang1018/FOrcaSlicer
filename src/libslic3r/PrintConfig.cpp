@@ -3984,6 +3984,37 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
+    // FOS: per-nozzle slot plumbing (fos.8.5). Written by the GUI into project_config
+    // from the LIVE m_fos_slot_configs, so unsaved notebook edits are captured.
+    def = this->add("print_filament_presets", coStrings);
+    def->label = L("Per-nozzle process presets");
+    def->tooltip = L("Process preset name selected for each nozzle slot in mixed nozzle mode. "
+                     "Index 0 = Nozzle 1 (uses global process preset), indices 1-3 = Nozzle 2-4. "
+                     "Empty string means inherit from Nozzle 1.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionStrings({"", "", "", ""}));
+
+    def = this->add("fos_nozzle_layer_heights", coFloats);
+    def->label = L("FOS per-nozzle layer heights (resolved)");
+    def->tooltip = L("Resolved at slice time from each slot's PRP layer_height. "
+                     "Index 0 = Nozzle 1, 1-3 = Nozzle 2-4. In fos.8.5 all slots are "
+                     "synced, so these must all be equal; Print::validate() enforces it.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats({0.f, 0.f, 0.f, 0.f}));
+
+    def = this->add("fos_nozzle_initial_layer_heights", coFloats);
+    def->label = L("FOS per-nozzle initial layer heights (resolved)");
+    def->tooltip = L("Resolved at slice time from each slot's PRP initial_layer_print_height. "
+                     "Index 0 = Nozzle 1, 1-3 = Nozzle 2-4. In fos.8.5 all slots are synced.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats({0.f, 0.f, 0.f, 0.f}));
+
+    def = this->add("fos_slot_config_serial", coInt);
+    def->label = L("FOS slot config serial");
+    def->tooltip = L("Incremented on every slot config change to trigger reslice via config diff.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(0));
+
     def = this->add("notes", coString);
     def->label = L("Configuration notes");
     def->tooltip = L("You can put here your personal notes. This text will be added to the G-code "

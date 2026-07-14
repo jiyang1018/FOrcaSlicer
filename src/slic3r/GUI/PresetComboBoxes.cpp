@@ -1665,6 +1665,8 @@ void TabPresetComboBox::OnSelect(wxCommandEvent &evt)
 
 wxString TabPresetComboBox::get_preset_name(const Preset& preset)
 {
+    // TODO FOS: shorten PRP display names by removing "@Snapmaker" variants
+    // Requires get_raw_preset_name to prefer compatible preset when names collide
     return from_u8(preset.label(true));
 }
 
@@ -1688,6 +1690,15 @@ void TabPresetComboBox::update()
     std::map<wxString, wxString>                    preset_descriptions;
 
     wxString selected = "";
+    // FOS: for per-nozzle combos, use the per-nozzle selected preset name
+    if (m_nozzle_slot >= 0 && !m_per_nozzle_selected.empty()) {
+        // Find the preset and use label() to match display name format
+        const Preset* per_nozzle_preset = m_collection->find_preset(m_per_nozzle_selected, false);
+        if (per_nozzle_preset)
+            selected = from_u8(per_nozzle_preset->label(true));
+        else
+            selected = from_u8(m_per_nozzle_selected);
+    }
     //BBS:  move system to the end
     /*if (!presets.front().is_visible)
         set_label_marker(Append(separator(L("System presets")), wxNullBitmap));*/
@@ -1703,9 +1714,43 @@ void TabPresetComboBox::update()
     for (size_t i = presets.front().is_visible ? 0 : m_collection->num_default_presets(); i < presets.size(); ++i)
     {
         const Preset& preset = presets[i];
-        if (!preset.is_visible || (!show_incompatible && !preset.is_compatible && i != idx_selected))
-            continue;
-
+        // FOS: for nozzle slot combos, filter by diameter (bypass visibility for matching presets)
+        if (m_nozzle_slot >= 0 && m_type == Preset::TYPE_PRINT && !preset.is_default) {
+            const auto* nd_opt = m_preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+            if (nd_opt && nd_opt->values.size() > 1) {
+                size_t nozzle_idx = std::min((size_t)m_nozzle_slot, nd_opt->values.size() - 1);
+                std::string slot_nozzle = float_to_string_decimal_point(nd_opt->values[nozzle_idx], 1);
+                bool is_per_nozzle_selected = !m_per_nozzle_selected.empty() &&
+                    preset.name == m_per_nozzle_selected;
+                bool diameter_match = (preset.name.find(slot_nozzle + " nozzle") != std::string::npos ||
+                                       preset.name.find("(" + slot_nozzle) != std::string::npos);
+                if (!diameter_match && !is_per_nozzle_selected) continue;
+                // FOS: filter diameter-matching presets to current printer model
+                if (diameter_match && !is_per_nozzle_selected) {
+                    const auto* pm = m_preset_bundle->printers.get_edited_preset()
+                        .config.option<ConfigOptionString>("printer_model");
+                    if (pm && !pm->value.empty()) {
+                        std::string expected_printer = pm->value + " (" + slot_nozzle + " nozzle)";
+                        const auto* cp = preset.config.option<ConfigOptionStrings>("compatible_printers");
+                        if (cp && !cp->values.empty()) {
+                            bool found = false;
+                            for (const auto& p : cp->values)
+                                if (p == expected_printer) { found = true; break; }
+                            if (!found) continue;
+                        }
+                    }
+                }
+            } else {
+                // single nozzle - use normal visibility check
+                if (!preset.is_visible || (!show_incompatible && !preset.is_compatible && i != idx_selected))
+                    continue;
+            }
+        } else {
+            if (!preset.is_visible || (!show_incompatible && !preset.is_compatible && i != idx_selected))
+                continue;
+        }
+        // FOS: per-nozzle PRP filtering by slot nozzle diameter
+        // PRPs encode nozzle diameter in their name e.g. "0.20 Standard @Snapmaker U1 (0.4 nozzle)"
         // marker used for disable incompatible printer models for the selected physical printer
         bool is_enabled = true;
 
@@ -1843,7 +1888,6 @@ void TabPresetComboBox::update()
     update_selection();
     Thaw();
 }
-
 void TabPresetComboBox::msw_rescale()
 {
     PresetComboBox::msw_rescale();

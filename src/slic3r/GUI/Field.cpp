@@ -1527,8 +1527,14 @@ void Choice::set_value(const boost::any& value, bool change_event)
 				break;
 			++idx;
 		}
-        if (m_list)
-			field->SetSelection(m_list->index_of(text_value));
+        if (m_list) {
+			int fos_sel = m_list->index_of(text_value);
+			field->SetSelection(fos_sel);
+			// FOS: a value with no list entry (support filament 0 from an old preset - the
+			// "Default" entry is removed) left the raw number as combo text; show empty so
+			// the field reads as unselected until the user picks.
+			if (fos_sel < 0) field->SetValue("");
+		}
         else if (idx == enums.size()) {
             // For editable Combobox under OSX is needed to set selection to -1 explicitly,
             // otherwise selection doesn't be changed

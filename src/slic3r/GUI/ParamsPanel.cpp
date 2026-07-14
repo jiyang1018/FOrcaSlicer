@@ -8,6 +8,8 @@
 #include "libslic3r/Preset.hpp"
 #include "ParamsPanel.hpp"
 #include "Tab.hpp"
+#include "PresetComboBoxes.hpp"
+#include "libslic3r/LocalesUtils.hpp"
 #include "format.hpp"
 #include "MainFrame.hpp"
 #include "GUI_App.hpp"
@@ -386,23 +388,20 @@ void ParamsPanel::create_layout()
     }
 
     if (m_tab_print) {
-        // FOS: info note about PRP filtering by nozzle 1
-        auto* fos_note = new wxTextCtrl(this, wxID_ANY,
-            _L("Process presets are filtered by Nozzle 1 diameter. The layer height value you set determines your actual sliced result."),
-            wxDefaultPosition, wxDefaultSize,
-            wxTE_MULTILINE | wxTE_READONLY | wxTE_NO_VSCROLL | wxBORDER_NONE | wxTE_WORDWRAP);
-        fos_note->SetFont(Label::Body_14);
-        fos_note->SetForegroundColour(wxColour(0x90, 0x90, 0x90));
-        fos_note->SetBackgroundColour(this->GetBackgroundColour());
-        fos_note->Bind(wxEVT_SIZE, [fos_note](wxSizeEvent& e) {
-            int line_height = fos_note->GetCharHeight();
-            int num_lines = fos_note->GetNumberOfLines();
-            if (num_lines < 1) num_lines = 1;
-            fos_note->SetMinSize(wxSize(-1, line_height * num_lines + 6));
-            e.Skip();
-        });
-        m_left_sizer->Add(fos_note, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(4));
-        m_left_sizer->Add( m_tab_print, 0, wxEXPAND );
+        m_left_sizer->Add(m_tab_print, 0, wxEXPAND);
+        // FOS: insert per-nozzle PRP rows into tab's main sizer between header and page tabs
+        auto* tab_print = dynamic_cast<Tab*>(m_tab_print);
+        if (tab_print) {
+            // FOS: i=1=N2, i=2=N3, i=3=N4; skip i=0 (N1) - N1 row is m_tab_print itself
+            for (int i = 1; i < 4; ++i) {
+                if (m_tab_print_nozzle[i]) {
+                    m_tab_print_nozzle[i]->Reparent(m_tab_print);
+                    m_tab_print_nozzle[i]->Hide();
+                    // Insert at position i - after m_top_panel (pos 0), before m_tabctrl
+                    tab_print->get_main_sizer()->Insert(i, m_tab_print_nozzle[i], 0, wxEXPAND);
+                }
+            }
+        }
     }
 
     if (m_tab_print_plate) {
@@ -503,6 +502,14 @@ void ParamsPanel::refresh_tabs()
         m_tab_print_object = wxGetApp().get_model_tab();
         m_tab_print_part = wxGetApp().get_model_tab(true);
         m_tab_print_layer = wxGetApp().get_layer_tab();
+    }
+    // FOS: create per-nozzle PRP tabs for all slots 0-3 (0=N1, 1=N2, 2=N3, 3=N4)
+    if (m_tab_print && !m_tab_print_nozzle[0]) {
+        for (int i = 0; i < 4; ++i) {
+            auto* t = new TabPrintNozzle(this, i);
+            t->create_preset_tab();
+            m_tab_print_nozzle[i] = t;
+        }
     }
     return;
 }
@@ -724,6 +731,100 @@ void ParamsPanel::notify_object_config_changed()
     else
         m_mode_region->SetTextColor2(StateColor());
     m_mode_region->Rescale();
+}
+
+void ParamsPanel::update_prp_nozzle_rows(bool mixed_active)
+{
+    m_fos_mixed_nozzle_mode = mixed_active; // FOS: store for fos_reload_slot_config
+    // FOS: i=0=N1, i=1=N2, ... all 0-based; N1 row (i=0) shown in mixed mode alongside m_tab_print
+    for (int i = 1; i < 4; ++i) {  // FOS: skip i=0 (N1) - N1 PRP row is m_tab_print itself
+        if (m_tab_print_nozzle[i]) {
+            m_tab_print_nozzle[i]->Show(mixed_active);
+            // FOS: re-apply nozzle slot filter so PRP dropdown reflects current PTP nozzle diameters
+            if (auto* combo = m_tab_print_nozzle[i]->get_combo_box()) {
+                combo->set_nozzle_slot(i);
+                // FOS: auto-select first matching preset for this slot's nozzle diameter
+                const auto* nd_opt = wxGetApp().preset_bundle->printers
+                    .get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+                if (nd_opt && i < (int)nd_opt->values.size()) {
+                    std::string slot_dia = float_to_string_decimal_point(nd_opt->values[i], 1);
+                    const auto& presets = wxGetApp().preset_bundle->prints.get_presets();
+                    // FOS: build the same model-compatibility key the dropdown filter uses
+                    // (PresetComboBoxes.cpp ~1733) so the auto-selected default matches the
+                    // filtered dropdown. Diameter-only matching let non-U1 presets
+                    // (@Snapmaker, @Snapmaker Artisan) get defaulted in, shifting the
+                    // per-nozzle ilh array on cold load (was misdiagnosed as AP-77 race).
+                    const auto* pm = wxGetApp().preset_bundle->printers
+                        .get_edited_preset().config.option<ConfigOptionString>("printer_model");
+                    std::string expected_printer = (pm && !pm->value.empty())
+                        ? pm->value + " (" + slot_dia + " nozzle)" : std::string();
+                    // FOS: restore the user's SAVED per-nozzle PRP selection (project load)
+                    // before falling back to the diameter heuristic. print_filament_presets
+                    // is persisted in the .3mf and loaded into project_config; slot i holds
+                    // the saved name for nozzle i+1. Empty slot -> fall through to heuristic
+                    // (new project / never-assigned). This fixes saved selections reverting
+                    // to a diameter-default on reopen (e.g. 0.48 -> 0.24 for N4).
+                    std::string saved_pick;
+                    {
+                        const auto* pfp = wxGetApp().preset_bundle->project_config
+                            .option<ConfigOptionStrings>("print_filament_presets");
+                        if (pfp && i < (int)pfp->values.size() && !pfp->values[i].empty())
+                            saved_pick = pfp->values[i];
+                    }
+                    std::string chosen;        // FOS: model-compatible match (preferred)
+                    std::string fallback;      // FOS: diameter-only match (used iff no compatible)
+                    for (const auto& preset : presets) {
+                        if (!preset.is_visible || preset.is_default) continue;
+                        bool diameter_match =
+                            preset.name.find(slot_dia + " nozzle") != std::string::npos ||
+                            preset.name.find("(" + slot_dia) != std::string::npos;
+                        if (!diameter_match) continue;
+                        if (fallback.empty()) fallback = preset.name;
+                        if (!expected_printer.empty()) {
+                            const auto* cp = preset.config.option<ConfigOptionStrings>("compatible_printers");
+                            // FOS: empty compatible_printers = generic, not a U1 match
+                            if (cp && !cp->values.empty()) {
+                                for (const auto& p : cp->values)
+                                    if (p == expected_printer) { chosen = preset.name; break; }
+                            }
+                        }
+                        if (!chosen.empty()) break;
+                    }
+                    // FOS: saved selection wins over both heuristic matches
+                    const std::string& pick = !saved_pick.empty() ? saved_pick
+                                            : (!chosen.empty() ? chosen : fallback);
+                    if (!pick.empty()) {
+                        m_tab_print_nozzle[i]->set_selected_preset_name(pick);
+                        combo->set_per_nozzle_selected(pick);
+                        // FOS: rebind m_fos_slot_configs[i] from the (possibly saved) pick.
+                        // set_selected_preset_name only updates the combo display; without this
+                        // reload the slot config keeps its stale heuristic value and the slicer
+                        // reads the wrong PRP. AP-98 follow-on: project-load round-trip.
+                        if (auto* tab_print = dynamic_cast<TabPrint*>(wxGetApp().get_tab(Preset::TYPE_PRINT)))
+                            tab_print->fos_reload_slot_config(i);
+                    }
+                }
+                combo->update();
+            }
+        }
+    }
+    // FOS: reduce bottom padding of row 1 when nozzle rows are shown
+    auto* tab_print = dynamic_cast<Tab*>(m_tab_print);
+    if (tab_print && tab_print->get_main_sizer() && tab_print->get_top_panel()) {
+        auto* item = tab_print->get_main_sizer()->GetItem(tab_print->get_top_panel());
+        if (item) {
+            if (mixed_active) {
+                item->SetFlag(wxEXPAND | wxTOP);
+                item->SetBorder(FromDIP(6));
+            } else {
+                item->SetFlag(wxEXPAND | wxUP | wxDOWN);
+                item->SetBorder(tab_print->get_em_unit());
+            }
+        }
+        tab_print->get_main_sizer()->Layout();
+    }
+    if (m_left_sizer) m_left_sizer->Layout();
+    Layout();
 }
 
 void ParamsPanel::switch_to_object_if_has_object_configs()

@@ -261,10 +261,17 @@ class TabPresetComboBox : public PresetComboBox
 {
     bool show_incompatible {false};
     bool m_enable_all {false};
+    int  m_nozzle_slot {-1}; // FOS: per-nozzle PRP filtering slot index
+    std::string m_per_nozzle_selected; // FOS: per-nozzle selected preset name (bypasses global idx_selected)
 
 public:
     TabPresetComboBox(wxWindow *parent, Preset::Type preset_type);
     ~TabPresetComboBox() {}
+    // FOS: set nozzle slot index for per-nozzle PRP filtering (-1 = no filter)
+    void set_nozzle_slot(int slot_idx) { m_nozzle_slot = slot_idx; }
+    int  get_nozzle_slot() const { return m_nozzle_slot; }
+    void set_per_nozzle_selected(const std::string& name) { m_per_nozzle_selected = name; }
+    const std::string& get_per_nozzle_selected() const { return m_per_nozzle_selected; }
     void set_show_incompatible_presets(bool show_incompatible_presets) {
         show_incompatible = show_incompatible_presets;
     }

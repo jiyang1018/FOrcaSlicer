@@ -322,8 +322,8 @@ static void draw_title(wxDC& dc, wxPoint pos, const wxString& text, const wxColo
 
 void OG_CustomCtrl::OnPaint(wxPaintEvent&)
 {
-    // case, when custom controll is destroyed but doesn't deleted from the evet loop
-    if(!this->opt_group->custom_ctrl)
+    // FOS: guard against dangling opt_group pointer (e.g. after per-nozzle tab page clear)
+    if(!this->opt_group || !this->opt_group->custom_ctrl)
         return;
 
     wxPaintDC dc(this);

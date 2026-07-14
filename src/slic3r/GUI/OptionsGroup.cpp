@@ -124,6 +124,13 @@ const t_field& OptionsGroup::build_field(const t_config_option_key& id, const Co
     return field;
 }
 
+OptionsGroup::~OptionsGroup()
+{
+    if (custom_ctrl)
+        custom_ctrl->opt_group = nullptr;
+    clear(true);
+}
+
 OptionsGroup::OptionsGroup(wxWindow *_parent, const wxString &title, const wxString &icon,
                             bool is_tab_opt /* = false */,
                             column_t extra_clmn /* = nullptr */) :
@@ -233,10 +240,11 @@ Line* OptionsGroup::get_line(const std::string& opt_key)
     {
         if(l.is_separator())
             continue;
+        if (l.get_options().empty()) // FOS: skip widget-only lines (no config options)
+            continue;
         if (l.get_first_option_key() == opt_key)
             return &l;
     }
-
     return nullptr;
 }
 
@@ -261,7 +269,9 @@ void OptionsGroup::activate_line(Line& line)
         sizer->Add(h_sizer, 1, wxEXPAND | wxALL, (wxOSX && !staticbox) ? 0 : 15);
         if (line.widget != nullptr) {
             // description lines
-            sizer->Add(line.widget(this->ctrl_parent()), 0, wxEXPAND | wxALL, (wxOSX && !staticbox) ? 0 : 15);
+            // FOS: empty-label widget lines (e.g. per-nozzle notebooks) use no border
+            int widget_border = line.label.IsEmpty() ? 0 : ((wxOSX && !staticbox) ? 0 : 15);
+            sizer->Add(line.widget(this->ctrl_parent()), 0, wxEXPAND | wxALL, widget_border);
             return;
         }
         if (!line.get_extra_widgets().empty()) {
@@ -570,8 +580,10 @@ void OptionsGroup::clear(bool destroy_custom_ctrl)
 		if (destroy_custom_ctrl)
             //custom_ctrl->Destroy();
 			custom_ctrl = nullptr;
-        else
+        else {
+            custom_ctrl->opt_group = nullptr; // FOS: prevent dangling render after clear
             custom_ctrl = nullptr;
+        }
     }
 
 	m_extra_column_item_ptrs.clear();
@@ -600,8 +612,8 @@ void OptionsGroup::clear_fields_except_of(const std::vector<std::string> left_fi
 }
 
 void OptionsGroup::on_change_OG(const t_config_option_key& opt_id, const boost::any& value) {
-	if (m_on_change != nullptr)
-		m_on_change(opt_id, value);
+if (m_on_change != nullptr)
+           m_on_change(opt_id, value);
 }
 
 Option ConfigOptionsGroup::get_option(const std::string& opt_key, int opt_index /*= -1*/)
@@ -622,7 +634,7 @@ Option ConfigOptionsGroup::get_option(const std::string& opt_key, int opt_index 
 
 void ConfigOptionsGroup::on_change_OG(const t_config_option_key& opt_id, const boost::any& value)
 {
-	if (!m_opt_map.empty())
+    if (!m_opt_map.empty())
 	{
 		auto it = m_opt_map.find(opt_id);
 		if (it == m_opt_map.end())
@@ -1162,6 +1174,7 @@ boost::any ConfigOptionsGroup::get_config_value2(const DynamicPrintConfig& confi
          ret = config.opt_int(opt_key, idx);
          break;
     case coEnum:
+        if (config.option(opt_key) == nullptr) { ret = 0; break; } // FOS: AP-30 guard (coEnum was missed)
         ret = config.option(opt_key)->getInt();
         break;
     case coEnums:

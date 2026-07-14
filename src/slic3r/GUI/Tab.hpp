@@ -83,7 +83,7 @@ public:
 	std::vector <ConfigOptionsGroupShp> m_optgroups;
 	DynamicPrintConfig* m_config;
 
-	wxBoxSizer*	vsizer() const { return m_vsizer; }
+	wxBoxSizer*     vsizer() const { return m_vsizer; }
 	wxWindow*	parent() const { return m_parent; }
 	const wxString&	title()	 const { return m_title; }
 	size_t		iconID() const { return m_iconID; }
@@ -350,11 +350,14 @@ public:
 	void		update_show_hide_incompatible_button();
 	void		update_ui_from_settings();
 	void		update_label_colours();
-	void		decorate();
-	void		update_changed_ui();
+	void            decorate();
+    // FOS: manual decoration for custom nozzle/feature optgroups (TabPrint data).
+    void            fos_decorate();
+    int             fos_slot_idx_for_feature_key(const std::string& opt_key);
+    void            update_changed_ui();
 	void		get_sys_and_mod_flags(const std::string& opt_key, bool& sys_page, bool& modified_page);
 	void		update_changed_tree_ui();
-	void		update_undo_buttons();
+	void            update_undo_buttons();
 
 	void		on_roll_back_value(const bool to_sys = false);
 
@@ -390,7 +393,10 @@ public:
 	bool			saved_preset_is_dirty() const;
 	void            update_saved_preset_from_current_preset();
 
-	DynamicPrintConfig*	get_config() { return m_config; }
+	DynamicPrintConfig*     get_config() { return m_config; }
+        wxBoxSizer*             get_main_sizer() { return m_main_sizer; } // FOS
+        wxPanel*                get_top_panel()  { return m_top_panel; }  // FOS
+        int                     get_em_unit()    { return m_em_unit; }    // FOS
     PresetCollection *  get_presets() { return m_presets; }
     TabPresetComboBox *  get_combo_box() { return m_presets_choice; }
 
@@ -448,24 +454,99 @@ public:
         Tab(parent, _(L("Process")), type) {}
 	~TabPrint() {}
 
-	void		build() override;
-	void		reload_config() override;
-	void		update_description_lines() override;
-	void		toggle_options() override;
-	void		update() override;
-	void		clear_pages() override;
-	bool 		supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
-
+		void            build() override;
+        void            reload_config() override;
+        void            update_description_lines() override;
+        void            toggle_options() override;
+        void            update() override;
+        void            clear_pages() override;
+        bool            supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
+        void            fos_reload_slot_config(int slot_idx);
+        void            fos_rebuild_merged_config();
+        DynamicPrintConfig* fos_config_for_filament(const std::string& filament_key);
+        void            activate_selected_page(std::function<void()> throw_if_canceled) override;
 private:
-	ogStaticText*	m_recommended_thin_wall_thickness_description_line = nullptr;
-	ogStaticText*	m_top_bottom_shell_thickness_explanation = nullptr;
+        ogStaticText*   m_recommended_thin_wall_thickness_description_line = nullptr;
+        ogStaticText*   m_top_bottom_shell_thickness_explanation = nullptr;
+        // FOS: per-nozzle configs and optgroups - index 0=N1, 1=N2, ... n-1=Nn
+        // Sized dynamically to nozzle count; sync mode keeps indices 1..n-1 identical to index 0
+        std::vector<DynamicPrintConfig>                       m_fos_slot_configs;
+        std::vector<DynamicPrintConfig>                       m_fos_slot_baselines;
+        std::vector<std::string>                              m_fos_slot_preset_names;
+        std::vector<float>                                    m_fos_last_applied_nlh;   // FOS: last nozzle layer-height array applied; gates reslice trigger on real change
+        std::vector<std::vector<ConfigOptionsGroupShp>>       m_fos_slot_optgroups;
+
+        // FOS: proxy config for Other line widths / Other layer speeds
+        // Each field sourced from the slot PRP of the nozzle assigned to that feature
+        DynamicPrintConfig                                    m_fos_merged_config;
+        DynamicPrintConfig                                    m_fos_merged_baseline;
+        std::vector<ConfigOptionsGroupShp>                    m_fos_feature_optgroups;
+
+        // FOS: rebuild control flags
+        int                                                   m_fos_pending_slot_reloads { 0 };
+        bool                                                  m_fos_rebuild_pending { false };
+        bool                                                  m_fos_user_edit_rebuild { false };
+
+        // FOS: decorate / reset-dot state for custom nozzle + feature fields.
+        // Tab::decorate() only sees the preset diff, which cannot reach
+        // m_fos_slot_configs / m_fos_merged_config. fos_decorate() drives the
+        // undo bitmaps for those fields manually, fed by this cache written at
+        // edit time (AP-72: must capture dirty while filament assignments valid).
+        public:
+        std::map<std::string, bool>                           m_fos_feature_dirty;
+        bool                                                  m_fos_baseline_locked { false };
+private:
+
+public:
+        // FOS: manual decoration for custom nozzle/feature optgroups.
+        // Public so Tab::decorate() can invoke via dynamic_cast<TabPrint*>.
+        void            fos_decorate();
+        void            fos_decorate_slot(int slot);
+        int             fos_slot_idx_for_feature_key(const std::string& opt_key);
+        void            fos_begin_slot_reload() { m_fos_pending_slot_reloads++; }
+        void            fos_trigger_reslice();
+        void            fos_clear_slot_preset_name(int slot_idx) {
+            if (slot_idx >= 0 && slot_idx < (int)m_fos_slot_preset_names.size())
+                m_fos_slot_preset_names[slot_idx].clear();
+        }
+};
+
+// FOS: lightweight TabPrint for per-nozzle PRP rows (slots 2-4)
+// Only the header row is built - no settings pages
+class TabPrintNozzle : public TabPrint {
+public:
+    TabPrintNozzle(ParamsPanel* parent, int nozzle_idx)
+        : TabPrint(parent, Preset::TYPE_PRINT)
+        , m_nozzle_idx(nozzle_idx) {}
+    ~TabPrintNozzle() {}
+    void build() override {}
+    void update() override {}
+    void toggle_options() override {}
+    void reload_config() override {}
+    void create_preset_tab();
+    int  nozzle_idx() const { return m_nozzle_idx; }
+    const std::string& selected_preset_name() const { return m_selected_preset_name; }
+    void set_selected_preset_name(const std::string& name) { m_selected_preset_name = name; }
+    bool is_fos_dirty() const { return m_fos_dirty; }
+    void set_fos_dirty(bool dirty) {
+        m_fos_dirty = dirty;
+        if (m_undo_btn)
+            m_undo_btn->SetBitmap_(dirty ? m_bmp_value_revert : m_bmp_white_bullet);
+    }
+    void fos_roll_back();
+    void on_roll_back_value(const bool to_sys = false);
+private:
+    int m_nozzle_idx;
+    std::string m_selected_preset_name;
+    std::string m_fos_last_applied_prp;   // FOS: last PRP applied for this slot; gates slice-button trigger on real change
+    bool m_fos_dirty { false };
 };
 
 class TabPrintModel : public TabPrint
 {
 public:
-	//BBS: GUI refactor
-	TabPrintModel(ParamsPanel* parent, std::vector<std::string> const & keys);
+        //BBS: GUI refactor
+        TabPrintModel(ParamsPanel* parent, std::vector<std::string> const & keys);
 	~TabPrintModel() {}
 
 	void build() override;
@@ -572,8 +653,9 @@ public:
 	void		update_description_lines() override;
 	void		toggle_options() override;
 	void		update() override;
-	void		clear_pages() override;
-	bool 		supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
+	void            clear_pages() override;
+        bool            supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
+        void            activate_selected_page(std::function<void()> throw_if_canceled) override;
 
     const std::string&	get_custom_gcode(const t_config_option_key& opt_key) override;
     void				set_custom_gcode(const t_config_option_key& opt_key, const std::string& value) override;

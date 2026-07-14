@@ -3146,6 +3146,16 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
     // FOS: nozzle diameters may have just changed, which is what decides whether the support
     // filament dropdowns carry a "Default" row. Rebuild them.
     dynamic_filament_list_gated.update();
+
+    // FOS 8.5: the same event decides whether the per-nozzle PRP rows (N2-N4) are shown.
+    // has_mixed_nozzle_sizes() is the SINGLE uniformity test - it matches
+    // PresetBundle::full_config() and normalize_fdm_1(), so GUI and slicer cannot disagree.
+    // ParamsPanel::is_fos_mixed_nozzle_mode() reads back the value set here; do NOT add a
+    // second, independent mixed-mode test.
+    if (auto* pp = wxGetApp().params_panel()) {
+        const bool fos_mixed = GUI::has_mixed_nozzle_sizes();
+        wxGetApp().CallAfter([pp, fos_mixed]() { pp->update_prp_nozzle_rows(fos_mixed); });
+    }
 }
 ObjectList* Sidebar::obj_list()
 {
@@ -4115,7 +4125,9 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
         "wipe_tower_rotation_angle", "wipe_tower_cone_angle", "wipe_tower_extra_spacing", "wipe_tower_extra_flow", "wipe_tower_max_purge_speed",
         "wipe_tower_wall_type", "wipe_tower_extra_rib_length","wipe_tower_rib_width","wipe_tower_fillet_wall",
         "wipe_tower_filament",
-        "best_object_pos"
+        "best_object_pos",
+        // FOS: without this the plater's config diff never sees the key (AP-79)
+        "fos_slot_config_serial"
         }))
     , sidebar(new Sidebar(q))
     , notification_manager(std::make_unique<NotificationManager>(q))
