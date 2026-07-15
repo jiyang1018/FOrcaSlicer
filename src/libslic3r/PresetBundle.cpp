@@ -42,10 +42,8 @@ static std::vector<std::string> s_project_options {
     "wipe_tower_rotation_angle",
     "curr_bed_type",
     "flush_multiplier",
-    // FOS: per-nozzle slot plumbing (fos.8.5)
+    // FOS: per-nozzle slot plumbing (fos.8.5). MAPS layer-height arrays intentionally omitted.
     "print_filament_presets",
-    "fos_nozzle_layer_heights",
-    "fos_nozzle_initial_layer_heights",
     "fos_slot_config_serial",
     // FOS 8.5: resolved per-nozzle width/speed arrays (region/object scope) + tower.
     // tower_line_width itself is NOT here - it is a per-slot PRESET key, not a project key.

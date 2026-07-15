@@ -1494,7 +1494,9 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionPoint,               bed_mesh_probe_distance))
     ((ConfigOptionFloat,               adaptive_bed_mesh_margin))
 
-    // FOS: per-nozzle slot plumbing (fos.8.5)
+    // FOS: per-nozzle slot plumbing (fos.8.5). Note: the MAPS per-nozzle layer-height arrays
+    // (fos_nozzle_layer_heights / _initial_layer_heights) are intentionally NOT here - 8.x uses
+    // one global layer height. Re-add them if MAPS is ported.
     ((ConfigOptionStrings,             print_filament_presets))
     // Authored per-slot in the nozzle notebook; lives in each slot's PRP.
     // Default 125% - percent ratios over the nozzle it is handed (8.4 rule), so it
@@ -1507,8 +1509,6 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     // Print::invalidate_state_by_config_options (AP-104), routed to the tower/G-code
     // step, NOT posSlice.
     ((ConfigOptionFloats,              fos_nozzle_tower_line_widths))
-    ((ConfigOptionFloats,              fos_nozzle_layer_heights))
-    ((ConfigOptionFloats,              fos_nozzle_initial_layer_heights))
     ((ConfigOptionInt,                 fos_slot_config_serial))
 )
 

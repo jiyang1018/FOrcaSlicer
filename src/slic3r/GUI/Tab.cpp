@@ -1968,27 +1968,28 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
     if(opt_key=="layer_height"){
         auto min_layer_height_from_nozzle=wxGetApp().preset_bundle->full_config().option<ConfigOptionFloats>("min_layer_height")->values;
         auto max_layer_height_from_nozzle=wxGetApp().preset_bundle->full_config().option<ConfigOptionFloats>("max_layer_height")->values;
-        // FOS 8.5: with one global layer height across unequal nozzles, the binding limit is the
-        // SMALLEST used nozzle (a 0.2 tip cannot lay a 0.6 layer). Guard by the INTERSECTION of the
-        // used nozzles' ranges: ceil = min(max_layer_height), floor = max(min_layer_height) over the
-        // nozzles the print actually uses (the filament-assignment tools). This makes the ceiling
-        // the smallest used nozzle's max. Stock used min-of-mins / max-of-maxes (most permissive),
-        // which let the small nozzle be asked for an unprintable layer.
+        // FOS 8.5: one global layer height, GATED BY THE SMALLEST USED NOZZLE (user's rule). Use
+        // that single nozzle's OWN [min_layer_height, max_layer_height] as [floor, ceil] - NOT an
+        // intersection across nozzles. The smallest nozzle has both the smallest max (binding
+        // ceiling: a 0.2 tip cannot lay a 0.6 layer) and the smallest min (most permissive floor,
+        // so a thin layer like 0.08 is allowed). "Used" = the filament-assignment tools; an unset
+        // (0) assignment is skipped, not mapped to tool 1.
         double layer_height_floor = *std::min_element(min_layer_height_from_nozzle.begin(), min_layer_height_from_nozzle.end());
         double layer_height_ceil  = *std::max_element(max_layer_height_from_nozzle.begin(), max_layer_height_from_nozzle.end());
         {
-            // Fold each nozzle the print uses (from the filament-assignment keys) into the range.
             const int nn = (int)max_layer_height_from_nozzle.size();
-            bool any = false; double flo = 0.0, cei = 1e9;
+            // NOTE: copy the values - full_config() returns a TEMPORARY, so keeping a pointer into
+            // it would dangle after this statement (that bug made every diameter read garbage and
+            // the floor fall back to min-of-all-mins = the 0.2 nozzle's 0.06).
+            const auto nozzle_dia = wxGetApp().preset_bundle->full_config().option<ConfigOptionFloats>("nozzle_diameter")->values;
+            int best = -1; double best_dia = std::numeric_limits<double>::max();
             auto add = [&](const char* key, bool enabled = true) {
                 if (!enabled) return;
                 auto* o = m_config->option<ConfigOptionInt>(key);
-                if (!o || o->value <= 0) return; // 0 = unset -> NOT a used nozzle, skip (do not map to tool 1)
+                if (!o || o->value <= 0) return; // 0 = unset -> NOT a used nozzle
                 int i = o->value - 1;
-                if (i < 0 || i >= nn) return;
-                flo = std::max(flo, min_layer_height_from_nozzle[i]);
-                cei = std::min(cei, max_layer_height_from_nozzle[i]);
-                any = true;
+                if (i < 0 || i >= nn || i >= (int)nozzle_dia.size()) return;
+                if (nozzle_dia[i] < best_dia) { best_dia = nozzle_dia[i]; best = i; }
             };
             add("wall_filament"); add("inner_wall_filament");
             add("sparse_infill_filament"); add("solid_infill_filament");
@@ -1996,7 +1997,7 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
             add("support_filament", sup); add("support_interface_filament", sup);
             const bool tower = m_config->option<ConfigOptionBool>("enable_prime_tower") && m_config->opt_bool("enable_prime_tower");
             add("wipe_tower_filament", tower);
-            if (any) { layer_height_floor = flo; layer_height_ceil = cei; }
+            if (best >= 0) { layer_height_floor = min_layer_height_from_nozzle[best]; layer_height_ceil = max_layer_height_from_nozzle[best]; }
         }
         const auto lh = m_config->opt_float("layer_height");
         bool exceed_minimum_flag = lh < layer_height_floor;
@@ -2503,39 +2504,10 @@ void TabPrintNozzle::create_preset_tab()
                         opt->values.push_back("");
                     opt->values[m_nozzle_idx] = m_selected_preset_name;
                 }
-                // FOS 8.5: fos_inner_lh_max is a MAPS key (per-nozzle inner-wall layer height).
-                // Layer heights are SYNCED in 8.5, so there is no per-nozzle inner lh to resolve.
-                // Removed with the MAPS pipeline; do not reintroduce.
-
-                // FOS: update fos_nozzle_layer_heights for all slots
-                {
-                    auto* nlh_opt = app->preset_bundle->project_config
-                        .option<ConfigOptionFloats>("fos_nozzle_layer_heights", true);
-                    if (nlh_opt) {
-                        nlh_opt->values.resize(4, 0.f);
-                        // Slot 0 = Nozzle 1 — from main preset
-                        nlh_opt->values[0] = static_cast<float>(
-                            app->preset_bundle->prints.get_edited_preset().config.opt_float("layer_height"));
-                        // Slots 1-3 = Nozzle 2-4 — from per-slot PRP selections
-                        auto* pfp_opt = app->preset_bundle->project_config
-                            .option<ConfigOptionStrings>("print_filament_presets");
-                        if (pfp_opt) {
-                            for (int i = 1; i <= 3; ++i) {
-                                // Use current selection directly for this slot
-                                const std::string& preset_name = (i == m_nozzle_idx)
-                                    ? m_selected_preset_name
-                                    : (i < (int)pfp_opt->values.size() ? pfp_opt->values[i] : "");
-                                if (!preset_name.empty()) {
-                                    const Preset* p = app->preset_bundle->prints
-                                        .find_preset(preset_name, false);
-                                    if (p)
-                                        nlh_opt->values[i] = static_cast<float>(
-                                            p->config.opt_float("layer_height"));
-                                }
-                            }
-                        }
-                    }
-                }
+                // FOS 8.5: the per-nozzle layer-height arrays (fos_nozzle_layer_heights /
+                // fos_nozzle_initial_layer_heights) and fos_inner_lh_max were MAPS plumbing.
+                // 8.x does not do MAPS - layer height is one global value - so nothing reads them.
+                // Removed. Re-add both keys and this writer if the MAPS pipeline is ever ported.
             }
             // FOS: reload slot tab values from newly selected PRP
             // m_nozzle_idx is 0-based (0=N1, 1=N2, ...) = unified slot index directly
@@ -3556,33 +3528,8 @@ void TabPrint::fos_reload_slot_config(int slot_idx)
 
 void TabPrint::fos_resolve_nozzle_arrays()
 {
-    // FOS: sync fos_nozzle_layer_heights and fos_nozzle_initial_layer_heights (engine-dead in
-    // 8.5 - layer height is global - but kept written for provenance/inspection).
-    // Use unified 0-based slot index, dynamic size
-    if (m_preset_bundle) {
-        int n = (int)m_fos_slot_configs.size();
-        auto* nlh_opt = m_preset_bundle->project_config
-            .option<ConfigOptionFloats>("fos_nozzle_layer_heights", true);
-        if (nlh_opt) {
-            nlh_opt->values.resize(n, 0.f);
-            for (int i = 0; i < n; ++i) {
-                nlh_opt->values[i] = m_fos_slot_configs[i].has("layer_height")
-                    ? static_cast<float>(m_fos_slot_configs[i].opt_float("layer_height")) : 0.f;
-            }
-        }
-        auto* nilh_opt = m_preset_bundle->project_config
-            .option<ConfigOptionFloats>("fos_nozzle_initial_layer_heights", true);
-        if (nilh_opt) {
-            nilh_opt->values.resize(n, 0.f);
-            for (int i = 0; i < n; ++i) {
-                float ilh = m_fos_slot_configs[i].has("initial_layer_print_height")
-                    ? static_cast<float>(m_fos_slot_configs[i].opt_float("initial_layer_print_height")) : 0.f;
-                if (ilh <= 0.f && m_fos_slot_configs[i].has("layer_height"))
-                    ilh = static_cast<float>(m_fos_slot_configs[i].opt_float("layer_height"));
-                nilh_opt->values[i] = ilh;
-            }
-        }
-    }
+    // FOS 8.5: the per-nozzle layer-height arrays were MAPS plumbing and are gone in 8.x
+    // (layer height is one global value; nothing in the engine read them). See PrintConfig.
 
     // FOS 8.5: resolve per-nozzle width/speed arrays from each slot's PRP.
     // WIDTHS resolve to absolute mm against THAT slot's own nozzle diameter - this is where
@@ -3658,7 +3605,6 @@ void TabPrint::fos_resolve_nozzle_arrays()
     // activation recomputes identical arrays and correctly does not.
     {
         static const char* sig_keys[] = {
-            "fos_nozzle_layer_heights", "fos_nozzle_initial_layer_heights",
             "fos_nozzle_outer_wall_line_width", "fos_nozzle_inner_wall_line_width",
             "fos_nozzle_top_surface_line_width", "fos_nozzle_sparse_infill_line_width",
             "fos_nozzle_internal_solid_infill_line_width", "fos_nozzle_support_line_width",

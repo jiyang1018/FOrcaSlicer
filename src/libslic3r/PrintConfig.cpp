@@ -3994,20 +3994,8 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionStrings({"", "", "", ""}));
 
-    def = this->add("fos_nozzle_layer_heights", coFloats);
-    def->label = L("FOS per-nozzle layer heights (resolved)");
-    def->tooltip = L("Resolved at slice time from each slot's PRP layer_height. "
-                     "Index 0 = Nozzle 1, 1-3 = Nozzle 2-4. In fos.8.5 all slots are "
-                     "synced, so these must all be equal; Print::validate() enforces it.");
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloats({0.f, 0.f, 0.f, 0.f}));
-
-    def = this->add("fos_nozzle_initial_layer_heights", coFloats);
-    def->label = L("FOS per-nozzle initial layer heights (resolved)");
-    def->tooltip = L("Resolved at slice time from each slot's PRP initial_layer_print_height. "
-                     "Index 0 = Nozzle 1, 1-3 = Nozzle 2-4. In fos.8.5 all slots are synced.");
-    def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionFloats({0.f, 0.f, 0.f, 0.f}));
+    // FOS 8.5: fos_nozzle_layer_heights / fos_nozzle_initial_layer_heights were MAPS-only and
+    // removed - 8.x uses one global layer height and nothing read them. Re-add if MAPS is ported.
 
     def = this->add("fos_slot_config_serial", coInt);
     def->label = L("FOS slot config serial");
