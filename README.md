@@ -1,4 +1,4 @@
-**English** | [简体中文](README.zh-CN.md)
+**English** | [简体中文](README.zh_CN.md)
 
 # FOrcaSlicer — Flexible OrcaSlicer
 
@@ -8,7 +8,7 @@ A fork of [Snapmaker OrcaSlicer](https://github.com/Snapmaker/OrcaSlicer) for th
 
 ### Mixed nozzle sizes: fine outer detail, faster interior
 
-Four copies of a set of seven metric module-1 gears — different sizes and tooth styles, the kind of spread you'd print for a gearbox or power-transmission project. Each copy is sliced differently: stock forces one nozzle size across the whole part (outer columns), while FOrcaSlicer prints the outer wall with a fine tip and everything behind it with larger nozzles (middle columns) — keeping the tooth detail of an all-0.2 mm print in roughly half the time.
+Example is a set of seven metric module-1 gears — different sizes and tooth styles, the kind of spread you'd print for a gearbox or power-transmission project, with 3 copies on the same plate. Screenshot shows the whole plate sliced differently: stock forces one nozzle size across the whole part (outer columns), while FOrcaSlicer prints the outer wall with a fine tip and everything behind it with larger nozzles (middle columns) — keeping the tooth detail of an all-0.2 mm print in roughly half the time.
 
 | Every loop 0.2 mm (stock) | OW 0.2 mm, everything else 0.4 mm | OW 0.2 mm, IW 0.4 mm, everything else 0.6 mm | Every loop 0.4 mm (stock) |
 |---|---|---|---|
