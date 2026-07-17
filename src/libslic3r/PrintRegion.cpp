@@ -54,6 +54,27 @@ Flow PrintRegion::flow(const PrintObject &object, FlowRole role, double layer_he
     // actual extruder. Re-deriving by ratio here would double-apply. In uniform-nozzle mode the
     // old block was a no-op (has_mixed_nozzle_sizes false), so this is byte-identical there.
 
+    // FOS: painted/color-patch regions carry the painted extruder in wall_filament etc, but their
+    // width scalars still hold the BASE region stamped values -- fos_stamp_per_nozzle_region ran
+    // before segmentation overrode the extruder, and was not re-run. 8.4 PrintRegion::flow masked
+    // this with a nozzle ratio; 8.5 removed it (color-patch width regression; correct at fos.8.1).
+    // Re-resolve width from the per-nozzle array indexed by the ACTUAL printing extruder so a
+    // painted loop gets its nozzle authored width. Feature regions: extruder(role) == the stamped
+    // filament, so this is a no-op. First layer keeps the global initial_layer_line_width by design.
+    if (print_config.has_mixed_nozzle_sizes.value && !(first_layer && print_config.initial_layer_line_width.value > 0)) {
+        const int fos_idx = int(this->extruder(role)) - 1;
+        const ConfigOptionFloats *fos_arr =
+            (role == frExternalPerimeter) ? &m_config.fos_nozzle_outer_wall_line_width :
+            (role == frPerimeter)         ? &m_config.fos_nozzle_inner_wall_line_width :
+            (role == frInfill)            ? &m_config.fos_nozzle_sparse_infill_line_width :
+            (role == frSolidInfill)       ? &m_config.fos_nozzle_internal_solid_infill_line_width :
+            (role == frTopSolidInfill)    ? &m_config.fos_nozzle_top_surface_line_width : nullptr;
+        if (fos_arr != nullptr && fos_idx >= 0 && fos_idx < (int)fos_arr->values.size()
+            && fos_arr->values[fos_idx] > 0) {
+            config_width.value   = fos_arr->values[fos_idx];
+            config_width.percent = false;
+        }
+    }
     return Flow::new_from_config_width(role, config_width, nozzle_diameter, float(layer_height));
 }
 
