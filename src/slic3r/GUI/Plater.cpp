@@ -3109,16 +3109,18 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
 
     // FOS: refresh PRP when switching PTP
     if (switch_machine) {
-        const auto* print_config = &wxGetApp().preset_bundle->prints.get_edited_preset().config;
-        const int ow_ext_idx = print_config->option<ConfigOptionInt>("wall_filament")
-            ? print_config->option<ConfigOptionInt>("wall_filament")->value - 1 : 0;
+        // FOS 8.5.1: nozzle 1 PRP / printer base follows nozzle 1 OWN diameter (index 0), NOT the
+        // outer-wall nozzle. OW is the MAPS layer-height spine (a separate concept, kept elsewhere);
+        // assuming OW == nozzle 1 here locked nozzle 1 PRP to the OW nozzle diameter (e.g. 0.4) on
+        // mixed/painted setups where wall_filament != 1.
+        const int base_idx = 0;
         auto* nd = dynamic_cast<const ConfigOptionFloats*>(
             wxGetApp().preset_bundle->printers.get_edited_preset().config.option("nozzle_diameter"));
-        if (nd && ow_ext_idx < (int)nd->values.size()) {
+        if (nd && base_idx < (int)nd->values.size()) {
             auto& pp = wxGetApp().preset_bundle->printers.get_edited_preset();
             if (!pp.is_system) {
                 std::ostringstream ss;
-                ss << std::fixed << std::setprecision(1) << nd->values[ow_ext_idx];
+                ss << std::fixed << std::setprecision(1) << nd->values[base_idx];
                 std::string new_inherits = "Snapmaker U1 (" + ss.str() + " nozzle)";
                 if (pp.inherits() != new_inherits) {
                     pp.inherits() = new_inherits;
