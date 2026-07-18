@@ -10,7 +10,7 @@ A fork of [Snapmaker OrcaSlicer](https://github.com/Snapmaker/OrcaSlicer) for th
 
 A short walkthrough of what FOrcaSlicer does differently from stock Snapmaker OrcaSlicer, across three areas: **mixed nozzle sizes**, **splitting the outer and inner wall onto different heads**, and **Color Patch mode**.
 
-[![FOrcaSlicer launch demo](https://img.youtube.com/vi/5z-unU9aujo/maxresdefault.jpg)](https://youtu.be/5z-unU9aujo)
+[![FOrcaSlicer launch demo](docs/images/launch-demo-en.jpg)](https://youtu.be/5z-unU9aujo)
 
 ### Mixed nozzle sizes: fine outer detail, faster interior
 

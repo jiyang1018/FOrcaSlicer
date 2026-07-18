@@ -10,7 +10,7 @@
 
 一段简短的演示，介绍 FOrcaSlicer 相较于原版 Snapmaker OrcaSlicer 的三大不同之处：**混直径打印**、**将外墙与内壁拆分到不同工作头**，以及**仅外壳着色（Color Patch）模式**。
 
-[![FOrcaSlicer 发布演示](https://img.youtube.com/vi/5z-unU9aujo/maxresdefault.jpg)](https://youtu.be/5z-unU9aujo)
+[![FOrcaSlicer 发布演示](docs/images/launch-demo-zh.jpg)](https://youtu.be/5z-unU9aujo)
 
 ### 混直径打印：外部精细，内部更快
 
