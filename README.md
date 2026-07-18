@@ -6,6 +6,12 @@ A fork of [Snapmaker OrcaSlicer](https://github.com/Snapmaker/OrcaSlicer) for th
 
 > **Status:** Research preview, actively developed. Targets the **Snapmaker U1** 4-head printer. **Windows** is the primary platform; macOS and Linux are build-from-source only. Not yet independently bed-tested at this release — please report real-print results.
 
+## Launch demo
+
+A short walkthrough of what FOrcaSlicer does differently from stock Snapmaker OrcaSlicer, across three areas: **mixed nozzle sizes**, **splitting the outer and inner wall onto different heads**, and **Color Patch mode**.
+
+[![FOrcaSlicer launch demo](https://img.youtube.com/vi/5z-unU9aujo/maxresdefault.jpg)](https://youtu.be/5z-unU9aujo)
+
 ### Mixed nozzle sizes: fine outer detail, faster interior
 
 Example is a set of seven metric module-1 gears — different sizes and tooth styles, the kind of spread you'd print for a gearbox or power-transmission project, with 3 copies on the same plate. Screenshot shows the whole plate sliced differently: stock forces one nozzle size across the whole part (outer columns), while FOrcaSlicer prints the outer wall with a fine tip and everything behind it with larger nozzles (middle columns) — keeping the tooth detail of an all-0.2 mm print in roughly half the time.
