@@ -943,6 +943,12 @@ boost::any ConfigOptionsGroup::get_config_value(const DynamicPrintConfig& config
 	boost::any ret;
 	wxString text_value = wxString("");
 	const ConfigOptionDef* opt = config.def()->get(opt_key);
+	// FOS: opt_key may be absent from the config def (a preset key stripped on import, or a
+	// slot optgroup field whose key is not in this slot config); get() returns null and the
+	// deref below is an access-violation crash (fresh install adding U1 PTP, via
+	// fos_reload_slot_config -> reload_config). Return empty instead of dereferencing null.
+	if (opt == nullptr)
+		return ret;
 
     if (opt->nullable)
     {
@@ -1087,6 +1093,9 @@ boost::any ConfigOptionsGroup::get_config_value2(const DynamicPrintConfig& confi
 
     boost::any ret;
     const ConfigOptionDef* opt = config.def()->get(opt_key);
+    // FOS: same null guard as get_config_value - opt_key may not be in the config def.
+    if (opt == nullptr)
+        return ret;
 
     if (opt->nullable)
     {

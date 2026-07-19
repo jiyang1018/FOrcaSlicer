@@ -27,6 +27,7 @@
 
 #include <map>
 #include <vector>
+#include <deque>  // FOS: m_fos_slot_configs needs stable element addresses
 #include <memory>
 
 //#include "BedShapeDialog.hpp"
@@ -471,7 +472,7 @@ private:
         ogStaticText*   m_top_bottom_shell_thickness_explanation = nullptr;
         // FOS: per-nozzle configs and optgroups - index 0=N1, 1=N2, ... n-1=Nn
         // Sized dynamically to nozzle count; sync mode keeps indices 1..n-1 identical to index 0
-        std::vector<DynamicPrintConfig>                       m_fos_slot_configs;
+        std::deque<DynamicPrintConfig>                       m_fos_slot_configs;
         std::vector<DynamicPrintConfig>                       m_fos_slot_baselines;
         std::vector<std::string>                              m_fos_slot_preset_names;
         std::vector<float>                                    m_fos_last_applied_nlh;   // FOS: last nozzle layer-height array applied; gates reslice trigger on real change
