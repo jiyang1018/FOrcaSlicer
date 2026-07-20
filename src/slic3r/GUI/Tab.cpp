@@ -3526,6 +3526,56 @@ void TabPrint::fos_reload_slot_config(int slot_idx)
     fos_resolve_nozzle_arrays();
 }
 
+void TabPrint::fos_populate_all_slots(bool mixed_active)
+{
+    // FOS 8.5.3: load EVERY slot config from its SOURCE without depending on the per-nozzle
+    // notebook optgroups (which build lazily on first Quality-tab open), then resolve ONCE on
+    // the complete set. Used by the PTP-create path (update_prp_nozzle_rows) so slots 1-N load
+    // immediately instead of waiting for a Quality visit. This does the config LOAD + a single
+    // COMPLETE-SET resolve only - it never touches optgroups (no UI reload) and never resolves
+    // a partial set. Single-slot resolves on a torn-down state are what clobber the arrays, so
+    // fos_reload_slot_config keeps its optgroup-empty bail to guard that churn path.
+    if (!m_preset_bundle || !m_config || !m_presets) return;
+    const auto* nd = m_preset_bundle->printers.get_edited_preset()
+        .config.option<ConfigOptionFloats>("nozzle_diameter");
+    const int nozzle_count = nd ? (int)nd->values.size() : 4;
+    if (nozzle_count < 1) return;
+    if ((int)m_fos_slot_configs.size() < nozzle_count) {
+        m_fos_slot_configs.resize(nozzle_count);
+        m_fos_slot_baselines.resize(nozzle_count);
+        m_fos_slot_preset_names.resize(nozzle_count);
+        m_fos_slot_optgroups.resize(nozzle_count);
+    }
+    // slot 0 = N1 = main print preset (source of truth = *m_config, carries N1 hand-edits)
+    m_fos_slot_configs[0]      = *m_config;
+    m_fos_slot_baselines[0]    = m_presets->get_selected_preset().config;
+    m_fos_slot_preset_names[0] = m_presets->get_selected_preset().name;
+    auto* pp = wxGetApp().params_panel();
+    for (int i = 1; i < nozzle_count; ++i) {
+        if (!mixed_active) {
+            // uniform: every slot mirrors N1
+            m_fos_slot_configs[i]      = m_fos_slot_configs[0];
+            m_fos_slot_baselines[i]    = m_fos_slot_baselines[0];
+            m_fos_slot_preset_names[i] = m_fos_slot_preset_names[0];
+            continue;
+        }
+        auto* nt = pp ? pp->get_nozzle_tab(i) : nullptr;
+        if (!nt) continue;
+        const std::string preset_name = nt->selected_preset_name();
+        if (preset_name.empty()) continue;
+        // FOS: change-guard - only reload from the PRP when the selection actually differs,
+        // so a spurious populate does not wipe a slot hand-edit (AP-66 family).
+        if (preset_name != m_fos_slot_preset_names[i]) {
+            const Preset* slot_preset = m_preset_bundle->prints.find_preset(preset_name, false);
+            if (!slot_preset) continue;
+            m_fos_slot_configs[i]      = slot_preset->config;
+            m_fos_slot_baselines[i]    = slot_preset->config;
+            m_fos_slot_preset_names[i] = preset_name;
+        }
+    }
+    fos_resolve_nozzle_arrays();
+}
+
 void TabPrint::fos_resolve_nozzle_arrays()
 {
     // FOS 8.5: the per-nozzle layer-height arrays were MAPS plumbing and are gone in 8.x

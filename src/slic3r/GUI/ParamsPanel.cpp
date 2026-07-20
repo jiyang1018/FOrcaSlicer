@@ -808,6 +808,13 @@ void ParamsPanel::update_prp_nozzle_rows(bool mixed_active)
             }
         }
     }
+    // FOS 8.5.3: PTP-create populate. The per-slot fos_reload_slot_config() calls above BAIL
+    // when the per-nozzle notebook optgroups are not built yet (they build lazily on first
+    // Quality-tab open), so on PTP create slots 1-N never load and the slice used N1 width for
+    // everything. Populate ALL slots from their sources + resolve ONCE here (complete-set), so
+    // the create path never depends on the notebook being open.
+    if (auto* fos_tp = dynamic_cast<TabPrint*>(wxGetApp().get_tab(Preset::TYPE_PRINT)))
+        fos_tp->fos_populate_all_slots(mixed_active);
     // FOS: reduce bottom padding of row 1 when nozzle rows are shown
     auto* tab_print = dynamic_cast<Tab*>(m_tab_print);
     if (tab_print && tab_print->get_main_sizer() && tab_print->get_top_panel()) {
