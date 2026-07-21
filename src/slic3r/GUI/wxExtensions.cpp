@@ -497,7 +497,7 @@ wxBitmap* get_default_extruder_color_icon(bool thin_icon/* = false*/)
     wxMemoryDC dc(&cdc);
     dc.SetFont(::Label::Body_12);
 
-    wxString label = _L("default");
+    wxString label = _L("Global"); // FOS: object/fallback filament label (was "default")
     std::string bitmap_key = std::string("default_color") + "-h" + std::to_string(icon_height) + "-w" + std::to_string(icon_width)
         + "-i" + label.ToStdString();
 

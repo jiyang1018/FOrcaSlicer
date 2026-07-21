@@ -329,8 +329,7 @@ bool ObjectDataViewModelNode::SetValue(const wxVariant& variant, unsigned col)
         DataViewBitmapText data;
         data << variant;
         m_extruder_bmp = data.GetBitmap();
-        // FOS: objects default to Filament 1 (no "Default"); parts/modifiers keep "default" (inherit)
-        m_extruder = data.GetText() == "0" ? ((m_type & itObject) ? wxString("1") : _(L("default"))) : data.GetText();
+        m_extruder = data.GetText() == "0" ? _(L("Global")) : data.GetText(); // FOS: object fila label (was "default")
         return true; }
     // BBS
     case colSupportPaint:
@@ -671,7 +670,7 @@ wxDataViewItem ObjectDataViewModel::AddVolumeChild( const wxDataViewItem &parent
     wxString extruder_str;
     if (extruder == 0) {
         if (volume_type == ModelVolumeType::PARAMETER_MODIFIER)
-            extruder_str = _L("default");
+            extruder_str = _L("Global"); // FOS: modifier fallback label (was "default")
         else
             extruder_str = root->m_extruder;
     }
@@ -895,7 +894,7 @@ wxDataViewItem ObjectDataViewModel::AddLayersChild(const wxDataViewItem &parent_
     if (!parent_node) return wxDataViewItem(0);
 
     // BBS
-    wxString extruder_str = extruder == 0 ? _(L("default")) : wxString::Format("%d", extruder);
+    wxString extruder_str = extruder == 0 ? _(L("Global")) : wxString::Format("%d", extruder); // FOS: layer fallback label (was "default")
 
     // get LayerRoot node
     ObjectDataViewModelNode *layer_root_node;
@@ -2235,7 +2234,7 @@ void ObjectDataViewModel::SetVolumeType(const wxDataViewItem &item, const Slic3r
     if (volume_type != Slic3r::ModelVolumeType::MODEL_PART && volume_type != Slic3r::ModelVolumeType::PARAMETER_MODIFIER)
         node->SetExtruder("");          // hide extruder
     else if (node->GetExtruder().IsEmpty())
-        node->SetExtruder("default");   // show extruder ans set it to default
+        node->SetExtruder("Global");   // FOS: fallback label (was "default"); atoi -> 0 unchanged
     node->UpdateExtruderAndColorIcon();
     ItemChanged(item);
 }

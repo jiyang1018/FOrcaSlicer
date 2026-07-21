@@ -318,7 +318,7 @@ wxWindow* BitmapChoiceRenderer::CreateEditorCtrl(wxWindow* parent, wxRect labelR
     c_editor->GetDropDown().SetUseContentWidth(true);
 
     if (has_default_extruder && has_default_extruder())
-        c_editor->Append(_L("default"), *get_default_extruder_color_icon());
+        c_editor->Append(_L("Global"), *get_default_extruder_color_icon()); // FOS: fallback dropdown row (was "default")
 
     for (size_t i = 0; i < icons.size(); i++)
         c_editor->Append(wxString::Format("%d", i+1), *icons[i]);

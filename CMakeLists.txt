@@ -706,7 +706,7 @@ foreach(po_file ${BBL_L10N_PO_FILES})
     SET(po_new_file "${po_dir}/Snapmaker_Orca_.po")
     add_custom_command(
         TARGET gettext_merge_po_with_pot PRE_BUILD
-        COMMAND msgmerge -N -o ${po_file} ${po_file} "${BBL_L18N_DIR}/Snapmaker_Orca.pot"
+        COMMAND "${PROJECT_SOURCE_DIR}/tools/msgmerge.exe" -N -o ${po_file} ${po_file} "${BBL_L18N_DIR}/Snapmaker_Orca.pot" # FOS: bundled msgmerge (was bare msgmerge, not on PATH)
         DEPENDS ${po_file}
     )
 endforeach()
@@ -718,10 +718,10 @@ file(GLOB L10N_PO_FILES "${BBL_L18N_DIR}/*/Snapmaker_Orca*.po")
 foreach(po_file ${BBL_L10N_PO_FILES})
     GET_FILENAME_COMPONENT(SECOND_FOLDER_ABSOLUTE ${po_file} DIRECTORY)
     string(REGEX REPLACE ".*/(.*)" "\\1" po_dir "${SECOND_FOLDER_ABSOLUTE}" )
-    SET(mo_file "${L10N_DIR}/${po_dir}/Snapmaker_Orca.mo")
+    SET(mo_file "${L10N_DIR}/${po_dir}/${SLIC3R_APP_KEY}.mo") # FOS: app loads ${SLIC3R_APP_KEY}.mo (AddCatalog(SLIC3R_APP_KEY)), not Snapmaker_Orca.mo
     add_custom_command(
         TARGET gettext_po_to_mo PRE_BUILD
-        COMMAND msgfmt ARGS --check-format -o ${mo_file} ${po_file}
+        COMMAND "${PROJECT_SOURCE_DIR}/tools/msgfmt.exe" ARGS --check-format -o ${mo_file} ${po_file} # FOS: bundled msgfmt (was bare msgfmt, not on PATH)
         #COMMAND msgfmt ARGS --check-compatibility -o ${mo_file} ${po_file}
         DEPENDS ${po_file}
     )

@@ -4922,9 +4922,8 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
                 for (size_t i = 0; i < nozzle_diameters->values.size(); i++) {
                     if (i == 0) ImGui::Dummy({ window_padding, 0.0f });
                     ImGui::SameLine(nozzle_start_x + (i * col_w));
-                    char buf[16];
-                    ::sprintf(buf, "Nozzle %d", (int)i + 1);
-                    imgui.text(buf);
+                    // FOS: translate nozzle header label (was raw ASCII "Nozzle %d")
+                    imgui.text(wxString::Format(_L("Nozzle %d"), (int)i + 1));
                 }
                 // diameter row with colored background
                 ImGui::Dummy({ window_padding, window_padding });
@@ -4964,14 +4963,14 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
                     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.45f, 0.45f, 0.45f, 1.0f));
                     ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.45f, 0.45f, 0.45f, 1.0f));
                     ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(0.75f, 0.75f, 0.75f, 1.0f));
-                    imgui.button(_u8L("Nozzle sizes verified [OK]"));
+                    imgui.button(_L("Nozzle sizes verified [OK]")); // FOS: _L not _u8L (button takes wxString; _u8L mis-encodes CJK)
                     ImGui::PopStyleColor(4);
                 } else {
                     ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.00f, 0.59f, 0.53f, 1.0f));
                     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.00f, 0.59f, 0.53f, 1.0f));
                     ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.00f, 0.50f, 0.45f, 1.0f));
                     ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-                    if (imgui.button(_u8L("Verify nozzle sizes"))) {
+                    if (imgui.button(_L("Verify nozzle sizes"))) { // FOS: _L not _u8L (button takes wxString; _u8L mis-encodes CJK)
                         wxGetApp().plater()->verify_nozzle_sizes();
                     }
                     ImGui::PopStyleColor(4);
