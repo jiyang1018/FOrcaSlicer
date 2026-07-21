@@ -688,8 +688,8 @@ void ObjectList::update_filament_values_for_items(const size_t filaments_count)
         auto object = (*m_objects)[i];
         wxString extruder;
         if (!object->config.has("extruder") || size_t(object->config.extruder()) > filaments_count) {
-            extruder = "1";  // FOS: objects default to filament 1 (no "default")
-            object->config.set_key_value("extruder", new ConfigOptionInt(1));
+            extruder = "0";
+            object->config.set_key_value("extruder", new ConfigOptionInt(0));
         }
         else {
             extruder = wxString::Format("%d", object->config.extruder());
@@ -2440,7 +2440,7 @@ void ObjectList::load_mesh_object(const TriangleMesh &mesh, const wxString &name
     new_volume->name = into_u8(name);
     // set a default extruder value, since user can't add it manually
     // BBS
-    new_object->config.set_key_value("extruder", new ConfigOptionInt(1)); // FOS: objects default to filament 1
+    new_object->config.set_key_value("extruder", new ConfigOptionInt(0));
     new_object->invalidate_bounding_box();
     new_object->translate(-bb.center());
 
