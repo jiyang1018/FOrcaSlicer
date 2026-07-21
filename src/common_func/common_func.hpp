@@ -11,7 +11,7 @@
 // Snapmaker_VERSION on purpose - Snapmaker_VERSION is written into 3mf metadata,
 // project_settings, and the user_backup-v<ver> folder name, so changing it would
 // break project round-trips and orphan existing backups.
-#define FOS_VERSION "2.3.2-fos.8.5.3"
+#define FOS_VERSION "2.3.2-fos.8.5.4"
 #define MIN_FIRM_VER "1.0.0"
 #ifndef GIT_COMMIT_HASH
 #define GIT_COMMIT_HASH "0000000" // 0000000 means uninitialized
