@@ -872,7 +872,7 @@ void MenuFactory::append_menu_item_replace_with_stl(wxMenu *menu)
 void MenuFactory::append_menu_item_change_extruder(wxMenu* menu)
 {
     // BBS
-    const std::vector<wxString> names = { _L("Change filament"), _L("Set filament for selected items") };
+    const std::vector<wxString> names = { _L("Change Default Filament"), _L("Change Default Filament for selected items") };
     // Delete old menu item
     for (const wxString& name : names) {
         const int item_id = menu->FindItem(name);
@@ -1930,7 +1930,7 @@ void MenuFactory::append_menu_item_per_object_settings(wxMenu* menu)
 
 void MenuFactory::append_menu_item_change_filament(wxMenu* menu)
 {
-    const std::vector<wxString> names = { _L("Change Filament"), _L("Set Filament for selected items") };
+    const std::vector<wxString> names = { _L("Change Default Filament"), _L("Change Default Filament for selected items") };
     // Delete old menu item
     for (const wxString& name : names) {
         const int item_id = menu->FindItem(name);
@@ -1984,7 +1984,7 @@ void MenuFactory::append_menu_item_change_filament(wxMenu* menu)
         }
     }
 
-    for (/*int i = has_modifier ? 0 : 1*/int i  = 0; i <= filaments_cnt; i++)
+    for (int i = has_modifier ? 0 : 1; i <= filaments_cnt; i++)  // FOS: objects/parts start at Filament 1 (no Default); modifiers keep Default. Restores upstream OrcaSlicer (SOS had forced i=0).
     {
         // BBS
         //bool is_active_extruder = i == initial_extruder;

@@ -3217,6 +3217,17 @@ static void clamp_exturder_to_default(ConfigOptionInt &opt, size_t num_extruders
         opt.value = 1;
 }
 
+// FOS: feature filaments (wall/inner-wall/infill/solid) use 0 = "Default" (inherit the object
+// extruder, filled in apply_to_print_region_config step 1). If a feature ends up 0 (object
+// extruder was 0/unset), 0 would reach PrintRegion::extruder -> nozzle get_at(-1). Clamp 0 and
+// out-of-range to filament 1 AFTER layering. Support filaments keep 0 (mounted-tool) and use
+// clamp_exturder_to_default, not this.
+static void clamp_feature_extruder(ConfigOptionInt &opt, size_t num_extruders)
+{
+    if (opt.value < 1 || opt.value > (int)num_extruders)
+        opt.value = 1;
+}
+
 PrintObjectConfig PrintObject::object_config_from_model_object(const PrintObjectConfig &default_object_config, const ModelObject &object, size_t num_extruders)
 {
     PrintObjectConfig config = default_object_config;
@@ -3339,9 +3350,10 @@ PrintRegionConfig region_config_from_model_volume(const PrintRegionConfig &defau
     	apply_to_print_region_config(config, *layer_range_config);
     }
     // Clamp invalid extruders to the default extruder (with index 1).
-    clamp_exturder_to_default(config.sparse_infill_filament,       num_extruders);
-    clamp_exturder_to_default(config.wall_filament,    num_extruders);
-    clamp_exturder_to_default(config.solid_infill_filament, num_extruders);
+    clamp_feature_extruder(config.sparse_infill_filament, num_extruders);
+    clamp_feature_extruder(config.wall_filament,          num_extruders);
+    clamp_feature_extruder(config.inner_wall_filament,    num_extruders);
+    clamp_feature_extruder(config.solid_infill_filament,  num_extruders);
 
     // FOS 8.5: stamp per-nozzle resolved widths/speeds into the region scalars. See the
     // object-scope helper for the contract (resolved absolute mm; 0 = leave as-is; the old

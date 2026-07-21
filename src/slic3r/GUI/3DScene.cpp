@@ -573,9 +573,9 @@ void GLVolume::simple_render(GLShaderProgram*        shader,
                     int extruder_id = model_volume->extruder_id();
                     if (extruder_id <= 0)
                         extruder_id = 1;
-                    // FOS: use OW extruder color for base unpainted faces
-                    if (ow_extruder > 1 && ow_extruder - 1 < (int)extruder_colors.size())
-                        extruder_id = ow_extruder;
+                    // FOS: SOS behavior - base unpainted faces use the object-level
+                    // filament, not OW. (void) the now-unused param to avoid a warning.
+                    (void)ow_extruder;
                     // to make black not too hard too see
                     ColorRGBA new_color = adjust_color_for_rendering(extruder_colors[extruder_id - 1]);
                     if (ban_light) {
@@ -1254,15 +1254,8 @@ void GLVolumeCollection::update_colors_by_extruder(const DynamicPrintConfig* con
         int extruder_id = volume->extruder_id - 1;
         if (extruder_id < 0 || (int) colors.size() <= extruder_id)
             extruder_id = 0;
-        // FOS: use OW extruder color for model volumes
-        {
-            const auto* wall_fil = config->option<ConfigOptionInt>("wall_filament");
-            if (wall_fil && wall_fil->value > 1) {
-                int ow_idx = wall_fil->value - 1;
-                if (ow_idx < (int)colors.size())
-                    extruder_id = ow_idx;
-            }
-        }
+        // FOS: SOS behavior - object display color is driven only by the object-level
+        // filament (extruder_id). Per-feature OW/wall_filament does NOT tint the object.
         const ColorItem& color = colors[extruder_id];
         if (!color.first.empty()) {
             if (!is_update_alpha) {

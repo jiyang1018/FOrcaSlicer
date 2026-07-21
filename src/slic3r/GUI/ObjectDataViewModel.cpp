@@ -329,7 +329,8 @@ bool ObjectDataViewModelNode::SetValue(const wxVariant& variant, unsigned col)
         DataViewBitmapText data;
         data << variant;
         m_extruder_bmp = data.GetBitmap();
-        m_extruder = data.GetText() == "0" ? _(L("default")) : data.GetText();
+        // FOS: objects default to Filament 1 (no "Default"); parts/modifiers keep "default" (inherit)
+        m_extruder = data.GetText() == "0" ? ((m_type & itObject) ? wxString("1") : _(L("default"))) : data.GetText();
         return true; }
     // BBS
     case colSupportPaint:

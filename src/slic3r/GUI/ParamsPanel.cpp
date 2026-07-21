@@ -14,6 +14,7 @@
 #include "MainFrame.hpp"
 #include "GUI_App.hpp"
 #include "Plater.hpp"
+#include "NotificationManager.hpp"
 
 #include "Widgets/Label.hpp"
 #include "Widgets/SwitchButton.hpp"
@@ -541,6 +542,25 @@ void ParamsPanel::OnToggled(wxCommandEvent& event)
     if (m_mode_region && m_mode_region->GetId() == event.GetId()) {
         wxWindowUpdateLocker locker(GetParent());
         set_active_tab(nullptr);
+        // FOS: on Global->Objects, warn that the per-object preview color is not the
+        // sliced/printed result. The first-time modal is suppressible; the lower-right
+        // WARNING notification shows every time regardless of the checkbox. Deferred so
+        // it appears after the update locker is released and the tab switch completes.
+        if (m_mode_region->GetValue()) {
+            wxGetApp().CallAfter([] {
+                const wxString msg = _L("The previewed color does not accurately represent the sliced or printed result. Please refer to the sliced result.");
+                if (wxGetApp().app_config->get("do_not_show_per_object_color_tip").empty()) {
+                    TipsDialog dlg(wxGetApp().mainframe, _L("Per-object preview"), msg,
+                                   "do_not_show_per_object_color_tip");
+                    dlg.ShowModal();
+                }
+                if (auto* plater = wxGetApp().plater())
+                    plater->get_notification_manager()->push_notification(
+                        NotificationType::CustomNotification,
+                        NotificationManager::NotificationLevel::WarningNotificationLevel,
+                        _u8L("WARNING:") + "\n" + std::string(msg.ToUTF8().data()));
+            });
+        }
         event.Skip();
         return;
     }
