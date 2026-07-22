@@ -237,6 +237,8 @@ public:
     void                update_name_in_model(const wxDataViewItem& item) const;
     void                update_name_in_list(int obj_idx, int vol_idx) const;
     void                update_filament_values_for_items(const size_t filaments_count);
+    void                update_object_filament_column_display();
+    void                unify_object_filaments(ModelConfig& config, int filament);
 
     //BBS: update plate
     void                update_plate_values_for_items();

@@ -292,6 +292,23 @@ void GLVolume::set_render_color()
     }
 }
 
+// FOS: OW-identity - an object's 3D display tint IS its outer-wall filament. Effective OW =
+// per-object wall_filament override else the global (print preset) wall_filament, clamped >= 1.
+// Drives the display GLVolume::extruder_id field only; the backend extruder_id() is untouched.
+int fos_object_ow_extruder(const ModelVolume& model_volume)
+{
+    int ow = Slic3r::GUI::wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament");
+    if (const ModelObject* mo = model_volume.get_object())
+        if (const ConfigOption* opt = mo->config.option("wall_filament"))
+            ow = opt->getInt();
+    // FOS: a part (volume) may carry its own outer-wall override; most specific wins for its tint.
+    if (const ConfigOption* vopt = model_volume.config.option("wall_filament"))
+        ow = vopt->getInt();
+    if (ow < 1)
+        ow = 1;
+    return ow;
+}
+
 ColorRGBA color_from_model_volume(const ModelVolume& model_volume)
 {
     ColorRGBA color;
@@ -570,11 +587,9 @@ void GLVolume::simple_render(GLShaderProgram*        shader,
 
             if (shader) {
                 if (idx == 0) {
-                    int extruder_id = model_volume->extruder_id();
-                    if (extruder_id <= 0)
-                        extruder_id = 1;
-                    // FOS: SOS behavior - base unpainted faces use the object-level
-                    // filament, not OW. (void) the now-unused param to avoid a warning.
+                    // FOS: OW-identity - base unpainted faces tint by the object's outer-wall
+                    // filament (effective OW), consistent with the object list and 3D tint.
+                    int extruder_id = fos_object_ow_extruder(*model_volume);
                     (void)ow_extruder;
                     // to make black not too hard too see
                     ColorRGBA new_color = adjust_color_for_rendering(extruder_colors[extruder_id - 1]);
@@ -721,8 +736,8 @@ int GLVolumeCollection::load_object_volume(const ModelObject* model_object,
     if (model_volume->is_model_part()) {
         // GLVolume will reference a convex hull from model_volume!
         v.set_convex_hull(model_volume->get_convex_hull_shared_ptr());
-        if (extruder_id != -1)
-            v.extruder_id = extruder_id;
+        // FOS: OW-identity - tint the object by its outer-wall filament, not the extruder key.
+        v.extruder_id = fos_object_ow_extruder(*model_volume);
     }
     v.is_modifier                              = !model_volume->is_model_part();
     v.shader_outside_printer_detection_enabled = model_volume->is_model_part();

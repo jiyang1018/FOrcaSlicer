@@ -9,6 +9,7 @@
 #include "PartPlate.hpp"
 
 #include "libslic3r/Model.hpp"
+#include "libslic3r/PresetBundle.hpp"
 
 #include <wx/bmpcbox.h>
 #include <wx/dc.h>
@@ -593,7 +594,14 @@ wxDataViewItem ObjectDataViewModel::AddObject(ModelObject *model_object, std::st
 {
     // get object node params
     wxString name = from_u8(model_object->name);
-    int extruder = model_object->config.has("extruder") ? model_object->config.extruder() : 0;
+    // FOS: OW-identity - the object row shows its Outer Wall filament (wall_filament, the
+    // FOS: object identity), not the retired object "extruder" key. Effective = per-object
+    // FOS: override else global.
+    int extruder = model_object->config.has("wall_filament")
+        ? model_object->config.opt_int("wall_filament")
+        : wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament");
+    if (extruder < 1)
+        extruder = 1;
     int plate_idx = -1;
     ObjectDataViewModelNode* plate_node = nullptr;
     for (auto plate : m_plates) {

@@ -872,7 +872,7 @@ void MenuFactory::append_menu_item_replace_with_stl(wxMenu *menu)
 void MenuFactory::append_menu_item_change_extruder(wxMenu* menu)
 {
     // BBS
-    const std::vector<wxString> names = { _L("Change Default Filament"), _L("Change Default Filament for selected items") };
+    const std::vector<wxString> names = { _L("Unify Object Filaments"), _L("Unify Object Filaments for selected items") };
     // Delete old menu item
     for (const wxString& name : names) {
         const int item_id = menu->FindItem(name);
@@ -896,8 +896,9 @@ void MenuFactory::append_menu_item_change_extruder(wxMenu* menu)
     int initial_extruder = -1; // negative value for multiple object/part selection
     if (sels.Count() == 1) {
         const ModelConfig& config = obj_list()->get_item_config(sels[0]);
-        // BBS: set default extruder to 1
-        initial_extruder = config.has("extruder") ? config.extruder() : 0;
+        // FOS: OW-identity - the object's current filament is its outer wall (wall_filament).
+        initial_extruder = config.has("wall_filament") ? config.opt_int("wall_filament")
+                             : wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament");
     }
 
     for (int i = 0; i <= filaments_cnt; i++)
@@ -1930,7 +1931,7 @@ void MenuFactory::append_menu_item_per_object_settings(wxMenu* menu)
 
 void MenuFactory::append_menu_item_change_filament(wxMenu* menu)
 {
-    const std::vector<wxString> names = { _L("Change Default Filament"), _L("Change Default Filament for selected items") };
+    const std::vector<wxString> names = { _L("Unify Object Filaments"), _L("Unify Object Filaments for selected items") };
     // Delete old menu item
     for (const wxString& name : names) {
         const int item_id = menu->FindItem(name);
@@ -1972,7 +1973,9 @@ void MenuFactory::append_menu_item_change_filament(wxMenu* menu)
         if (sel_vol && sel_vol->type() == ModelVolumeType::PARAMETER_MODIFIER)
             initial_extruder = config.has("extruder") ? config.extruder() : 0;
         else
-            initial_extruder = config.has("extruder") ? config.extruder() : 0;
+            // FOS: OW-identity - object/part current filament is its outer wall (wall_filament).
+            initial_extruder = config.has("wall_filament") ? config.opt_int("wall_filament")
+                                 : wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament");
     }
 
     // BBS

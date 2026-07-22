@@ -1571,6 +1571,11 @@ void ObjectGridTable::SetValue( int row, int col, const wxString& value )
 
             option_value.value = enum_value + 1;
             update_filament_to_config(grid_row->config, grid_col->key, option_value, option_ori_value, (grid_row->row_type == row_object));
+            // FOS: OW-identity - unify the object/part filaments (outer wall, inner wall, sparse and
+            // FOS: solid infill) to the picked filament, same as the "Unify Object Filaments" menu, so
+            // FOS: engine + 3D tint + Fila column all follow. update_filament_to_config above keeps the
+            // FOS: table's own "extruder" display value in sync.
+            wxGetApp().obj_list()->unify_object_filaments(*grid_row->config, option_value.value);
             update_volume_values_from_object(row, col);
             wxGetApp().obj_list()->update_filament_values_for_items(m_panel->m_filaments_count);
             //m_panel->m_plater->update();
@@ -1964,6 +1969,15 @@ void ObjectGridTable::construct_object_configs(ObjectGrid *object_grid)
             object_grid->filaments.value = 1;
             object_grid->config->set_key_value(m_col_data[col_filaments]->key, object_grid->filaments.clone());
         }
+        // FOS: OW-identity - DISPLAY the effective outer-wall filament (matches the object-list Fila
+        // FOS: column). The block above keeps the table's own "extruder" machinery; here we override
+        // FOS: only the shown value to the object's wall_filament override else the global OW.
+        {
+            auto ow_ptr = static_cast<const ConfigOptionInt*>(object_grid->config->option("wall_filament"));
+            object_grid->filaments.value = (ow_ptr && ow_ptr->value > 0) ? ow_ptr->value : global_config.opt_int("wall_filament");
+            if (object_grid->filaments.value < 1)
+                object_grid->filaments.value = 1;
+        }
         //object_grid->ori_filaments.value = 1;
 
         object_grid->layer_height = *(get_object_config_value<ConfigOptionFloat>(global_config, object_grid->config, m_col_data[col_layer_height]->key));
@@ -2015,6 +2029,15 @@ void ObjectGridTable::construct_object_configs(ObjectGrid *object_grid)
             }
             else
                 volume_grid->filaments = object_grid->filaments;
+            // FOS: OW-identity - DISPLAY the part's effective outer-wall filament (its own override
+            // FOS: else the object's OW shown above).
+            {
+                auto vow_ptr = static_cast<const ConfigOptionInt*>(volume_grid->config->option("wall_filament"));
+                if (vow_ptr && vow_ptr->value > 0)
+                    volume_grid->filaments.value = vow_ptr->value;
+                if (volume_grid->filaments.value < 1)
+                    volume_grid->filaments.value = 1;
+            }
             //volume_grid->ori_filaments = object_grid->filaments;
             volume_grid->layer_height = *(get_volume_config_value<ConfigOptionFloat>(global_config, object_grid->config, volume_grid->config, m_col_data[col_layer_height]->key));
             volume_grid->ori_layer_height = object_grid->layer_height;

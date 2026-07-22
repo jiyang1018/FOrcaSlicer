@@ -14987,6 +14987,10 @@ void Plater::on_config_change(const DynamicPrintConfig &config)
         else if (opt_key == "support_interface_filament" || opt_key == "support_filament" || opt_key == "wall_filament" ||
                  opt_key == "sparse_infill_filament" || opt_key == "solid_infill_filament") {
             update_scheduled = true;
+            // FOS: OW-identity - the object-list Fila column shows the outer wall (wall_filament).
+            // FOS: Refresh it display-only (no config write -> no on_config_change re-entry/loop).
+            if (opt_key == "wall_filament")
+                wxGetApp().obj_list()->update_object_filament_column_display();
         }
     }
 

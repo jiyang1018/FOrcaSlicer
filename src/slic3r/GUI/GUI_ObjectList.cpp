@@ -678,6 +678,33 @@ ModelConfig& ObjectList::get_item_config(const wxDataViewItem& item) const
                             (*m_objects)[obj_idx]->config;
 }
 
+// FOS: OW-identity - refresh ONLY the object-list Fila column (icon + number) from the current
+// FOS: outer-wall filament. Display only: no config writes, no plater()->update(), so calling this
+// FOS: from on_config_change (OW dropdown change) cannot re-enter and loop.
+void ObjectList::update_object_filament_column_display()
+{
+    if (!m_objects)
+        return;
+    const int glb = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament");
+    for (size_t i = 0; i < m_objects->size(); ++i) {
+        wxDataViewItem item = m_objects_model->GetItemById(i);
+        if (!item) continue;
+        auto object = (*m_objects)[i];
+        int ow = object->config.has("wall_filament") ? object->config.opt_int("wall_filament") : glb;
+        if (ow < 1) ow = 1;
+        m_objects_model->SetExtruder(wxString::Format("%d", ow), item);
+        if (object->volumes.size() > 1) {
+            for (size_t id = 0; id < object->volumes.size(); id++) {
+                wxDataViewItem vitem = m_objects_model->GetItemByVolumeId(i, id);
+                if (!vitem) continue;
+                int vow = object->volumes[id]->config.has("wall_filament") ? object->volumes[id]->config.opt_int("wall_filament") : ow;
+                if (vow < 1) vow = 1;
+                m_objects_model->SetExtruder(wxString::Format("%d", vow), vitem);
+            }
+        }
+    }
+}
+
 void ObjectList::update_filament_values_for_items(const size_t filaments_count)
 {
     for (size_t i = 0; i < m_objects->size(); ++i)
@@ -686,14 +713,12 @@ void ObjectList::update_filament_values_for_items(const size_t filaments_count)
         if (!item) continue;
 
         auto object = (*m_objects)[i];
-        wxString extruder;
-        if (!object->config.has("extruder") || size_t(object->config.extruder()) > filaments_count) {
-            extruder = "0";
-            object->config.set_key_value("extruder", new ConfigOptionInt(0));
-        }
-        else {
-            extruder = wxString::Format("%d", object->config.extruder());
-        }
+        // FOS: OW-identity - the object row shows its outer-wall filament (wall_filament), not the
+        // FOS: retired "extruder" key. Effective = per-object override else global, clamped to range.
+        int ow = object->config.has("wall_filament") ? object->config.opt_int("wall_filament")
+                    : wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament");
+        if (ow < 1 || size_t(ow) > filaments_count) ow = 1;
+        wxString extruder = wxString::Format("%d", ow);
         m_objects_model->SetExtruder(extruder, item);
 
         static const char *keys[] = {"support_filament", "support_interface_filament"};
@@ -705,13 +730,11 @@ void ObjectList::update_filament_values_for_items(const size_t filaments_count)
             for (size_t id = 0; id < object->volumes.size(); id++) {
                 item = m_objects_model->GetItemByVolumeId(i, id);
                 if (!item) continue;
-                if (!object->volumes[id]->config.has("extruder") ||
-                    size_t(object->volumes[id]->config.extruder()) > filaments_count) {
-                    extruder = wxString::Format("%d", object->config.extruder());
-                }
-                else {
-                    extruder = wxString::Format("%d", object->volumes[id]->config.extruder());
-                }
+                // FOS: OW-identity - a part shows its own outer-wall override else the object's OW.
+                int vow = object->volumes[id]->config.has("wall_filament")
+                            ? object->volumes[id]->config.opt_int("wall_filament") : ow;
+                if (vow < 1 || size_t(vow) > filaments_count) vow = ow;
+                extruder = wxString::Format("%d", vow);
 
                 m_objects_model->SetExtruder(extruder, item);
 
@@ -1078,7 +1101,13 @@ void ObjectList::update_filament_in_config(const wxDataViewItem& item)
     take_snapshot("Change Filament");
 
     const int extruder = m_objects_model->GetExtruderNumber(item);
-    m_config->set_key_value("extruder", new ConfigOptionInt(extruder));
+    // FOS: OW-identity - a Fila-column pick sets the outer-wall filament (the object/part identity),
+    // FOS: matching the right-click menu and the 3D tint. Only layer ranges keep the "extruder" key
+    // FOS: (the layer-range tool is a separate concept).
+    if (item_type & itLayer)
+        m_config->set_key_value("extruder", new ConfigOptionInt(extruder));
+    else
+        m_config->set_key_value("wall_filament", new ConfigOptionInt(extruder < 1 ? 1 : extruder));
 
     // BBS
     if (item_type & itObject) {
@@ -5837,6 +5866,24 @@ void ObjectList::OnEditingDone(wxDataViewEvent &event)
 }
 
 // BBS: remove "const" qualifier
+// FOS: OW-identity - the "object filament group" is the set of feature filaments a whole-object
+// FOS: "Change all filaments" trickles the picked filament to. Outer wall (wall_filament) is the
+// FOS: group identity shown in the Fila column. To follow OrcaSlicer splitting top/bottom surface
+// FOS: out of solid infill later, just add "top_surface_filament"/"bottom_surface_filament" here.
+static const char* const FOS_OBJECT_FILAMENT_GROUP[] = {
+    "wall_filament", "inner_wall_filament", "sparse_infill_filament", "solid_infill_filament"
+};
+
+// FOS: write the whole object filament group to `config`, unifying every feature filament to
+// FOS: `filament`. Shared by the "Unify Object Filaments" menu and the Object Table dropdown.
+void ObjectList::unify_object_filaments(ModelConfig& config, int filament)
+{
+    if (filament < 1)
+        filament = 1;
+    for (const char* key : FOS_OBJECT_FILAMENT_GROUP)
+        config.set_key_value(key, new ConfigOptionInt(filament));
+}
+
 void ObjectList::set_extruder_for_selected_items(const int extruder)
 {
     // BBS: check extruder id
@@ -5887,10 +5934,22 @@ void ObjectList::set_extruder_for_selected_items(const int extruder)
         }
 
         ModelConfig& config = get_item_config(item);
-        if (config.has("extruder"))
-            config.set("extruder", new_extruder);
-        else
-            config.set_key_value("extruder", new ConfigOptionInt(new_extruder));
+        if (type & itLayer) {
+            if (config.has("extruder"))
+                config.set("extruder", new_extruder);
+            else
+                config.set_key_value("extruder", new ConfigOptionInt(new_extruder));
+        } else {
+            // FOS: "Change all filaments" - set all four feature filaments (outer wall, inner wall,
+            // FOS: sparse infill, solid infill) to the picked filament. Outer wall (wall_filament) is
+            // FOS: the object/part identity shown in the Fila column. A 0/"Global" pick resolves to
+            // FOS: the current global OW so the item carries concrete filaments.
+            if (new_extruder < 1)
+                new_extruder = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament");
+            if (new_extruder < 1)
+                new_extruder = 1;
+            unify_object_filaments(config, new_extruder);
+        }
         
         // config.set("sparse_infill_filament", new_extruder);
         // config.set("solid_infill_filament", new_extruder);

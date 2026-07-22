@@ -2498,7 +2498,11 @@ void GLCanvas3D::reload_scene(bool refresh_immediately, bool force_full_scene_re
             glvolumes_new.emplace_back(volume);
             // Update color of the volume based on the current extruder.
             if (mvs->model_volume != nullptr) {
-                int extruder_id = mvs->model_volume->extruder_id();
+                // FOS: OW-identity - tint model parts by the object's outer-wall filament (effective
+                // OW); modifiers/parts with their own override keep the extruder key.
+                int extruder_id = mvs->model_volume->is_model_part()
+                    ? fos_object_ow_extruder(*mvs->model_volume)
+                    : mvs->model_volume->extruder_id();
                 if (extruder_id != -1)
                     volume->extruder_id = extruder_id;
 

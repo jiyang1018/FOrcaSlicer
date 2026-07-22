@@ -3408,9 +3408,9 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Infill");
     def->category = L("Extruders");
     def->tooltip = L("Filament to print internal sparse infill.");
-    def->min = 0;
+    def->min = 1;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionInt(0));
+    def->set_default_value(new ConfigOptionInt(1));
 
     def = this->add("sparse_infill_line_width", coFloatOrPercent);
     def->label = L("Sparse infill");
@@ -4234,17 +4234,17 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Outer walls");
     def->category = L("Extruders");
     def->tooltip = L("Filament to print walls.");
-    def->min = 0;
+    def->min = 1;
     def->mode = comAdvanced;
-	def->set_default_value(new ConfigOptionInt(0));
+	def->set_default_value(new ConfigOptionInt(1));
     def = this->add("inner_wall_filament", coInt);
     def->gui_type = ConfigOptionDef::GUIType::i_enum_open;
     def->label = L("Inner walls");
     def->category = L("Extruders");
     def->tooltip = L("Filament to print inner walls. When set, inner walls use a separate extruder from outer walls.");
-    def->min = 0;
+    def->min = 1;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionInt(0));
+    def->set_default_value(new ConfigOptionInt(1));
     def = this->add("inner_wall_line_width", coFloatOrPercent);
     def->label = L("Inner wall");
     def->category = L("Quality");
@@ -4902,9 +4902,9 @@ def = this->add("outer_wall_layer_height_max", coFloat);
     def->label = L("Solid infill");
     def->category = L("Extruders");
     def->tooltip = L("Filament to print solid infill.");
-    def->min = 0;
+    def->min = 1;
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionInt(0));
+    def->set_default_value(new ConfigOptionInt(1));
 
     def = this->add("internal_solid_infill_line_width", coFloatOrPercent);
     def->label = L("Internal solid infill");

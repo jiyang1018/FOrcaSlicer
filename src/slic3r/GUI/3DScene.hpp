@@ -61,6 +61,8 @@ using ModelObjectPtrs = std::vector<ModelObject*>;
 
 // Return appropriate color based on the ModelVolume.
 extern ColorRGBA color_from_model_volume(const ModelVolume& model_volume);
+// FOS: OW-identity - effective outer-wall filament used to tint an object in the 3D scene.
+extern int fos_object_ow_extruder(const ModelVolume& model_volume);
 
 class GLVolume {
 public:
