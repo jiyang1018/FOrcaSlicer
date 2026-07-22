@@ -1364,9 +1364,21 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
                 return {L("One or more object were assigned an extruder that the printer does not have.")};
 #endif
 
-        auto validate_extrusion_width = [min_nozzle_diameter, max_nozzle_diameter](const ConfigBase &config, const char *opt_key, double layer_height, std::string &err_msg) -> bool {
-            double extrusion_width_min = config.get_abs_value(opt_key, min_nozzle_diameter);
-            double extrusion_width_max = config.get_abs_value(opt_key, max_nozzle_diameter);
+        auto validate_extrusion_width = [this, min_nozzle_diameter, max_nozzle_diameter](const ConfigBase &config, const char *opt_key, double layer_height, std::string &err_msg, bool fos_n1_authored = false) -> bool {
+            // FOS: line_width is authored against Nozzle 1 and is ratio-scaled to the printing
+            // nozzle at flow time (fos_width_for_nozzle). Validating the raw N1 base wrongly trips
+            // "Too small line width" on a larger nozzle at a tall layer height. For such keys,
+            // validate the effective scaled width. Stamped feature widths are already per-nozzle
+            // absolute mm and must NOT be scaled here (would risk a false "Too large line width").
+            double extrusion_width_min, extrusion_width_max;
+            const ConfigOptionFloatOrPercent *fos_w = fos_n1_authored ? dynamic_cast<const ConfigOptionFloatOrPercent*>(config.option(opt_key)) : nullptr;
+            if (fos_w != nullptr && m_config.has_mixed_nozzle_sizes.value) {
+                extrusion_width_min = fos_abs_width_for_nozzle(*fos_w, m_config, min_nozzle_diameter);
+                extrusion_width_max = fos_abs_width_for_nozzle(*fos_w, m_config, max_nozzle_diameter);
+            } else {
+                extrusion_width_min = config.get_abs_value(opt_key, min_nozzle_diameter);
+                extrusion_width_max = config.get_abs_value(opt_key, max_nozzle_diameter);
+            }
         	if (extrusion_width_min == 0) {
         		// Default "auto-generated" extrusion width is always valid.
         	} else if (extrusion_width_min < layer_height) {
@@ -1454,7 +1466,7 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
 
             // Validate extrusion widths.
             std::string err_msg;
-            if (!validate_extrusion_width(object->config(), "line_width", layer_height, err_msg))
+            if (!validate_extrusion_width(object->config(), "line_width", layer_height, err_msg, /*fos_n1_authored=*/true))
             	return {err_msg, object, "line_width"};
             if (object->has_support() || object->has_raft()) {
                 if (!validate_extrusion_width(object->config(), "support_line_width", layer_height, err_msg))
