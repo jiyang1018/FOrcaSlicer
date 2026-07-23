@@ -9609,8 +9609,8 @@ msgstr "内部实心填充图案"
 msgid "Line pattern of internal solid infill. if the detect narrow internal solid infill be enabled, the concentric pattern will be used for the small area."
 msgstr "内部实心填充的线型图案。如果启用了检测狭窄的内部实心填充，将使用同心圆图案来填充小区域。"
 
-msgid "Line width of outer wall. If expressed as a %, it will be computed over the nozzle diameter."
-msgstr "外墙的线宽。如果以%表示，它将基于出口直径来计算"
+msgid "Line width of outer wall. Set to 0 to use the Default line width. If expressed as a %, it will be computed over the nozzle diameter."
+msgstr "外墙的线宽。设置为0时使用默认线宽。如果以%表示，它将基于出口直径来计算"
 
 msgid "Speed of outer wall which is outermost and visible. It's used to be slower than inner wall speed to get better quality."
 msgstr "外墙的打印速度。它通常使用比内壁速度慢的速度，以获得更好的质量。"
@@ -10723,8 +10723,8 @@ msgstr ""
 msgid "Filament to print internal sparse infill."
 msgstr "打印内部稀疏填充的耗材"
 
-msgid "Line width of internal sparse infill. If expressed as a %, it will be computed over the nozzle diameter."
-msgstr "内部稀疏填充的线宽。如果以%表示，它将基于出口直径来计算。"
+msgid "Line width of internal sparse infill. Set to 0 to use the Default line width. If expressed as a %, it will be computed over the nozzle diameter."
+msgstr "内部稀疏填充的线宽。设置为0时使用默认线宽。如果以%表示，它将基于出口直径来计算。"
 
 msgid "Infill/Wall overlap"
 msgstr "填充/墙 重叠"
@@ -11198,8 +11198,8 @@ msgstr "检测悬空相对于线宽的百分比，并应用不同的速度打印
 msgid "Filament to print walls."
 msgstr "打印外墙的耗材"
 
-msgid "Line width of inner wall. If expressed as a %, it will be computed over the nozzle diameter."
-msgstr "内壁的线宽。如果以%表示，它将基于出口直径来计算。"
+msgid "Line width of inner wall. Set to 0 to use the Default line width. If expressed as a %, it will be computed over the nozzle diameter."
+msgstr "内壁的线宽。设置为0时使用默认线宽。如果以%表示，它将基于出口直径来计算。"
 
 msgid "Speed of inner wall."
 msgstr "内圈墙打印速度"
@@ -11643,8 +11643,8 @@ msgstr "实心填充"
 msgid "Filament to print solid infill."
 msgstr "打印实心填充的耗材。"
 
-msgid "Line width of internal solid infill. If expressed as a %, it will be computed over the nozzle diameter."
-msgstr "内部实心填充的线宽。如果以%表示，它将基于出口直径来计算。"
+msgid "Line width of internal solid infill. Set to 0 to use the Default line width. If expressed as a %, it will be computed over the nozzle diameter."
+msgstr "内部实心填充的线宽。设置为0时使用默认线宽。如果以%表示，它将基于出口直径来计算。"
 
 msgid "Speed of internal solid infill, not the top and bottom surface."
 msgstr "内部实心填充的速度，不是顶面和底面。"
@@ -11854,8 +11854,8 @@ msgstr "界面材料不用于主体"
 msgid "Avoid using support interface filament to print support base if possible."
 msgstr "避免使用支撑界面材料打印支撑主体。"
 
-msgid "Line width of support. If expressed as a %, it will be computed over the nozzle diameter."
-msgstr "支撑的线宽。如果以%表示，它将基于出口直径来计算。"
+msgid "Line width of support. Set to 0 to use the Default line width. If expressed as a %, it will be computed over the nozzle diameter."
+msgstr "支撑的线宽。设置为0时使用默认线宽。如果以%表示，它将基于出口直径来计算。"
 
 msgid "Interface use loop pattern"
 msgstr "接触面采用圈形走线。"
@@ -12111,8 +12111,8 @@ msgstr "换料时插入的G-code，包括T命令。"
 msgid "This G-code is inserted when the extrusion role is changed."
 msgstr "当挤出类型改变时会插入此G-code"
 
-msgid "Line width for top surfaces. If expressed as a %, it will be computed over the nozzle diameter."
-msgstr "顶面的线宽。如果以%表示，它将基于出口直径来计算。"
+msgid "Line width for top surfaces. Set to 0 to use the Default line width. If expressed as a %, it will be computed over the nozzle diameter."
+msgstr "顶面的线宽。设置为0时使用默认线宽。如果以%表示，它将基于出口直径来计算。"
 
 msgid "Speed of top surface infill which is solid."
 msgstr "顶面实心填充的速度"
@@ -15281,3 +15281,9 @@ msgstr "体积流量 (mm^3/s)"
 
 msgid "Preheat delta temperature"
 msgstr "预热温差"
+
+msgid "Unify Object Filaments"
+msgstr "统一此物体耗材"
+
+msgid "Unify Object Filaments for selected items"
+msgstr "统一所选物体耗材"

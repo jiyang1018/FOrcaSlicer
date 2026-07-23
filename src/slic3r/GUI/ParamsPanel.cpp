@@ -701,6 +701,14 @@ void ParamsPanel::msw_rescale()
     for (auto tab : {m_tab_print, m_tab_print_plate, m_tab_print_object, m_tab_print_part, m_tab_print_layer, m_tab_filament, m_tab_printer}) {
         if (tab) dynamic_cast<Tab*>(tab)->msw_rescale();
     }
+    // FOS: N2-N4 PRP rows are TabPrintNozzle tabs that removed themselves from tabs_list and
+    // are NOT in the loop above, so their preset dropdowns never rescale on DPI change - they
+    // stay at build-time size (N1 tracks DPI, N2-N4 stuck). Rescale each nozzle row's combo
+    // directly. Do NOT call the full Tab::msw_rescale here: nozzle tabs have an empty build()
+    // with no page icons, so its m_scaled_icons_list.front() would be UB.
+    for (int i = 1; i < 4; ++i)
+        if (m_tab_print_nozzle[i])
+            m_tab_print_nozzle[i]->fos_rescale_row(); // FOS: rescale whole nozzle row (combo + buttons)
     //((Button*)m_export_to_file)->Rescale();
     //((Button*)m_import_from_file)->Rescale();
 }
@@ -760,6 +768,7 @@ void ParamsPanel::update_prp_nozzle_rows(bool mixed_active)
     for (int i = 1; i < 4; ++i) {  // FOS: skip i=0 (N1) - N1 PRP row is m_tab_print itself
         if (m_tab_print_nozzle[i]) {
             m_tab_print_nozzle[i]->Show(mixed_active);
+            if (mixed_active) m_tab_print_nozzle[i]->fos_rescale_row(); // FOS: rescale row to current DPI on show
             // FOS: re-apply nozzle slot filter so PRP dropdown reflects current PTP nozzle diameters
             if (auto* combo = m_tab_print_nozzle[i]->get_combo_box()) {
                 combo->set_nozzle_slot(i);

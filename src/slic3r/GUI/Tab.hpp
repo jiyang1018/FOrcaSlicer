@@ -461,6 +461,7 @@ public:
         void            toggle_options() override;
         void            update() override;
         void            clear_pages() override;
+        void            msw_rescale() override; // FOS: also rescale per-nozzle notebook optgroups (not in any Page::m_optgroups)
         bool            supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
         void            fos_reload_slot_config(int slot_idx);
         void            fos_resolve_nozzle_arrays(); // FOS 8.5: re-resolve arrays from current slot configs (no PRP reload)
@@ -527,6 +528,7 @@ public:
     void toggle_options() override {}
     void reload_config() override {}
     void create_preset_tab();
+    void fos_rescale_row(); // FOS: rescale this per-nozzle row widgets to current DPI
     int  nozzle_idx() const { return m_nozzle_idx; }
     const std::string& selected_preset_name() const { return m_selected_preset_name; }
     void set_selected_preset_name(const std::string& name) { m_selected_preset_name = name; }

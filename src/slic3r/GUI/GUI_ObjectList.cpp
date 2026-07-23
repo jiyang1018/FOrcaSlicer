@@ -430,7 +430,9 @@ void ObjectList::create_objects_ctrl()
         return m_objects_model->GetDefaultExtruderIdx(GetSelection());
     });
     bmp_choice_renderer->set_has_default_extruder([this]() {
-        return true;
+        // FOS: OW-identity - objects and model parts carry a concrete filament, so the inherit
+        // ("Global") row is only meaningful for parameter modifiers and layer ranges. A debug
+        // return true; previously forced the row onto every item type.
         return m_objects_model->GetVolumeType(GetSelection()) == ModelVolumeType::PARAMETER_MODIFIER ||
                m_objects_model->GetItemType(GetSelection()) == itLayer;
     });

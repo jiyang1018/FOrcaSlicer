@@ -2532,6 +2532,23 @@ void TabPrintNozzle::create_preset_tab()
         m_undo_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { fos_roll_back(); });
 }
 
+void TabPrintNozzle::fos_rescale_row()
+{
+    // FOS: rescale this per-nozzle PRP row header to the current monitor DPI. Nozzle rows
+    // are reparented onto m_tab_print but sit in NO msw_rescale path (removed from tabs_list;
+    // not in Page::m_optgroups; not in ParamsPanel tab loop), so the combo width and the
+    // scaled-button bitmaps stay frozen at build-time DPI. Full Tab::msw_rescale is unsafe
+    // here (empty build()/no page icons -> m_scaled_icons_list.front() and m_tabctrl are UB),
+    // so rescale only what the row owns.
+    m_em_unit = em_unit(m_parent);
+    if (m_presets_choice) m_presets_choice->msw_rescale();
+    for (auto* btn : m_scaled_buttons) if (btn) btn->msw_rescale();
+    for (auto* bmp : m_scaled_bitmaps) if (bmp) bmp->msw_rescale();
+    if (m_top_sizer) m_top_sizer->SetMinSize(-1, 3 * m_em_unit);
+    if (m_top_panel) m_top_panel->Layout();
+    Layout();
+}
+
 void TabPrint::build()
 {
     BOOST_LOG_TRIVIAL(info) << "TabPrint::build() starting";
@@ -3748,6 +3765,20 @@ void TabPrint::activate_selected_page(std::function<void()> throw_if_canceled)
             for (auto& grp : slot_grps)
                 if (grp && grp->custom_ctrl) grp->reload_config();
     });
+}
+
+void TabPrint::msw_rescale()
+{
+    Tab::msw_rescale();
+    // FOS: the per-nozzle notebook optgroups (Line width / speed tabs) live in
+    // m_fos_slot_optgroups, NOT in any Page::m_optgroups, so Page::msw_rescale never
+    // reaches them. Without this their OG_CustomCtrl keeps its build-time em_unit while the
+    // non-notebook groups rescale, so the label-to-field spacing diverges after a DPI change.
+    // ConfigOptionsGroup::msw_rescale guards on custom_ctrl, so inactive pages are safe.
+    for (auto& slot_grps : m_fos_slot_optgroups)
+        for (auto& grp : slot_grps)
+            if (grp)
+                grp->msw_rescale();
 }
 
 //BBS: GUI refactor
