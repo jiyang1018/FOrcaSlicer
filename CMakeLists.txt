@@ -710,22 +710,26 @@ foreach(po_file ${BBL_L10N_PO_FILES})
         DEPENDS ${po_file}
     )
 endforeach()
-add_custom_target(gettext_po_to_mo
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-    COMMENT "Generate localization po files (binary) from mo files (texts)"
-)
-file(GLOB L10N_PO_FILES "${BBL_L18N_DIR}/*/Snapmaker_Orca*.po")
+# FOS: incremental .po -> .mo. The OUTPUT signature (DEPENDS on the .po) lets CMake skip msgfmt
+# for any locale whose .mo is already newer than its .po; the target depends on the .mo outputs,
+# so building it is a no-op when no .po changed. The old TARGET/PRE_BUILD form ran msgfmt for
+# every locale on every invocation and ignored DEPENDS.
+file(GLOB BBL_L10N_PO_FILES "${BBL_L18N_DIR}/*/Snapmaker_Orca*.po")
+set(L10N_MO_FILES "")
 foreach(po_file ${BBL_L10N_PO_FILES})
     GET_FILENAME_COMPONENT(SECOND_FOLDER_ABSOLUTE ${po_file} DIRECTORY)
     string(REGEX REPLACE ".*/(.*)" "\\1" po_dir "${SECOND_FOLDER_ABSOLUTE}" )
     SET(mo_file "${L10N_DIR}/${po_dir}/${SLIC3R_APP_KEY}.mo") # FOS: app loads ${SLIC3R_APP_KEY}.mo (AddCatalog(SLIC3R_APP_KEY)), not Snapmaker_Orca.mo
     add_custom_command(
-        TARGET gettext_po_to_mo PRE_BUILD
-        COMMAND "${PROJECT_SOURCE_DIR}/tools/msgfmt.exe" ARGS --check-format -o ${mo_file} ${po_file} # FOS: bundled msgfmt (was bare msgfmt, not on PATH)
-        #COMMAND msgfmt ARGS --check-compatibility -o ${mo_file} ${po_file}
+        OUTPUT ${mo_file}
+        COMMAND "${PROJECT_SOURCE_DIR}/tools/msgfmt.exe" --check-format -o ${mo_file} ${po_file} # FOS: bundled msgfmt (was bare msgfmt, not on PATH)
         DEPENDS ${po_file}
+        COMMENT "msgfmt ${po_dir}/${SLIC3R_APP_KEY}.mo"
+        VERBATIM
     )
+    list(APPEND L10N_MO_FILES ${mo_file})
 endforeach()
+add_custom_target(gettext_po_to_mo DEPENDS ${L10N_MO_FILES})
 
 find_package(NLopt 1.4 REQUIRED)
 
