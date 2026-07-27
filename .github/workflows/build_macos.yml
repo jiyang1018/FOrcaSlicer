@@ -1,0 +1,179 @@
+name: Build macOS
+
+# FOS: mac CI for FOrcaSlicer. Snapmaker stripped upstream Orca's build
+# workflows, so this is authored against THIS tree's build_release_macos.sh
+# rather than adapted from upstream's CI (their script differs: deployment
+# target 12.0 not 11.3, install prefix Snapmaker_Orca not OrcaSlicer).
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_config:
+        description: "CMake build configuration"
+        required: false
+        default: "Release"
+        type: choice
+        options:
+          - Release
+          - RelWithDebInfo
+          - Debug
+  # NOTE: GitHub runs the copy of this file that exists ON THE BRANCH BEING
+  # PUSHED. So this file must be committed to each branch listed below for
+  # that branch to auto-build. Likewise, the "Run workflow" button only
+  # appears once this file is on the DEFAULT branch (fos-8.5).
+  push:
+    branches:
+      - fos-8.5     # release line (default branch) - v2.3.2-fos.8.5.x
+      - clean-main  # fos9-beta / MAPS line; delete if you don't want CI on it
+    paths-ignore:
+      - "**.md"
+      - "doc/**"
+      - ".github/ISSUE_TEMPLATE/**"
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_CONFIG: ${{ inputs.build_config || 'Release' }}
+  OSX_DEPLOYMENT_TARGET: "12.0"
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Stage 1: build each arch's dependency tree once and cache the install
+  # prefix. Runs the two arches on separate runners so neither approaches
+  # the 6h job ceiling on a cold cache.
+  # ---------------------------------------------------------------------
+  deps:
+    name: deps (${{ matrix.arch }})
+    runs-on: macos-14
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache dependency install prefix
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: deps/build/${{ matrix.arch }}/OrcaSlicer_dep
+          key: fosdeps-${{ matrix.arch }}-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake') }}
+
+      - name: Install build prerequisites
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: |
+          brew install cmake ninja automake autoconf libtool texinfo gettext
+          # Orca's deps build collides with a Homebrew zstd on the include path.
+          brew uninstall --ignore-dependencies zstd || true
+
+      - name: Build dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: |
+          chmod +x ./build_release_macos.sh || true
+          ./build_release_macos.sh \
+            -d \
+            -a "${{ matrix.arch }}" \
+            -t "$OSX_DEPLOYMENT_TARGET" \
+            -c "$BUILD_CONFIG"
+
+      - name: Report dependency prefix size
+        run: du -sh "deps/build/${{ matrix.arch }}/OrcaSlicer_dep" || true
+
+  # ---------------------------------------------------------------------
+  # Stage 2: restore both prefixes, build the slicer for both arches, and
+  # let the script's own build_universal() lipo them together.
+  # ---------------------------------------------------------------------
+  build:
+    name: build universal
+    needs: deps
+    runs-on: macos-14
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore x86_64 dependency prefix
+        uses: actions/cache/restore@v4
+        with:
+          path: deps/build/x86_64/OrcaSlicer_dep
+          key: fosdeps-x86_64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake') }}
+          fail-on-cache-miss: true
+
+      - name: Restore arm64 dependency prefix
+        uses: actions/cache/restore@v4
+        with:
+          path: deps/build/arm64/OrcaSlicer_dep
+          key: fosdeps-arm64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake') }}
+          fail-on-cache-miss: true
+
+      - name: Install build prerequisites
+        run: |
+          brew install cmake ninja automake autoconf libtool texinfo gettext
+          brew uninstall --ignore-dependencies zstd || true
+          # gettext is keg-only; build_slicer() calls scripts/run_gettext.sh,
+          # which needs msgfmt on PATH.
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+
+      - name: Build slicer (universal)
+        run: |
+          chmod +x ./build_release_macos.sh ./scripts/run_gettext.sh || true
+          ./build_release_macos.sh \
+            -s \
+            -a universal \
+            -t "$OSX_DEPLOYMENT_TARGET" \
+            -c "$BUILD_CONFIG"
+
+      - name: Verify universal binary
+        run: |
+          APP="build/universal/Snapmaker_Orca/Snapmaker Orca.app"
+          test -d "$APP" || { echo "::error::app bundle missing at $APP"; exit 1; }
+          lipo -archs "$APP/Contents/MacOS/Snapmaker_Orca"
+          lipo -archs "$APP/Contents/MacOS/Snapmaker_Orca" | grep -q x86_64
+          lipo -archs "$APP/Contents/MacOS/Snapmaker_Orca" | grep -q arm64
+
+      - name: Compute version tag
+        id: ver
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Package zip
+        run: |
+          # ditto preserves bundle metadata and symlinks; plain zip does not.
+          ditto -c -k --sequesterRsrc --keepParent \
+            "build/universal/Snapmaker_Orca/Snapmaker Orca.app" \
+            "SnapmakerOrca-universal-${{ steps.ver.outputs.tag }}.zip"
+
+      - name: Package DMG
+        run: |
+          STAGE="$(mktemp -d)/Snapmaker Orca"
+          mkdir -p "$STAGE"
+          cp -R "build/universal/Snapmaker_Orca/Snapmaker Orca.app" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create \
+            -volname "Snapmaker Orca" \
+            -srcfolder "$STAGE" \
+            -ov -format UDZO \
+            "SnapmakerOrca-universal-${{ steps.ver.outputs.tag }}.dmg"
+
+      - name: Upload app (zip + dmg)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnapmakerOrca-macos-universal-${{ steps.ver.outputs.tag }}
+          path: |
+            SnapmakerOrca-universal-*.zip
+            SnapmakerOrca-universal-*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload dSYM
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnapmakerOrca-macos-dSYM-${{ steps.ver.outputs.tag }}
+          path: build/universal/Snapmaker_Orca/dSYM
+          if-no-files-found: warn
+          retention-days: 14
