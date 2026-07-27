@@ -138,6 +138,16 @@ if (NOT WIN32 AND NOT APPLE)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/dev-utils/platform/unix/build_linux_image.sh.in ${CMAKE_CURRENT_BINARY_DIR}/build_linux_image.sh USE_SOURCE_PERMISSIONS @ONLY)
 endif ()
 
+if (APPLE)
+    # FOS: mac binary name, to match Windows (FOrcaSlicer.exe) and Linux.
+    # Apple was excluded from the rename above, so the CMake target name
+    # (Snapmaker_Orca) was used for BOTH the executable and the .app folder,
+    # while MACOSX_BUNDLE_BUNDLE_NAME already said FOrcaSlicer - a half-rename.
+    # The bundle folder follows OUTPUT_NAME, so this renames
+    # Contents/MacOS/FOrcaSlicer and FOrcaSlicer.app together.
+    set_target_properties(Snapmaker_Orca PROPERTIES OUTPUT_NAME "FOrcaSlicer")
+endif ()
+
 target_link_libraries(Snapmaker_Orca libslic3r cereal::cereal)
 # target_include_directories(OrcaSlicer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/slic3r)
 if (APPLE)

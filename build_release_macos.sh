@@ -203,9 +203,13 @@ function build_slicer() {
         mkdir -p Snapmaker_Orca
         cd Snapmaker_Orca
         # remove previously built app
-        rm -rf "./Snapmaker Orca.app"
+        rm -rf "./FOrcaSlicer.app"
         # determine source app path (handle both space and underscore names)
-        APP_SOURCE_PATH="../src$BUILD_DIR_CONFIG_SUBDIR/Snapmaker Orca.app"
+        APP_SOURCE_PATH="../src$BUILD_DIR_CONFIG_SUBDIR/FOrcaSlicer.app"
+        # FOS: legacy names, for a build tree produced before the mac rename
+        if [ ! -d "$APP_SOURCE_PATH" ]; then
+            APP_SOURCE_PATH="../src$BUILD_DIR_CONFIG_SUBDIR/Snapmaker Orca.app"
+        fi
         if [ ! -d "$APP_SOURCE_PATH" ]; then
             APP_SOURCE_PATH="../src$BUILD_DIR_CONFIG_SUBDIR/Snapmaker_Orca.app"
         fi
@@ -214,20 +218,20 @@ function build_slicer() {
             exit 1
         fi
         # fully copy newly built app (rename to canonical name with space)
-        cp -pR "$APP_SOURCE_PATH" "./Snapmaker Orca.app"
+        cp -pR "$APP_SOURCE_PATH" "./FOrcaSlicer.app"
         # fix resources
-        resources_path=$(readlink "./Snapmaker Orca.app/Contents/Resources")
-        rm "./Snapmaker Orca.app/Contents/Resources"
-        cp -R "$resources_path" "./Snapmaker Orca.app/Contents/Resources"
+        resources_path=$(readlink "./FOrcaSlicer.app/Contents/Resources")
+        rm "./FOrcaSlicer.app/Contents/Resources"
+        cp -R "$resources_path" "./FOrcaSlicer.app/Contents/Resources"
         # delete .DS_Store file
-        find "./Snapmaker Orca.app/" -name '.DS_Store' -delete
+        find "./FOrcaSlicer.app/" -name '.DS_Store' -delete
 
         # Copy Sentry crashpad_handler and libsentry.dylib for crash reporting
         CRASHPAD_HANDLER="${DEPS}/usr/local/bin/crashpad_handler"
         LIBSENTRY="${DEPS}/usr/local/lib/libsentry.dylib"
-        APP_MACOS_DIR='./Snapmaker Orca.app/Contents/MacOS'
-        APP_FRAMEWORKS_DIR='./Snapmaker Orca.app/Contents/Frameworks'
-        EXECUTABLE="${APP_MACOS_DIR}/Snapmaker_Orca"
+        APP_MACOS_DIR='./FOrcaSlicer.app/Contents/MacOS'
+        APP_FRAMEWORKS_DIR='./FOrcaSlicer.app/Contents/Frameworks'
+        EXECUTABLE="${APP_MACOS_DIR}/FOrcaSlicer"
         
         if [ -f "${CRASHPAD_HANDLER}" ]; then
             echo "Copying crashpad_handler to app bundle..."
@@ -245,9 +249,9 @@ function build_slicer() {
             # Sign libsentry.dylib
             codesign --force --sign - "${APP_FRAMEWORKS_DIR}/libsentry.dylib" 2>/dev/null || true
             
-            # Update rpath in Snapmaker_Orca to use @executable_path relative path
+            # Update rpath in FOrcaSlicer to use @executable_path relative path
             if [ -f "${EXECUTABLE}" ]; then
-                echo "Updating libsentry.dylib rpath in Snapmaker_Orca..."
+                echo "Updating libsentry.dylib rpath in FOrcaSlicer..."
                 install_name_tool -change "@rpath/libsentry.dylib" "@executable_path/../Frameworks/libsentry.dylib" "${EXECUTABLE}" 2>/dev/null || true
                 # Re-sign the executable after modification
                 codesign --force --sign - "${EXECUTABLE}" 2>/dev/null || true
@@ -272,9 +276,9 @@ function build_slicer() {
         mkdir -p "${DSYM_DIR}"
         
         # Generate dSYM for main app
-        if [ -f "${APP_MACOS_DIR}/Snapmaker_Orca" ]; then
-            echo "Generating dSYM for Snapmaker_Orca..."
-            dsymutil "${APP_MACOS_DIR}/Snapmaker_Orca" -o "${DSYM_DIR}/Snapmaker_Orca.dSYM" 2>/dev/null || echo "Warning: Failed to generate dSYM for Snapmaker_Orca (no debug symbols?)"
+        if [ -f "${APP_MACOS_DIR}/FOrcaSlicer" ]; then
+            echo "Generating dSYM for FOrcaSlicer..."
+            dsymutil "${APP_MACOS_DIR}/FOrcaSlicer" -o "${DSYM_DIR}/FOrcaSlicer.dSYM" 2>/dev/null || echo "Warning: Failed to generate dSYM for FOrcaSlicer (no debug symbols?)"
         fi
         
         # Generate dSYM for crashpad_handler if it exists
@@ -323,24 +327,24 @@ function build_universal() {
     echo "Creating universal binary..."
     # PROJECT_BUILD_DIR="$PROJECT_DIR/build_Universal"
     mkdir -p "$PROJECT_BUILD_DIR/Snapmaker_Orca"
-    UNIVERSAL_APP="$PROJECT_BUILD_DIR/Snapmaker_Orca/Snapmaker Orca.app"
+    UNIVERSAL_APP="$PROJECT_BUILD_DIR/Snapmaker_Orca/FOrcaSlicer.app"
     rm -rf "$UNIVERSAL_APP"
-    cp -R "$PROJECT_DIR/build/arm64/Snapmaker_Orca/Snapmaker Orca.app" "$UNIVERSAL_APP"
+    cp -R "$PROJECT_DIR/build/arm64/Snapmaker_Orca/FOrcaSlicer.app" "$UNIVERSAL_APP"
     
     # Get the binary path inside the .app bundle
-    BINARY_PATH="Contents/MacOS/Snapmaker_Orca"
+    BINARY_PATH="Contents/MacOS/FOrcaSlicer"
     
     # Create universal binary using lipo
     lipo -create \
-        "$PROJECT_DIR/build/x86_64/Snapmaker_Orca/Snapmaker Orca.app/$BINARY_PATH" \
-        "$PROJECT_DIR/build/arm64/Snapmaker_Orca/Snapmaker Orca.app/$BINARY_PATH" \
+        "$PROJECT_DIR/build/x86_64/Snapmaker_Orca/FOrcaSlicer.app/$BINARY_PATH" \
+        "$PROJECT_DIR/build/arm64/Snapmaker_Orca/FOrcaSlicer.app/$BINARY_PATH" \
         -output "$UNIVERSAL_APP/$BINARY_PATH"
         
     echo "Universal binary created at $UNIVERSAL_APP"
     
     # Create universal crashpad_handler if both architectures have it
-    CRASHPAD_ARM64="${PROJECT_DIR}/build/arm64/Snapmaker_Orca/Snapmaker Orca.app/Contents/MacOS/crashpad_handler"
-    CRASHPAD_X86="${PROJECT_DIR}/build/x86_64/Snapmaker_Orca/Snapmaker Orca.app/Contents/MacOS/crashpad_handler"
+    CRASHPAD_ARM64="${PROJECT_DIR}/build/arm64/Snapmaker_Orca/FOrcaSlicer.app/Contents/MacOS/crashpad_handler"
+    CRASHPAD_X86="${PROJECT_DIR}/build/x86_64/Snapmaker_Orca/FOrcaSlicer.app/Contents/MacOS/crashpad_handler"
     CRASHPAD_UNIVERSAL="${UNIVERSAL_APP}/Contents/MacOS/crashpad_handler"
     if [ -f "${CRASHPAD_ARM64}" ] && [ -f "${CRASHPAD_X86}" ]; then
         echo "Creating universal crashpad_handler..."
@@ -352,8 +356,8 @@ function build_universal() {
     fi
     
     # Create universal libsentry.dylib if both architectures have it
-    LIBSENTRY_ARM64="${PROJECT_DIR}/build/arm64/Snapmaker_Orca/Snapmaker Orca.app/Contents/Frameworks/libsentry.dylib"
-    LIBSENTRY_X86="${PROJECT_DIR}/build/x86_64/Snapmaker_Orca/Snapmaker Orca.app/Contents/Frameworks/libsentry.dylib"
+    LIBSENTRY_ARM64="${PROJECT_DIR}/build/arm64/Snapmaker_Orca/FOrcaSlicer.app/Contents/Frameworks/libsentry.dylib"
+    LIBSENTRY_X86="${PROJECT_DIR}/build/x86_64/Snapmaker_Orca/FOrcaSlicer.app/Contents/Frameworks/libsentry.dylib"
     LIBSENTRY_UNIVERSAL="${UNIVERSAL_APP}/Contents/Frameworks/libsentry.dylib"
     if [ -f "${LIBSENTRY_ARM64}" ] && [ -f "${LIBSENTRY_X86}" ]; then
         echo "Creating universal libsentry.dylib..."
@@ -368,7 +372,7 @@ function build_universal() {
     
     # Update rpath in universal Snapmaker_Orca
     if [ -f "${LIBSENTRY_UNIVERSAL}" ]; then
-        echo "Updating libsentry.dylib rpath in universal Snapmaker_Orca..."
+        echo "Updating libsentry.dylib rpath in universal FOrcaSlicer..."
         install_name_tool -change "@rpath/libsentry.dylib" "@executable_path/../Frameworks/libsentry.dylib" "${UNIVERSAL_APP}/${BINARY_PATH}" 2>/dev/null || true
         codesign --force --sign - "${UNIVERSAL_APP}/${BINARY_PATH}" 2>/dev/null || true
     fi
@@ -400,8 +404,8 @@ function build_universal() {
     
     # Generate dSYM for universal main app
     if [ -f "$UNIVERSAL_APP/$BINARY_PATH" ]; then
-        echo "Generating dSYM for universal Snapmaker_Orca..."
-        dsymutil "$UNIVERSAL_APP/$BINARY_PATH" -o "${DSYM_DIR}/Snapmaker_Orca.dSYM" 2>/dev/null || echo "Warning: Failed to generate dSYM for universal Snapmaker_Orca"
+        echo "Generating dSYM for universal FOrcaSlicer..."
+        dsymutil "$UNIVERSAL_APP/$BINARY_PATH" -o "${DSYM_DIR}/FOrcaSlicer.dSYM" 2>/dev/null || echo "Warning: Failed to generate dSYM for universal FOrcaSlicer"
     fi
     
     # Generate dSYM for universal crashpad_handler if it exists
