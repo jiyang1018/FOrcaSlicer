@@ -71,12 +71,23 @@ jobs:
       - name: Remove Homebrew zstd (before any cache action)
         run: brew uninstall --ignore-dependencies zstd || true
 
+      # FOS: compute the dep-recipe hash ONCE, on the clean checkout, and reuse
+      # it for every cache action in this job. hashFiles() is re-evaluated at
+      # each step against the LIVE workspace, and a restored dep prefix drops
+      # hundreds of *.cmake files into deps/build/**. That made restore #1
+      # change the key seen by restore #2, so the second lookup missed on a key
+      # that was never stored. The !deps/build/** exclusion is belt-and-braces:
+      # on a clean tree it matches nothing and the hash is unchanged.
+      - name: Compute dep cache key
+        id: depkey
+        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
+
       - name: Cache dependency install prefix
         id: deps-cache
         uses: actions/cache@v4
         with:
           path: deps/build/${{ matrix.arch }}/OrcaSlicer_dep
-          key: fosdeps-${{ matrix.arch }}-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake') }}
+          key: fosdeps-${{ matrix.arch }}-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ steps.depkey.outputs.hash }}
 
       - name: Install pinned CMake ${{ env.CMAKE_PIN }}
         if: steps.deps-cache.outputs.cache-hit != 'true'
@@ -133,18 +144,29 @@ jobs:
       - name: Remove Homebrew zstd (before any cache action)
         run: brew uninstall --ignore-dependencies zstd || true
 
+      # FOS: compute the dep-recipe hash ONCE, on the clean checkout, and reuse
+      # it for every cache action in this job. hashFiles() is re-evaluated at
+      # each step against the LIVE workspace, and a restored dep prefix drops
+      # hundreds of *.cmake files into deps/build/**. That made restore #1
+      # change the key seen by restore #2, so the second lookup missed on a key
+      # that was never stored. The !deps/build/** exclusion is belt-and-braces:
+      # on a clean tree it matches nothing and the hash is unchanged.
+      - name: Compute dep cache key
+        id: depkey
+        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
+
       - name: Restore x86_64 dependency prefix
         uses: actions/cache/restore@v4
         with:
           path: deps/build/x86_64/OrcaSlicer_dep
-          key: fosdeps-x86_64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake') }}
+          key: fosdeps-x86_64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ steps.depkey.outputs.hash }}
           fail-on-cache-miss: true
 
       - name: Restore arm64 dependency prefix
         uses: actions/cache/restore@v4
         with:
           path: deps/build/arm64/OrcaSlicer_dep
-          key: fosdeps-arm64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake') }}
+          key: fosdeps-arm64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ steps.depkey.outputs.hash }}
           fail-on-cache-miss: true
 
       - name: Install pinned CMake ${{ env.CMAKE_PIN }}
