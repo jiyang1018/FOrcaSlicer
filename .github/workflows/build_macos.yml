@@ -37,6 +37,12 @@ concurrency:
 env:
   BUILD_CONFIG: ${{ inputs.build_config || 'Release' }}
   OSX_DEPLOYMENT_TARGET: "12.0"
+  # FOS: CMake 4.x removed compatibility with cmake_minimum_required(<3.5).
+  # deps/CMakeLists.txt:23 declares 3.2, and the vendored dep sources declare
+  # older still (Blosc 3.1, boost/compute 2.8, zlib 2.4.4), so patching one
+  # line would only move the failure downstream. Pin to the project's
+  # documented max (CLAUDE.md: "minimum 3.13, maximum 3.31.x").
+  CMAKE_PIN: "3.31.6"
 
 jobs:
   # ---------------------------------------------------------------------
@@ -64,16 +70,27 @@ jobs:
           path: deps/build/${{ matrix.arch }}/OrcaSlicer_dep
           key: fosdeps-${{ matrix.arch }}-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake') }}
 
+      - name: Install pinned CMake ${{ env.CMAKE_PIN }}
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cmake.tar.gz" \
+            "https://cmake.org/files/v3.31/cmake-${CMAKE_PIN}-macos-universal.tar.gz"
+          tar -xzf "$RUNNER_TEMP/cmake.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/cmake-${CMAKE_PIN}-macos-universal/CMake.app/Contents/bin" >> "$GITHUB_PATH"
+
       - name: Install build prerequisites
         if: steps.deps-cache.outputs.cache-hit != 'true'
         run: |
-          brew install cmake ninja automake autoconf libtool texinfo gettext
+          # cmake omitted deliberately - brew ships 4.x; the pinned 3.31.x above
+          # is prepended to PATH via GITHUB_PATH and wins.
+          brew install ninja automake autoconf libtool texinfo gettext
           # Orca's deps build collides with a Homebrew zstd on the include path.
           brew uninstall --ignore-dependencies zstd || true
 
       - name: Build dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
         run: |
+          which cmake && cmake --version
           chmod +x ./build_release_macos.sh || true
           ./build_release_macos.sh \
             -d \
@@ -112,9 +129,16 @@ jobs:
           key: fosdeps-arm64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake') }}
           fail-on-cache-miss: true
 
+      - name: Install pinned CMake ${{ env.CMAKE_PIN }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cmake.tar.gz" \
+            "https://cmake.org/files/v3.31/cmake-${CMAKE_PIN}-macos-universal.tar.gz"
+          tar -xzf "$RUNNER_TEMP/cmake.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/cmake-${CMAKE_PIN}-macos-universal/CMake.app/Contents/bin" >> "$GITHUB_PATH"
+
       - name: Install build prerequisites
         run: |
-          brew install cmake ninja automake autoconf libtool texinfo gettext
+          brew install ninja automake autoconf libtool texinfo gettext
           brew uninstall --ignore-dependencies zstd || true
           # gettext is keg-only; build_slicer() calls scripts/run_gettext.sh,
           # which needs msgfmt on PATH.
@@ -122,6 +146,7 @@ jobs:
 
       - name: Build slicer (universal)
         run: |
+          which cmake && cmake --version
           chmod +x ./build_release_macos.sh ./scripts/run_gettext.sh || true
           ./build_release_macos.sh \
             -s \
