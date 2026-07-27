@@ -17,18 +17,15 @@ on:
           - Release
           - RelWithDebInfo
           - Debug
-  # NOTE: GitHub runs the copy of this file that exists ON THE BRANCH BEING
-  # PUSHED. So this file must be committed to each branch listed below for
-  # that branch to auto-build. Likewise, the "Run workflow" button only
-  # appears once this file is on the DEFAULT branch (fos-8.5).
-  push:
-    branches:
-      - fos-8.5     # release line (default branch) - v2.3.2-fos.8.5.x
-      - clean-main  # fos9-beta / MAPS line; delete if you don't want CI on it
-    paths-ignore:
-      - "**.md"
-      - "doc/**"
-      - ".github/ISSUE_TEMPLATE/**"
+  # FOS: MANUAL ONLY - no push trigger. Mac builds are release events, not
+  # per-commit CI: dep caches are warm but the slicer itself is recompiled in
+  # full (twice, for universal) on every run, with no ccache.
+  #
+  # The "Run workflow" button reads this file from the DEFAULT branch
+  # (fos-8.5), but its branch selector can then target ANY branch that also
+  # has this file committed. To build clean-main, cherry-pick this file there
+  # too - and push that branch first: CI builds the REMOTE, and remote
+  # clean-main is still fos.8.1-era.
 
 concurrency:
   group: macos-${{ github.ref }}
@@ -63,6 +60,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # FOS: MUST run before any actions/cache step. actions/cache derives its
+      # entry "version" from the path list PLUS the compression method, and it
+      # picks the method by probing for zstd at the moment it runs. Removing
+      # Homebrew zstd mid-job (needed - Orca's deps build collides with it on
+      # the include path) made the deps job RESTORE as zstd but SAVE as gzip,
+      # so every later lookup missed on version despite an identical key.
+      # Uninstalling up front makes every cache action in every job agree on
+      # gzip. See the s59 CI notes.
+      - name: Remove Homebrew zstd (before any cache action)
+        run: brew uninstall --ignore-dependencies zstd || true
+
       - name: Cache dependency install prefix
         id: deps-cache
         uses: actions/cache@v4
@@ -83,9 +91,8 @@ jobs:
         run: |
           # cmake omitted deliberately - brew ships 4.x; the pinned 3.31.x above
           # is prepended to PATH via GITHUB_PATH and wins.
+          # zstd is removed in an earlier step, before the cache action.
           brew install ninja automake autoconf libtool texinfo gettext
-          # Orca's deps build collides with a Homebrew zstd on the include path.
-          brew uninstall --ignore-dependencies zstd || true
 
       - name: Build dependencies
         if: steps.deps-cache.outputs.cache-hit != 'true'
@@ -115,6 +122,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # FOS: MUST run before any actions/cache step. actions/cache derives its
+      # entry "version" from the path list PLUS the compression method, and it
+      # picks the method by probing for zstd at the moment it runs. Removing
+      # Homebrew zstd mid-job (needed - Orca's deps build collides with it on
+      # the include path) made the deps job RESTORE as zstd but SAVE as gzip,
+      # so every later lookup missed on version despite an identical key.
+      # Uninstalling up front makes every cache action in every job agree on
+      # gzip. See the s59 CI notes.
+      - name: Remove Homebrew zstd (before any cache action)
+        run: brew uninstall --ignore-dependencies zstd || true
+
       - name: Restore x86_64 dependency prefix
         uses: actions/cache/restore@v4
         with:
@@ -139,7 +157,6 @@ jobs:
       - name: Install build prerequisites
         run: |
           brew install ninja automake autoconf libtool texinfo gettext
-          brew uninstall --ignore-dependencies zstd || true
           # gettext is keg-only; build_slicer() calls scripts/run_gettext.sh,
           # which needs msgfmt on PATH.
           echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
@@ -156,11 +173,37 @@ jobs:
 
       - name: Verify universal binary
         run: |
-          APP="build/universal/Snapmaker_Orca/Snapmaker Orca.app"
+          APP="build/universal/Snapmaker_Orca/FOrcaSlicer.app"
           test -d "$APP" || { echo "::error::app bundle missing at $APP"; exit 1; }
-          lipo -archs "$APP/Contents/MacOS/Snapmaker_Orca"
-          lipo -archs "$APP/Contents/MacOS/Snapmaker_Orca" | grep -q x86_64
-          lipo -archs "$APP/Contents/MacOS/Snapmaker_Orca" | grep -q arm64
+          lipo -archs "$APP/Contents/MacOS/FOrcaSlicer"
+          lipo -archs "$APP/Contents/MacOS/FOrcaSlicer" | grep -q x86_64
+          lipo -archs "$APP/Contents/MacOS/FOrcaSlicer" | grep -q arm64
+
+      # FOS: build_universal() copies the ARM64 bundle wholesale and lipos only
+      # the main binary, crashpad_handler and libsentry.dylib. Any other Mach-O
+      # payload stays arm64-only and the app dies on an Intel Mac. Enumerate
+      # every Mach-O so that failure shows up here, not on the test machine.
+      - name: Audit bundle architectures
+        run: |
+          APP="build/universal/Snapmaker_Orca/FOrcaSlicer.app"
+          : > /tmp/fos_archs.txt
+          find "$APP" -type f | while IFS= read -r f; do
+            file -b "$f" | grep -q 'Mach-O' || continue
+            printf '%s\t%s\n' "$(lipo -archs "$f" 2>/dev/null || echo unknown)" "${f#"$APP"/}" >> /tmp/fos_archs.txt
+          done
+          echo "=== every Mach-O in the bundle ($(wc -l < /tmp/fos_archs.txt) files) ==="
+          sort /tmp/fos_archs.txt
+          echo
+          echo "=== MISSING x86_64 - these break the app on an Intel Mac ==="
+          if grep -v 'x86_64' /tmp/fos_archs.txt > /tmp/fos_nox86.txt; then
+            cat /tmp/fos_nox86.txt
+            echo "::warning::$(wc -l < /tmp/fos_nox86.txt) Mach-O file(s) lack x86_64 - fix is in build_universal(), not in CI"
+          else
+            echo "none - every Mach-O carries x86_64"
+          fi
+          echo
+          echo "=== MISSING arm64 (informational - untestable on your hardware) ==="
+          grep -v 'arm64' /tmp/fos_archs.txt || echo "none - every Mach-O carries arm64"
 
       - name: Compute version tag
         id: ver
@@ -170,35 +213,35 @@ jobs:
         run: |
           # ditto preserves bundle metadata and symlinks; plain zip does not.
           ditto -c -k --sequesterRsrc --keepParent \
-            "build/universal/Snapmaker_Orca/Snapmaker Orca.app" \
-            "SnapmakerOrca-universal-${{ steps.ver.outputs.tag }}.zip"
+            "build/universal/Snapmaker_Orca/FOrcaSlicer.app" \
+            "FOrcaSlicer-universal-${{ steps.ver.outputs.tag }}.zip"
 
       - name: Package DMG
         run: |
-          STAGE="$(mktemp -d)/Snapmaker Orca"
+          STAGE="$(mktemp -d)/FOrcaSlicer"
           mkdir -p "$STAGE"
-          cp -R "build/universal/Snapmaker_Orca/Snapmaker Orca.app" "$STAGE/"
+          cp -R "build/universal/Snapmaker_Orca/FOrcaSlicer.app" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
           hdiutil create \
-            -volname "Snapmaker Orca" \
+            -volname "FOrcaSlicer" \
             -srcfolder "$STAGE" \
             -ov -format UDZO \
-            "SnapmakerOrca-universal-${{ steps.ver.outputs.tag }}.dmg"
+            "FOrcaSlicer-universal-${{ steps.ver.outputs.tag }}.dmg"
 
       - name: Upload app (zip + dmg)
         uses: actions/upload-artifact@v4
         with:
-          name: SnapmakerOrca-macos-universal-${{ steps.ver.outputs.tag }}
+          name: FOrcaSlicer-macos-universal-${{ steps.ver.outputs.tag }}
           path: |
-            SnapmakerOrca-universal-*.zip
-            SnapmakerOrca-universal-*.dmg
+            FOrcaSlicer-universal-*.zip
+            FOrcaSlicer-universal-*.dmg
           if-no-files-found: error
           retention-days: 14
 
       - name: Upload dSYM
         uses: actions/upload-artifact@v4
         with:
-          name: SnapmakerOrca-macos-dSYM-${{ steps.ver.outputs.tag }}
+          name: FOrcaSlicer-macos-dSYM-${{ steps.ver.outputs.tag }}
           path: build/universal/Snapmaker_Orca/dSYM
           if-no-files-found: warn
           retention-days: 14
