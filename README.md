@@ -4,7 +4,7 @@
 
 A fork of [Snapmaker OrcaSlicer](https://github.com/Snapmaker/OrcaSlicer) for the Snapmaker U1, built on one idea: the U1 has four independent heads, so stop making them all do the same job. Give each head its own nozzle size, line width, and speed — a fine nozzle on the visible outer wall, coarser nozzles on everything behind it — and you spend precision where it shows and speed where it doesn't. It also adds a Color Patch pipeline that prints a painted surface as a **shell over a different-material core** — a soft grip on a rigid body, or a translucent see-through layer over a solid interior.
 
-> **Status:** Research preview, actively developed. Targets the **Snapmaker U1** 4-head printer. **Windows** is the primary platform; macOS and Linux are build-from-source only. Not yet independently bed-tested at this release — please report real-print results.
+> **Status:** Research preview, actively developed. Targets the **Snapmaker U1** 4-head printer. **Windows** and **macOS** have packaged builds; Linux is build-from-source only. Not yet independently bed-tested at this release — please report real-print results.
 
 ## Launch demo
 
@@ -99,7 +99,16 @@ Original-mode geometry stays **byte-identical to stock OrcaSlicer** (verified by
 
 **Before your first print:** read [Before You Print (wiki)](https://github.com/jiyang1018/FOrcaSlicer/wiki/Before-You-Print) — picking nozzle types and diameters, replacing hot ends, and why not to sync nozzle info. FOrcaSlicer behaves differently from stock in ways that matter here, so it's worth the few minutes.
 
-**macOS / Linux:** not yet packaged — build from source (below).
+**macOS:** a universal build (Intel + Apple Silicon, macOS 12+) is attached to each release.
+It is **not signed or notarized**, so macOS refuses the first launch with "Apple cannot check
+it for malicious software". After dragging FOrcaSlicer to Applications, clear the quarantine
+flag once:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/FOrcaSlicer.app"
+```
+
+**Linux:** not yet packaged — build from source (below).
 
 ---
 
@@ -130,11 +139,33 @@ Output: `build\src\Release\FOrcaSlicer.exe`
 
 ### macOS (64-bit)
 
-Requires: Xcode, CMake, Git, and: `brew install cmake gettext libtool automake autoconf texinfo`
+Requires: Xcode and Git, plus:
 
 ```bash
-./build_release_macos.sh
+brew install gettext libtool automake autoconf texinfo ninja
 ```
+
+**Do not `brew install cmake`.** Homebrew ships CMake 4.x, which removed support for
+`cmake_minimum_required(<3.5)`; the dependency tree declares older minimums and configure
+fails immediately. Use 3.31.x instead:
+
+```bash
+curl -fsSL -o /tmp/cmake.tar.gz https://cmake.org/files/v3.31/cmake-3.31.6-macos-universal.tar.gz
+tar -xzf /tmp/cmake.tar.gz -C /tmp
+export PATH="/tmp/cmake-3.31.6-macos-universal/CMake.app/Contents/bin:$PATH"
+```
+
+Build dependencies once, then the slicer (`-a` takes `arm64`, `x86_64` or `universal`;
+deployment target defaults to 12.0):
+
+```bash
+./build_release_macos.sh -d -a arm64
+./build_release_macos.sh -s -a arm64
+```
+
+Output: `build/<arch>/Snapmaker_Orca/FOrcaSlicer.app`
+
+A universal DMG is also produced by the **Build macOS release** GitHub Actions workflow.
 
 ### Linux (Ubuntu)
 

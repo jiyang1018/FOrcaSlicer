@@ -4,7 +4,7 @@
 
 [Snapmaker OrcaSlicer](https://github.com/Snapmaker/OrcaSlicer) 的分支版本，专为 Snapmaker U1 打造，核心理念只有一个：U1 有四个独立的工作头，不必让它们做同样的事。给每个工作头分配各自的挤出口直径、线宽和速度——用较细挤出口打印可见的外墙，用较粗的挤出口打印其它——把精度用在看得见的地方，把速度用在看不见的地方。它还加入了仅外壳着色（Color Patch）流程：把涂色面打印成**外壳包裹着不同材料内核**——比如在硬质骨架外的包括软质握把、或者通过控制半透明着色外壳厚度来控制透色的程度。
 
-> **当前状态：** 开发预览版，仍有其它功能在积极开发中。面向 **Snapmaker U1** 四头打印机。**Windows** 为主要平台；macOS 与 Linux 仅支持自行编译。本版本尚未经过独立的实机打印测试——欢迎反馈实际打印结果。
+> **当前状态：** 开发预览版，仍有其它功能在积极开发中。面向 **Snapmaker U1** 四头打印机。**Windows** 与 **macOS** 提供打包版本；Linux 仅支持自行编译。本版本尚未经过独立的实机打印测试——欢迎反馈实际打印结果。
 
 ## 发布演示
 
@@ -99,7 +99,15 @@ Snapmaker U1 有 4 个独立工作头，可搭载不同的挤出口直径（例�
 
 **首次打印前：** 请阅读 [打印前须知（wiki）](https://github.com/jiyang1018/FOrcaSlicer/wiki/Before-You-Print)——如何选择挤出口类型与直径、更换热端，以及为什么不要同步挤出口信息。FOrcaSlicer 在一些关键之处的行为与原版不同，值得花几分钟了解。
 
-**macOS / Linux：** 尚未打包——请从源码编译（见下）。
+**macOS：** 每个发布版本均附带通用版本（Intel + Apple 芯片，macOS 12 及以上）。
+该版本**未签名、未公证**，因此 macOS 首次启动时会提示"Apple 无法检查其是否包含恶意软件"
+并拒绝打开。将 FOrcaSlicer 拖入"应用程序"后，执行一次以下命令清除隔离标记：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/FOrcaSlicer.app"
+```
+
+**Linux：** 尚未打包——请从源码编译（见下）。
 
 ---
 
@@ -130,11 +138,32 @@ build_release_vs2022.bat slicer
 
 ### macOS（64 位）
 
-需要：Xcode、CMake、Git，以及：`brew install cmake gettext libtool automake autoconf texinfo`
+需要：Xcode 与 Git，以及：
 
 ```bash
-./build_release_macos.sh
+brew install gettext libtool automake autoconf texinfo ninja
 ```
+
+**请勿执行 `brew install cmake`。** Homebrew 现提供 CMake 4.x，它已移除对
+`cmake_minimum_required(<3.5)` 的支持；依赖树中声明了更低的最低版本，配置会立即失败。
+请改用 3.31.x：
+
+```bash
+curl -fsSL -o /tmp/cmake.tar.gz https://cmake.org/files/v3.31/cmake-3.31.6-macos-universal.tar.gz
+tar -xzf /tmp/cmake.tar.gz -C /tmp
+export PATH="/tmp/cmake-3.31.6-macos-universal/CMake.app/Contents/bin:$PATH"
+```
+
+先编译依赖，再编译切片器（`-a` 可为 `arm64`、`x86_64` 或 `universal`；部署目标默认为 12.0）：
+
+```bash
+./build_release_macos.sh -d -a arm64
+./build_release_macos.sh -s -a arm64
+```
+
+输出：`build/<arch>/Snapmaker_Orca/FOrcaSlicer.app`
+
+**Build macOS release** GitHub Actions 工作流同样会产出通用版 DMG。
 
 ### Linux（Ubuntu）
 
