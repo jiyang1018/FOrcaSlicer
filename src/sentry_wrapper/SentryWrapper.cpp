@@ -7,6 +7,10 @@
  */
 
 #include "SentryWrapper.hpp"
+// FOS: for SLIC3R_APP_KEY - crash data must live in the app's own data dir,
+// not Snapmaker Orca's. Users commonly have OrcaSlicer and/or Snapmaker Orca
+// installed alongside FOrcaSlicer.
+#include "../common_func/common_func.hpp"
 
 #ifdef SLIC3R_SENTRY
 #include "sentry.h"
@@ -110,7 +114,7 @@ void initSentryEx()
         const char* home_env = getenv("HOME");
 
         dataBaseDir = home_env;
-        dataBaseDir = dataBaseDir + "/Library/Application Support/Snapmaker_Orca/SentryData";
+        dataBaseDir = dataBaseDir + "/Library/Application Support/" SLIC3R_APP_KEY "/SentryData";
 #elif _WIN32
         // Use extended path length support for Windows (up to 32767 characters)
         const DWORD MAX_PATH_EXTENDED = 32767;
@@ -225,7 +229,7 @@ void initSentryEx()
 
         if (path != nullptr) {
             std::string filePath = path;
-            std::string appName  = "\\" + std::string("Snapmaker_Orca\\");
+            std::string appName  = "\\" + std::string(SLIC3R_APP_KEY "\\");
             dataBaseDir          = filePath + appName;
             delete[] path;
             path = nullptr;
@@ -233,7 +237,7 @@ void initSentryEx()
             // Fallback: use temp directory
             char tempPath[MAX_PATH];
             if (GetTempPathA(MAX_PATH, tempPath) != 0) {
-                dataBaseDir = std::string(tempPath) + "Snapmaker_Orca\\";
+                dataBaseDir = std::string(tempPath) + SLIC3R_APP_KEY "\\";
                 std::cout<< "Using temp directory as fallback for Sentry data: " << dataBaseDir;
             } else {
                 dataBaseDir = "";
