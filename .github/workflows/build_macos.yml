@@ -1,6 +1,10 @@
-name: Build macOS
+name: Build macOS release
 
-# FOS: mac CI for FOrcaSlicer. Snapmaker stripped upstream Orca's build
+# FOS: RELEASE build - universal (x86_64 + arm64) DMG, version-named from
+# FOS_VERSION in common_func.hpp. For quick iteration use build_macos_x86.yml
+# instead: single arch, single job, roughly half the compile.
+#
+# Snapmaker stripped upstream Orca's build
 # workflows, so this is authored against THIS tree's build_release_macos.sh
 # rather than adapted from upstream's CI (their script differs: deployment
 # target 12.0 not 11.3, install prefix Snapmaker_Orca not OrcaSlicer).
@@ -227,16 +231,16 @@ jobs:
           echo "=== MISSING arm64 (informational - untestable on your hardware) ==="
           grep -v 'arm64' /tmp/fos_archs.txt || echo "none - every Mach-O carries arm64"
 
-      - name: Compute version tag
+      # FOS: name the artifact from FOS_VERSION so the DMG matches the release
+      # tag, with the short sha kept for traceability.
+      - name: Compute version
         id: ver
-        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Package zip
         run: |
-          # ditto preserves bundle metadata and symlinks; plain zip does not.
-          ditto -c -k --sequesterRsrc --keepParent \
-            "build/universal/Snapmaker_Orca/FOrcaSlicer.app" \
-            "FOrcaSlicer-universal-${{ steps.ver.outputs.tag }}.zip"
+          FOS_VER=$(sed -n 's/.*FOS_VERSION "\(.*\)".*/\1/p' src/common_func/common_func.hpp)
+          test -n "$FOS_VER" || { echo "::error::could not read FOS_VERSION"; exit 1; }
+          echo "ver=$FOS_VER"               >> "$GITHUB_OUTPUT"
+          echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "building $FOS_VER ($(git rev-parse --short HEAD))"
 
       - name: Package DMG
         run: |
@@ -244,26 +248,27 @@ jobs:
           mkdir -p "$STAGE"
           cp -R "build/universal/Snapmaker_Orca/FOrcaSlicer.app" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
+          # strip inherited quarantine from the runner before imaging
+          xattr -cr "$STAGE/FOrcaSlicer.app" || true
           hdiutil create \
-            -volname "FOrcaSlicer" \
+            -volname "FOrcaSlicer ${{ steps.ver.outputs.ver }}" \
             -srcfolder "$STAGE" \
-            -ov -format UDZO \
-            "FOrcaSlicer-universal-${{ steps.ver.outputs.tag }}.dmg"
+            -ov -format UDZO -imagekey zlib-level=9 \
+            "FOrcaSlicer-${{ steps.ver.outputs.ver }}-macos-universal.dmg"
+          ls -lh FOrcaSlicer-*.dmg
 
-      - name: Upload app (zip + dmg)
+      - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: FOrcaSlicer-macos-universal-${{ steps.ver.outputs.tag }}
-          path: |
-            FOrcaSlicer-universal-*.zip
-            FOrcaSlicer-universal-*.dmg
+          name: FOrcaSlicer-${{ steps.ver.outputs.ver }}-macos-universal
+          path: FOrcaSlicer-*-macos-universal.dmg
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
       - name: Upload dSYM
         uses: actions/upload-artifact@v4
         with:
-          name: FOrcaSlicer-macos-dSYM-${{ steps.ver.outputs.tag }}
+          name: FOrcaSlicer-${{ steps.ver.outputs.ver }}-macos-dSYM-${{ steps.ver.outputs.tag }}
           path: build/universal/Snapmaker_Orca/dSYM
           if-no-files-found: warn
           retention-days: 14
