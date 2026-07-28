@@ -1,0 +1,133 @@
+name: Build macOS x86_64 (fast test)
+
+# FOS: single-arch Intel build for quick testing. Deliberately ONE job:
+#  - no cross-job cache handoff, so it cannot fail on a cache miss the way the
+#    universal workflow did (fail-on-cache-miss + version/key defects, s59)
+#  - roughly half the compile of the universal build, which builds twice
+# Shares the dep cache key with build_macos.yml, so whichever runs first warms
+# the other. Manual dispatch only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_config:
+        description: "CMake build configuration"
+        required: false
+        default: "Release"
+        type: choice
+        options:
+          - Release
+          - RelWithDebInfo
+          - Debug
+
+concurrency:
+  group: macos-x86-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_CONFIG: ${{ inputs.build_config || 'Release' }}
+  OSX_DEPLOYMENT_TARGET: "12.0"
+  CMAKE_PIN: "3.31.6"
+
+jobs:
+  build:
+    name: build x86_64
+    runs-on: macos-14
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # FOS: MUST precede any cache action - actions/cache picks its compression
+      # (and therefore its entry "version") by probing for zstd when it runs.
+      # Removing zstd later would make save and restore disagree. See s59.
+      - name: Remove Homebrew zstd (before any cache action)
+        run: brew uninstall --ignore-dependencies zstd || true
+
+      # FOS: compute once on the clean tree - a restored dep prefix adds hundreds
+      # of *.cmake files under deps/**, which would change hashFiles() mid-job.
+      - name: Compute dep cache key
+        id: depkey
+        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
+
+      # Same key AND same path as build_macos.yml, so the two workflows share
+      # one cache entry. Do not change one without the other.
+      - name: Cache x86_64 dependency prefix
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: deps/build/x86_64/OrcaSlicer_dep
+          key: fosdeps-x86_64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ steps.depkey.outputs.hash }}
+
+      - name: Install pinned CMake ${{ env.CMAKE_PIN }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cmake.tar.gz" \
+            "https://cmake.org/files/v3.31/cmake-${CMAKE_PIN}-macos-universal.tar.gz"
+          tar -xzf "$RUNNER_TEMP/cmake.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/cmake-${CMAKE_PIN}-macos-universal/CMake.app/Contents/bin" >> "$GITHUB_PATH"
+
+      - name: Install build prerequisites
+        run: |
+          # cmake omitted deliberately - brew ships 4.x, which drops
+          # cmake_minimum_required(<3.5); the pinned 3.31.x above wins via PATH.
+          brew install ninja automake autoconf libtool texinfo gettext
+          # gettext is keg-only; build_slicer() calls scripts/run_gettext.sh,
+          # which needs msgfmt on PATH.
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+
+      - name: Build dependencies (x86_64)
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: |
+          which cmake && cmake --version
+          chmod +x ./build_release_macos.sh || true
+          ./build_release_macos.sh -d -a x86_64 -t "$OSX_DEPLOYMENT_TARGET" -c "$BUILD_CONFIG"
+
+      - name: Report dependency prefix size
+        run: du -sh deps/build/x86_64/OrcaSlicer_dep || true
+
+      - name: Build slicer (x86_64)
+        run: |
+          which cmake && cmake --version
+          chmod +x ./build_release_macos.sh ./scripts/run_gettext.sh || true
+          ./build_release_macos.sh -s -a x86_64 -t "$OSX_DEPLOYMENT_TARGET" -c "$BUILD_CONFIG"
+
+      - name: Verify binary + localization catalogs
+        run: |
+          APP="build/x86_64/Snapmaker_Orca/FOrcaSlicer.app"
+          test -d "$APP" || { echo "::error::app bundle missing at $APP"; exit 1; }
+          lipo -archs "$APP/Contents/MacOS/FOrcaSlicer"
+          lipo -archs "$APP/Contents/MacOS/FOrcaSlicer" | grep -q x86_64
+          # FOS: the app does AddCatalog(SLIC3R_APP_KEY), so the .mo files must be
+          # named FOrcaSlicer.mo. Upstream run_gettext.sh emitted Snapmaker_Orca.mo
+          # and the language list came up empty (s59). Fail loudly if it regresses.
+          echo "=== i18n catalogs shipped ==="
+          ls "$APP/Contents/Resources/i18n/zh_CN/" || true
+          test -f "$APP/Contents/Resources/i18n/zh_CN/FOrcaSlicer.mo" \
+            || { echo "::error::FOrcaSlicer.mo missing - run_gettext.sh emitted the wrong catalog name"; exit 1; }
+          echo "=== dock tile asset shipped ==="
+          test -f "$APP/Contents/Resources/images/FOrcaSlicer-mac_256px.ico" \
+            || echo "::warning::FOrcaSlicer-mac_256px.ico not in bundle - dock icon will fall back"
+
+      - name: Compute version tag
+        id: ver
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Package DMG
+        run: |
+          STAGE="$(mktemp -d)/FOrcaSlicer"
+          mkdir -p "$STAGE"
+          cp -R "build/x86_64/Snapmaker_Orca/FOrcaSlicer.app" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          xattr -cr "$STAGE/FOrcaSlicer.app" || true
+          hdiutil create -volname "FOrcaSlicer" -srcfolder "$STAGE" \
+            -ov -format UDZO -imagekey zlib-level=9 \
+            "FOrcaSlicer-x86_64-${{ steps.ver.outputs.tag }}.dmg"
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: FOrcaSlicer-macos-x86_64-${{ steps.ver.outputs.tag }}
+          path: FOrcaSlicer-x86_64-*.dmg
+          if-no-files-found: error
+          retention-days: 14
