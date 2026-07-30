@@ -3989,7 +3989,8 @@ void PrintConfigDef::init_fff_params()
     def = this->add("print_filament_presets", coStrings);
     def->label = L("Per-nozzle process presets");
     def->tooltip = L("Process preset name selected for each nozzle slot in mixed nozzle mode. "
-                     "Index 0 = Nozzle 1 (uses global process preset), indices 1-3 = Nozzle 2-4. "
+                     "One entry per printer nozzle: index i = Nozzle i+1. Index 0 = Nozzle 1 "
+                     "and uses the global process preset. "
                      "Empty string means inherit from Nozzle 1.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionStrings({"", "", "", ""}));
@@ -4036,7 +4037,8 @@ void PrintConfigDef::init_fff_params()
         auto fos_add_nozzle_array = [this](const char *key, const char *label) {
             ConfigOptionDef *d = this->add(key, coFloats);
             d->label   = L(label);
-            d->tooltip = L("FOS: resolved per-nozzle value. Index 0 = Nozzle 1, 1-3 = Nozzle 2-4. "
+            d->tooltip = L("FOS: resolved per-nozzle value. One entry per printer nozzle: "
+                           "index i = Nozzle i+1. "
                            "Written by the GUI from each slot's PRP; not user-editable here.");
             d->mode    = comAdvanced;
             d->set_default_value(new ConfigOptionFloats({0.f, 0.f, 0.f, 0.f}));

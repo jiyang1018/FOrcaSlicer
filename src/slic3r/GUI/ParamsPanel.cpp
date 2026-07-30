@@ -393,13 +393,18 @@ void ParamsPanel::create_layout()
         // FOS: insert per-nozzle PRP rows into tab's main sizer between header and page tabs
         auto* tab_print = dynamic_cast<Tab*>(m_tab_print);
         if (tab_print) {
-            // FOS: i=1=N2, i=2=N3, i=3=N4; skip i=0 (N1) - N1 row is m_tab_print itself
-            for (int i = 1; i < 4; ++i) {
+            // FOS: skip i=0 (N1) - the N1 PRP row is m_tab_print itself. Row count follows the
+            // printer's nozzle count; the vector can still be empty here (rows are created in
+            // refresh_tabs(), which runs before create_layout() in rebuild_panels()).
+            for (int i = 1; i < (int) m_tab_print_nozzle.size(); ++i) {
                 if (m_tab_print_nozzle[i]) {
                     m_tab_print_nozzle[i]->Reparent(m_tab_print);
                     m_tab_print_nozzle[i]->Hide();
-                    // Insert at position i - after m_top_panel (pos 0), before m_tabctrl
-                    tab_print->get_main_sizer()->Insert(i, m_tab_print_nozzle[i], 0, wxEXPAND);
+                    // Insert at position i - after m_top_panel (pos 0), before m_tabctrl.
+                    // Re-insert guard: free_sizers() clears ParamsPanel's own sizer only, so a
+                    // row already sits in tab_print's main sizer across a panel rebuild.
+                    if (!tab_print->get_main_sizer()->GetItem(m_tab_print_nozzle[i]))
+                        tab_print->get_main_sizer()->Insert(i, m_tab_print_nozzle[i], 0, wxEXPAND);
                 }
             }
         }
@@ -504,14 +509,10 @@ void ParamsPanel::refresh_tabs()
         m_tab_print_part = wxGetApp().get_model_tab(true);
         m_tab_print_layer = wxGetApp().get_layer_tab();
     }
-    // FOS: create per-nozzle PRP tabs for all slots 0-3 (0=N1, 1=N2, 2=N3, 3=N4)
-    if (m_tab_print && !m_tab_print_nozzle[0]) {
-        for (int i = 0; i < 4; ++i) {
-            auto* t = new TabPrintNozzle(this, i);
-            t->create_preset_tab();
-            m_tab_print_nozzle[i] = t;
-        }
-    }
+    // FOS: one per-nozzle PRP row tab per printer nozzle (0=N1, 1=N2, ...). No fixed 4 -
+    // fos_ensure_nozzle_rows() is idempotent and grows the set when a printer with more
+    // nozzles is selected.
+    fos_ensure_nozzle_rows(fos_nozzle_slot_count());
     return;
 }
 
@@ -706,7 +707,7 @@ void ParamsPanel::msw_rescale()
     // stay at build-time size (N1 tracks DPI, N2-N4 stuck). Rescale each nozzle row's combo
     // directly. Do NOT call the full Tab::msw_rescale here: nozzle tabs have an empty build()
     // with no page icons, so its m_scaled_icons_list.front() would be UB.
-    for (int i = 1; i < 4; ++i)
+    for (int i = 1; i < (int) m_tab_print_nozzle.size(); ++i)
         if (m_tab_print_nozzle[i])
             m_tab_print_nozzle[i]->fos_rescale_row(); // FOS: rescale whole nozzle row (combo + buttons)
     //((Button*)m_export_to_file)->Rescale();
@@ -761,14 +762,57 @@ void ParamsPanel::notify_object_config_changed()
     m_mode_region->Rescale();
 }
 
+int ParamsPanel::fos_nozzle_slot_count() const
+{
+    // FOS: one PRP slot per printer nozzle. nozzle_diameter is the SINGLE source of the count -
+    // the same option TabPrint sizes m_fos_slot_configs from - so the row set and the slot
+    // configs cannot disagree. Never returns 0: slot 0 (N1) always exists.
+    const auto* nd = wxGetApp().preset_bundle
+        ? wxGetApp().preset_bundle->printers.get_edited_preset()
+              .config.option<ConfigOptionFloats>("nozzle_diameter")
+        : nullptr;
+    return (nd && !nd->values.empty()) ? (int) nd->values.size() : 1;
+}
+
+void ParamsPanel::fos_ensure_nozzle_rows(int count)
+{
+    // FOS: grow the PRP row set to count rows. Idempotent - only missing rows are created, so it
+    // is safe to call on every printer change. Rows are never destroyed: a printer with fewer
+    // nozzles hides the surplus (update_prp_nozzle_rows), because Tab.cpp holds nozzle tabs by
+    // raw pointer through get_nozzle_tab() and a destroyed row would dangle.
+    if (!m_tab_print || count <= 0) return;
+    auto* tab_print = dynamic_cast<Tab*>(m_tab_print);
+    for (int i = (int) m_tab_print_nozzle.size(); i < count; ++i) {
+        auto* t = new TabPrintNozzle(this, i);
+        t->create_preset_tab();
+        m_tab_print_nozzle.push_back(t);
+        // Slot 0 (N1) has no row of its own - the N1 PRP row is m_tab_print. A row created
+        // AFTER create_layout() ran must insert itself; create_layout() re-inserts the whole
+        // set on a panel rebuild (same position-i rule, guarded against double insert).
+        if (i > 0 && tab_print && tab_print->get_main_sizer()) {
+            t->Reparent(m_tab_print);
+            t->Hide();
+            if (!tab_print->get_main_sizer()->GetItem(t))
+                tab_print->get_main_sizer()->Insert(i, t, 0, wxEXPAND);
+        }
+    }
+}
+
 void ParamsPanel::update_prp_nozzle_rows(bool mixed_active)
 {
     m_fos_mixed_nozzle_mode = mixed_active; // FOS: store for fos_reload_slot_config
+    // FOS: the printer may have just changed to one with MORE nozzles - grow the row set before
+    // showing, so every slot has a row to bind. Past the old fixed 4, get_nozzle_tab() returned
+    // null and those slots silently never loaded their PRP.
+    const int fos_slot_count = fos_nozzle_slot_count();
+    fos_ensure_nozzle_rows(fos_slot_count);
     // FOS: i=0=N1, i=1=N2, ... all 0-based; N1 row (i=0) shown in mixed mode alongside m_tab_print
-    for (int i = 1; i < 4; ++i) {  // FOS: skip i=0 (N1) - N1 PRP row is m_tab_print itself
+    for (int i = 1; i < (int) m_tab_print_nozzle.size(); ++i) {  // FOS: skip i=0 (N1) - N1 PRP row is m_tab_print itself
+        // FOS: a row past the current nozzle count stays hidden regardless of mixed mode
+        const bool row_active = mixed_active && i < fos_slot_count;
         if (m_tab_print_nozzle[i]) {
-            m_tab_print_nozzle[i]->Show(mixed_active);
-            if (mixed_active) m_tab_print_nozzle[i]->fos_rescale_row(); // FOS: rescale row to current DPI on show
+            m_tab_print_nozzle[i]->Show(row_active);
+            if (row_active) m_tab_print_nozzle[i]->fos_rescale_row(); // FOS: rescale row to current DPI on show
             // FOS: re-apply nozzle slot filter so PRP dropdown reflects current PTP nozzle diameters
             if (auto* combo = m_tab_print_nozzle[i]->get_combo_box()) {
                 combo->set_nozzle_slot(i);
@@ -842,8 +886,13 @@ void ParamsPanel::update_prp_nozzle_rows(bool mixed_active)
     // Quality-tab open), so on PTP create slots 1-N never load and the slice used N1 width for
     // everything. Populate ALL slots from their sources + resolve ONCE here (complete-set), so
     // the create path never depends on the notebook being open.
-    if (auto* fos_tp = dynamic_cast<TabPrint*>(wxGetApp().get_tab(Preset::TYPE_PRINT)))
+    if (auto* fos_tp = dynamic_cast<TabPrint*>(wxGetApp().get_tab(Preset::TYPE_PRINT))) {
         fos_tp->fos_populate_all_slots(mixed_active);
+        // FOS: the per-nozzle notebooks freeze their page count at build time, so a nozzle-count
+        // change needs them rebuilt here - otherwise the Quality line-width and Speed notebooks
+        // keep the old tab count until the user switches pages away and back.
+        fos_tp->fos_sync_nozzle_notebooks();
+    }
     // FOS: reduce bottom padding of row 1 when nozzle rows are shown
     auto* tab_print = dynamic_cast<Tab*>(m_tab_print);
     if (tab_print && tab_print->get_main_sizer() && tab_print->get_top_panel()) {

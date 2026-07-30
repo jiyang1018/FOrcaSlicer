@@ -123,8 +123,9 @@ class ParamsPanel : public wxPanel
         wxBitmap m_toggle_on_icon;
         wxBitmap m_toggle_off_icon;
         wxTextCtrl* m_fos_nozzle_note{nullptr}; // FOS: nozzle/PRP info note
-        // FOS: per-nozzle PRP tabs for slots 2-4
-        TabPrintNozzle* m_tab_print_nozzle[4] { nullptr, nullptr, nullptr, nullptr };
+        // FOS: per-nozzle PRP row tabs, one per printer nozzle (index 0 = N1). Sized from
+        // nozzle_diameter via fos_ensure_nozzle_rows() - NOT a fixed 4.
+        std::vector<TabPrintNozzle*> m_tab_print_nozzle;
         bool m_fos_mixed_nozzle_mode { false }; // FOS: true when mixed nozzle mode active
 
         wxPanel* m_current_tab { nullptr };
@@ -156,7 +157,9 @@ class ParamsPanel : public wxPanel
         void create_layout();
         void update_prp_nozzle_rows(bool mixed_active); // FOS: show/hide per-nozzle PRP rows
         bool is_fos_mixed_nozzle_mode() const { return m_fos_mixed_nozzle_mode; } // FOS
-        TabPrintNozzle* get_nozzle_tab(int idx) { return (idx >= 0 && idx < 4) ? m_tab_print_nozzle[idx] : nullptr; }
+        TabPrintNozzle* get_nozzle_tab(int idx) { return (idx >= 0 && idx < (int) m_tab_print_nozzle.size()) ? m_tab_print_nozzle[idx] : nullptr; }
+        void fos_ensure_nozzle_rows(int count); // FOS: grow the PRP row set to count nozzles
+        int  fos_nozzle_slot_count() const;    // FOS: PRP slot count = nozzle_diameter size (>= 1)
         //clear the right page
         void clear_page();
         void OnActivate();

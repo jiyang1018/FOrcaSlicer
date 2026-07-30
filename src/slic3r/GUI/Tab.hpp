@@ -466,6 +466,7 @@ public:
         void            fos_reload_slot_config(int slot_idx);
         void            fos_resolve_nozzle_arrays(); // FOS 8.5: re-resolve arrays from current slot configs (no PRP reload)
         void            fos_populate_all_slots(bool mixed_active); // FOS 8.5.3: load ALL slots from source + resolve once (PTP-create path)
+        void            fos_sync_nozzle_notebooks(); // FOS: rebuild the per-nozzle notebooks when the nozzle count changes
         void            fos_rebuild_merged_config();
         DynamicPrintConfig* fos_config_for_filament(const std::string& filament_key);
         void            activate_selected_page(std::function<void()> throw_if_canceled) override;
@@ -479,6 +480,9 @@ private:
         std::vector<std::string>                              m_fos_slot_preset_names;
         std::vector<float>                                    m_fos_last_applied_nlh;   // FOS: last nozzle layer-height array applied; gates reslice trigger on real change
         std::vector<std::vector<ConfigOptionsGroupShp>>       m_fos_slot_optgroups;
+        // FOS: nozzle count the per-nozzle notebooks were last BUILT at (-1 = never built).
+        // Stamped by the notebook widget lambdas, read by fos_sync_nozzle_notebooks().
+        int                                                   m_fos_notebook_slot_count { -1 };
 
         // FOS: proxy config for Other line widths / Other layer speeds
         // Each field sourced from the slot PRP of the nozzle assigned to that feature

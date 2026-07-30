@@ -2561,7 +2561,7 @@ void TabPrint::build()
     {
         const auto* nd_opt = m_preset_bundle ? m_preset_bundle->printers.get_edited_preset()
             .config.option<ConfigOptionFloats>("nozzle_diameter") : nullptr;
-        int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 4;
+        int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 1; // FOS: no printer -> slot 0 only
         m_fos_slot_configs.assign(nozzle_count, *m_config);
         m_fos_slot_baselines.assign(nozzle_count, *m_config);
         m_fos_slot_preset_names.resize(nozzle_count);
@@ -2584,6 +2584,9 @@ void TabPrint::build()
                 const auto* nd_opt = m_preset_bundle->printers.get_edited_preset()
                     .config.option<ConfigOptionFloats>("nozzle_diameter");
                 int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 1;
+                // FOS: record the count this notebook is being BUILT at, so a later nozzle-count
+                // change can tell the notebooks are stale (fos_sync_nozzle_notebooks).
+                m_fos_notebook_slot_count = nozzle_count;
 // FOS: unified loop over all nozzle slots (0=N1, 1=N2, ...)
                 // Resize vectors to nozzle_count on first build
                 if ((int)m_fos_slot_configs.size() < nozzle_count) {
@@ -2898,6 +2901,7 @@ void TabPrint::build()
             const auto* nd_opt = m_preset_bundle->printers.get_edited_preset()
                 .config.option<ConfigOptionFloats>("nozzle_diameter");
             int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 1;
+            m_fos_notebook_slot_count = nozzle_count; // FOS: see fos_sync_nozzle_notebooks()
             // FOS: unified loop over all nozzle slots (0=N1, 1=N2, ...)
             if ((int)m_fos_slot_configs.size() < nozzle_count) {
                 m_fos_slot_configs.resize(nozzle_count);
@@ -3483,7 +3487,7 @@ void TabPrint::fos_reload_slot_config(int slot_idx)
     // FOS: resize vectors if not yet sized (e.g. called before build loop runs)
     const auto* nd_opt = m_preset_bundle ? m_preset_bundle->printers.get_edited_preset()
         .config.option<ConfigOptionFloats>("nozzle_diameter") : nullptr;
-    int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 4;
+    int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 1; // FOS: no printer -> slot 0 only
     if ((int)m_fos_slot_configs.size() < nozzle_count) {
         m_fos_slot_configs.resize(nozzle_count);
         m_fos_slot_baselines.resize(nozzle_count);
@@ -3543,6 +3547,33 @@ void TabPrint::fos_reload_slot_config(int slot_idx)
     fos_resolve_nozzle_arrays();
 }
 
+void TabPrint::fos_sync_nozzle_notebooks()
+{
+    // FOS: the per-nozzle notebooks (Quality "Line width", Speed) are built inside a Line WIDGET
+    // LAMBDA, so their page count is frozen at optgroup-activate time: OptionsGroup::activate()
+    // early-returns while its sizer is non-null, so a nozzle-count change cannot reach them until
+    // something clears the page. That is why the tab count only caught up after switching to
+    // another page and back. Re-run exactly what a page switch does - clear the pages (
+    // TabPrint::clear_pages also detaches the slot optgroup registry) and re-activate the current
+    // one - so both widget lambdas rebuild at the new count.
+    const auto* nd = m_preset_bundle ? m_preset_bundle->printers.get_edited_preset()
+        .config.option<ConfigOptionFloats>("nozzle_diameter") : nullptr;
+    const int nozzle_count = (nd && !nd->values.empty()) ? (int)nd->values.size() : 1;
+    if (nozzle_count == m_fos_notebook_slot_count) return; // notebooks already at this count
+    // A HIDDEN tab's pages were already cleared when it lost focus, so its notebooks rebuild at
+    // the current count on their next activate - and clear_pages() here would blank the page of
+    // whichever tab IS showing, because it calls m_parent->clear_page().
+    if (wxGetApp().mainframe == nullptr || m_parent == nullptr
+        || !m_parent->is_active_and_shown_tab((wxPanel*)this))
+        return;
+    if (!m_active_page) return;
+    m_page_view->Freeze();
+    clear_pages();
+    activate_selected_page([](){});
+    m_parent->Layout();
+    m_page_view->Thaw();
+}
+
 void TabPrint::fos_populate_all_slots(bool mixed_active)
 {
     // FOS 8.5.3: load EVERY slot config from its SOURCE without depending on the per-nozzle
@@ -3555,7 +3586,7 @@ void TabPrint::fos_populate_all_slots(bool mixed_active)
     if (!m_preset_bundle || !m_config || !m_presets) return;
     const auto* nd = m_preset_bundle->printers.get_edited_preset()
         .config.option<ConfigOptionFloats>("nozzle_diameter");
-    const int nozzle_count = nd ? (int)nd->values.size() : 4;
+    const int nozzle_count = nd ? (int)nd->values.size() : 1; // FOS: no printer -> slot 0 only
     if (nozzle_count < 1) return;
     if ((int)m_fos_slot_configs.size() < nozzle_count) {
         m_fos_slot_configs.resize(nozzle_count);
