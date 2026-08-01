@@ -88,7 +88,7 @@ jobs:
 
       - name: Cache dependency install prefix
         id: deps-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: deps/build/${{ matrix.arch }}/OrcaSlicer_dep
           key: fosdeps-${{ matrix.arch }}-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ steps.depkey.outputs.hash }}
@@ -160,14 +160,14 @@ jobs:
         run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore x86_64 dependency prefix
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: deps/build/x86_64/OrcaSlicer_dep
           key: fosdeps-x86_64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ steps.depkey.outputs.hash }}
           fail-on-cache-miss: true
 
       - name: Restore arm64 dependency prefix
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: deps/build/arm64/OrcaSlicer_dep
           key: fosdeps-arm64-${{ env.OSX_DEPLOYMENT_TARGET }}-${{ env.BUILD_CONFIG }}-${{ steps.depkey.outputs.hash }}
