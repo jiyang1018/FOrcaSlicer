@@ -83,6 +83,18 @@
 namespace Slic3r {
 namespace GUI {
 
+// FOS: display name for a multi-material supply system. Product names, so they
+// are deliberately not run through the translator.
+static wxString fos_mms_name(int mms)
+{
+    switch (mms) {
+    case MultiMaterialSupply::mmsMultiACE: return wxString("multiACE");
+    case MultiMaterialSupply::mmsSidecar:  return wxString("Sidecar");
+    default:                               return wxString();
+    }
+}
+
+
 wxDEFINE_EVENT(EVT_SELECT_TAB, wxCommandEvent);
 wxDEFINE_EVENT(EVT_HTTP_ERROR, wxCommandEvent);
 wxDEFINE_EVENT(EVT_SHOW_IP_DIALOG, wxCommandEvent);
@@ -1688,6 +1700,8 @@ wxBoxSizer* MainFrame::create_side_tools()
                 wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_EXPORT_GCODE));
             else if (m_print_select == eSendGcode)
                 wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_SEND_GCODE));
+            else if (m_print_select == eSendToMMS)
+                m_plater->fos_send_to_mms(m_send_mms_target);   // FOS
             else if (m_print_select == eUploadGcode)
                 wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_UPLOAD_GCODE));
             else if (m_print_select == eExportSlicedFile)
@@ -1766,6 +1780,41 @@ wxBoxSizer* MainFrame::create_side_tools()
 
             p->append_button(send_gcode_btn);
             p->append_button(export_gcode_btn);
+
+            // FOS: one "Send to <system>" entry per distinct multi-material
+            // supply system configured on any extruder. The G-code goes to a
+            // single destination, so four extruders on one system still yield
+            // one entry. Nothing is added when every extruder is set to None,
+            // which keeps the menu identical to stock for normal printers.
+            {
+                const ConfigOptionEnumsGeneric *mms = wxGetApp().preset_bundle
+                    ? dynamic_cast<const ConfigOptionEnumsGeneric*>(
+                        wxGetApp().preset_bundle->printers.get_edited_preset().config.option("mms_system"))
+                    : nullptr;
+                if (mms != nullptr) {
+                    std::vector<bool> present((size_t) MultiMaterialSupply::mmsCount, false);
+                    for (int v : mms->values)
+                        if (v > (int) MultiMaterialSupply::mmsNone && v < (int) MultiMaterialSupply::mmsCount)
+                            present[(size_t) v] = true;
+                    for (int v = (int) MultiMaterialSupply::mmsNone + 1; v < (int) MultiMaterialSupply::mmsCount; v++) {
+                        if (!present[(size_t) v])
+                            continue;
+                        const wxString mms_label = wxString::Format(_L("Send to %s"), fos_mms_name(v));
+                        SideButton* mms_btn = new SideButton(p, mms_label, "");
+                        mms_btn->SetCornerRadius(0);
+                        mms_btn->Bind(wxEVT_BUTTON, [this, p, v, mms_label](wxCommandEvent&) {
+                            m_print_btn->SetLabel(mms_label);
+                            m_print_select = eSendToMMS;
+                            m_send_mms_target = v;
+                            m_print_enable = get_enable_print_status();
+                            m_print_btn->Enable(m_print_enable);
+                            this->Layout();
+                            p->Dismiss();
+                        });
+                        p->append_button(mms_btn);
+                    }
+                }
+            }
         } else {
             SideButton* print_plate_btn = new SideButton(p, _L("Print"), "");
             print_plate_btn->SetCornerRadius(0);
@@ -1949,6 +1998,14 @@ bool MainFrame::get_enable_print_status()
         if (!current_plate->is_slice_result_valid())
             enable = false;
         if (!can_send_gcode())
+            enable = false;
+        enable = enable && !is_all_plates;
+    }
+    else if (m_print_select == eSendToMMS)
+    {
+        // FOS: the send exports the current plate's G-code, so it needs the
+        // same readiness as Export G-code file.
+        if (!current_plate->is_slice_result_valid())
             enable = false;
         enable = enable && !is_all_plates;
     }

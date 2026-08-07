@@ -28,6 +28,7 @@
 #include "Flashforge.hpp"
 #include "SimplyPrint.hpp"
 #include "ElegooLink.hpp"
+#include "MultiACE.hpp"   // FOS
 
 namespace fs = boost::filesystem;
 using boost::optional;
@@ -70,6 +71,7 @@ PrintHost* PrintHost::get_print_host(DynamicPrintConfig *config, bool change_eng
             case htFlashforge: return new Flashforge(config);
             case htSimplyPrint: return new SimplyPrint(config);
             case htElegooLink: return new ElegooLink(config);
+            case htMultiACE:  return new MultiACE(config);   // FOS
             default:          return nullptr;
         }
     } else {

@@ -91,7 +91,11 @@ static t_config_enum_values s_keys_map_PrintHostType {
     { "obico",          htObico },
     { "flashforge",     htFlashforge },
     { "simplyprint",    htSimplyPrint },
-    { "elegoolink",     htElegooLink }
+    { "elegoolink",     htElegooLink },
+    // FOS: multiACE inbox host. Not added to enum_values/enum_labels on purpose
+    // -- it is selected through the per-extruder Supply system field, not the
+    // physical-printer Host Type dropdown.
+    { "multiace",       htMultiACE }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(PrintHostType)
 
@@ -448,6 +452,15 @@ static const t_config_enum_values s_keys_map_ZHopType = {
     { "Spiral Lift",        zhtSpiral }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(ZHopType)
+
+// FOS: multi-material supply system, one per extruder. The serialized strings
+// below are written into every printer preset -- never rename one, only append.
+static const t_config_enum_values s_keys_map_MultiMaterialSupply = {
+    { "none",               mmsNone },
+    { "multiace",           mmsMultiACE },
+    { "sidecar",            mmsSidecar }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(MultiMaterialSupply)
 
 static const t_config_enum_values s_keys_map_RetractLiftEnforceType = {
     {"All Surfaces",        rletAllSurfaces},
@@ -4570,6 +4583,32 @@ def = this->add("outer_wall_layer_height_max", coFloat);
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloats { 0. });
 
+    // FOS: per-extruder multi-material supply system (MMS)
+    def = this->add("mms_system", coEnums);
+    def->label = L("Supply system");
+    def->tooltip = L("Multi-material supply system feeding this extruder. None is stock "
+                     "behaviour, where the extruder is fed directly. Selecting a system "
+                     "enables the matching Send to entry in the print menu after slicing.");
+    def->enum_keys_map = &ConfigOptionEnum<MultiMaterialSupply>::get_enum_values();
+    def->enum_values.push_back("none");
+    def->enum_values.push_back("multiace");
+    def->enum_values.push_back("sidecar");
+    def->enum_labels.push_back(L("None"));
+    def->enum_labels.push_back("multiACE");
+    def->enum_labels.push_back("Sidecar");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnumsGeneric{ MultiMaterialSupply::mmsNone });
+
+    // FOS: LAN address of the supply system serving this extruder.
+    def = this->add("mms_host", coStrings);
+    def->label = L("Printer LAN IP");
+    def->tooltip = L("LAN IP address or hostname of the printer running the supply system, "
+                     "for example 192.168.1.50. Used as the target when sending sliced G-code "
+                     "to that system. Shared by every extruder: editing it on one extruder "
+                     "updates all of them.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionStrings { "" });
+
     def = this->add("retraction_speed", coFloats);
     def->label = L("Retraction Speed");
     def->full_label = L("Retraction Speed");
@@ -6373,7 +6412,9 @@ void PrintConfigDef::init_extruder_option_keys()
         "retraction_length", "z_hop", "z_hop_types", "z_hop_when_prime", "travel_slope", "retract_lift_above", "retract_lift_below", "retract_lift_enforce", "retraction_speed", "deretraction_speed",
         "retract_before_wipe", "retract_restart_extra", "retraction_minimum_travel", "wipe", "wipe_distance",
         "retract_when_changing_layer", "retract_length_toolchange", "retract_restart_extra_toolchange", "extruder_colour",
-        "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut"
+        "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut",
+        // FOS: per-extruder multi-material supply system and its host address
+        "mms_system", "mms_host"
     };
 
     m_extruder_retract_keys = {

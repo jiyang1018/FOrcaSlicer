@@ -14595,6 +14595,111 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
         p->export_gcode(fs::path(), false, std::move(upload_job));
     }
 }
+// FOS: send the current plate's G-code to a multi-material supply system (MMS).
+// Reuses the stock print-host pipeline: a synthetic physical-printer config
+// drives PrintHostJob, then priv::export_gcode() exports to a temp file and
+// hands the upload to the background queue, which owns progress and errors.
+// The MMS address lives in the printer preset (per-extruder mms_host, kept in
+// sync across extruders), not in a Physical Printer entry.
+void Plater::fos_send_to_mms(int mms_system)
+{
+    if (mms_system == MultiMaterialSupply::mmsNone)
+        return;
+
+    if (mms_system == MultiMaterialSupply::mmsSidecar) {
+        show_error(this, _L("Sidecar support is not implemented yet. Its upload API has not been "
+                            "published, so there is nothing to send to. Export the G-code and load "
+                            "it through Sidecar's own interface for now."), false);
+        return;
+    }
+
+    const DynamicPrintConfig &pcfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+
+    // Gate 1: multiACE's preflight is not nozzle-aware yet, so a mixed-nozzle
+    // job would be silently mis-arranged on the printer. Refuse, do not warn.
+    const ConfigOptionFloats *nozzles = dynamic_cast<const ConfigOptionFloats*>(pcfg.option("nozzle_diameter"));
+    if (nozzles != nullptr && nozzles->values.size() > 1) {
+        const double first = nozzles->values.front();
+        for (double d : nozzles->values) {
+            if (std::fabs(d - first) > 1e-6) {
+                show_error(this, _L("This printer is configured with mixed nozzle sizes. The supply "
+                                    "system cannot arrange spools for a mixed-nozzle job yet, so the "
+                                    "send was blocked. Set every nozzle to the same diameter, or "
+                                    "export the G-code and load it by hand."), false);
+                return;
+            }
+        }
+    }
+
+    // Gate 2: the inbox answers 409 for G-code that already carries multiACE's
+    // processed markers, because double-processing corrupts the swaps. Catch a
+    // configured multiACE post-processor here so the user gets a cause instead
+    // of a server error.
+    const ConfigOptionStrings *post = dynamic_cast<const ConfigOptionStrings*>(
+        wxGetApp().preset_bundle->prints.get_edited_preset().config.option("post_process"));
+    if (post != nullptr) {
+        for (const std::string &s : post->values) {
+            if (s.find("post_process_virtual_toolheads") != std::string::npos) {
+                show_error(this, _L("A multiACE post-processing script is set in Print Settings. The "
+                                    "supply system needs the original slicer export and rejects an "
+                                    "already-processed file. Remove the script from Others > "
+                                    "Post-processing Scripts, or export the G-code instead."), false);
+                return;
+            }
+        }
+    }
+
+    // Gate 3: the address. Every extruder holds the same value.
+    std::string host;
+    const ConfigOptionStrings *hosts = dynamic_cast<const ConfigOptionStrings*>(pcfg.option("mms_host"));
+    if (hosts != nullptr && !hosts->values.empty())
+        host = hosts->values.front();
+    while (!host.empty() && (host.front() == ' ' || host.front() == '\t')) host.erase(host.begin());
+    while (!host.empty() && (host.back()  == ' ' || host.back()  == '\t')) host.pop_back();
+    if (host.empty()) {
+        show_error(this, _L("No printer LAN IP is set for this supply system. Enter it in Printer "
+                            "Settings, on any extruder page, under the multi-material supply "
+                            "system section."), false);
+        return;
+    }
+
+    // Synthetic physical-printer config carrying just the keys the print-host
+    // factory and the OctoPrint base class read.
+    DynamicPrintConfig cfg;
+    cfg.set_key_value("host_type",  new ConfigOptionEnum<PrintHostType>(htMultiACE));
+    cfg.set_key_value("print_host", new ConfigOptionString(host));
+    cfg.set_key_value("printhost_apikey", new ConfigOptionString(""));
+    cfg.set_key_value("printhost_cafile", new ConfigOptionString(""));
+    cfg.set_key_value("printhost_ssl_ignore_revoke", new ConfigOptionBool(false));
+
+    PrintHostJob upload_job(&cfg);
+    if (upload_job.empty())
+        return;
+
+    fs::path default_output_file;
+    try {
+        unsigned int state = this->p->update_restart_background_process(false, false);
+        if (state & priv::UPDATE_BACKGROUND_PROCESS_INVALID)
+            return;
+        default_output_file = this->p->background_process.output_filepath_for_project("");
+    } catch (const std::exception &ex) {
+        show_error(this, ex.what(), false);
+        return;
+    }
+    default_output_file = fs::path(Slic3r::fold_utf8_to_ascii(default_output_file.string()));
+    default_output_file.replace_extension("gcode");
+
+    // PrintHostUpload::use_3mf has NO default initialiser -- leaving it unset
+    // makes BackgroundSlicingProcess take the 3mf branch and upload an empty
+    // source_path, which multiACE rejects with 400 "empty file". Always assign.
+    upload_job.upload_data.use_3mf     = false;
+    // The inbox validates on extension and stores only; there is nothing to start.
+    upload_job.upload_data.upload_path = default_output_file.filename();
+    upload_job.upload_data.post_action = PrintHostPostUploadAction::None;
+
+    p->export_gcode(fs::path(), false, std::move(upload_job));
+}
+
 int Plater::send_gcode(int plate_idx, Export3mfProgressFn proFn)
 {
     int result = 0;

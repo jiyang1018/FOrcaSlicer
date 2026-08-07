@@ -5812,6 +5812,41 @@ if (is_marlin_flavor)
                 optgroup->append_single_option_line("long_retractions_when_cut", "", extruder_idx);
                 optgroup->append_single_option_line("retraction_distances_when_cut", "", extruder_idx);
 
+                // FOS: multi-material supply system feeding this extruder. Sits at the
+                // bottom of the extruder page, below the toolchange retraction group.
+                optgroup = page->new_optgroup(L("Multi-material supply system for this extruder"), L"param_retraction_material_change");
+                optgroup->append_single_option_line("mms_system", "", extruder_idx);
+                optgroup->append_single_option_line("mms_host", "", extruder_idx);
+
+                // FOS: every extruder is fed from the same physical machine, so the
+                // supply-system address is one printer-wide value. An edit on any
+                // extruder page is mirrored to all of them. change_opt_value() has
+                // already committed this extruder's new value before we run, so read
+                // it back from the config rather than casting the boost::any.
+                optgroup->m_on_change = [this, extruder_idx](const t_config_option_key& opt_key, boost::any value)
+                {
+                    if (opt_key.find("mms_host") != std::string::npos && m_extruders_count > 1) {
+                        std::vector<std::string> hosts = static_cast<const ConfigOptionStrings*>(m_config->option("mms_host"))->values;
+                        if ((size_t) extruder_idx < hosts.size()) {
+                            const std::string new_host = hosts[extruder_idx];
+                            bool changed = false;
+                            for (size_t i = 0; i < hosts.size(); i++) {
+                                if (hosts[i] != new_host) {
+                                    hosts[i] = new_host;
+                                    changed = true;
+                                }
+                            }
+                            if (changed) {
+                                DynamicPrintConfig new_conf = *m_config;
+                                new_conf.set_key_value("mms_host", new ConfigOptionStrings(hosts));
+                                load_config(new_conf);
+                            }
+                        }
+                    }
+                    update_dirty();
+                    on_value_change(opt_key, value);
+                };
+
     #if 0
                 //optgroup = page->new_optgroup(L("Preview"), -1, true);
 
@@ -6059,6 +6094,9 @@ void TabPrinter::toggle_options()
 
         bool toolchange_retraction = m_config->opt_float("retract_length_toolchange", i) > 0;
         toggle_option("retract_restart_extra_toolchange", have_multiple_extruders && toolchange_retraction, i);
+
+        // FOS: the MMS address field only matters once a supply system is chosen
+        toggle_option("mms_host", m_config->opt_enum("mms_system", i) != MultiMaterialSupply::mmsNone, i);
 
         toggle_option("long_retractions_when_cut", !use_firmware_retraction && m_config->opt_int("enable_long_retraction_when_cut"),i);
         toggle_line("retraction_distances_when_cut#0", m_config->opt_bool("long_retractions_when_cut", i));

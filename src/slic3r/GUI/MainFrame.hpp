@@ -238,7 +238,8 @@ public:
         eSendToPrinterAll    = 6,
         eUploadGcode         = 7,
         eExportAllSlicedFile = 8,
-        ePrintMultiMachine   = 9
+        ePrintMultiMachine   = 9,
+        eSendToMMS           = 10   // FOS: multi-material supply system
     };
 
     void update_layout();
@@ -393,6 +394,8 @@ public:
 
     
     mutable int m_print_select{ ePrintAll };
+    // FOS: which MultiMaterialSupply eSendToMMS targets
+    mutable int m_send_mms_target{ 0 };
     mutable int m_slice_select{ eSliceAll };
     // Button* m_publish_btn{ nullptr };
     SideButton* m_slice_btn{ nullptr };

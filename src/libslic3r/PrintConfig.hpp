@@ -57,7 +57,7 @@ enum class NoiseType {
 };
 
 enum PrintHostType {
-    htPrusaLink, htPrusaConnect, htOctoPrint, htDuet, htFlashAir, htAstroBox, htRepetier, htMKS, htESP3D, htCrealityPrint, htObico, htFlashforge, htSimplyPrint, htElegooLink, htMoonRaker_mqtt, htMoonRaker, 
+    htPrusaLink, htPrusaConnect, htOctoPrint, htDuet, htFlashAir, htAstroBox, htRepetier, htMKS, htESP3D, htCrealityPrint, htObico, htFlashforge, htSimplyPrint, htElegooLink, htMoonRaker_mqtt, htMoonRaker, htMultiACE, 
 };
 
 enum AuthorizationType {
@@ -336,6 +336,16 @@ enum ZHopType {
     zhtSlope,
     zhtSpiral,
     zhtCount
+};
+
+// FOS: multi-material supply system feeding one extruder. One value per
+// extruder; mmsNone is stock behaviour and must stay 0. New systems are
+// appended alphabetically after mmsNone -- enum order is the dropdown order.
+enum MultiMaterialSupply {
+    mmsNone = 0,
+    mmsMultiACE,
+    mmsSidecar,
+    mmsCount
 };
 
 enum FilamentMapMode {
@@ -1254,6 +1264,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnumsGeneric,        retract_lift_enforce))
     ((ConfigOptionFloats,              retract_restart_extra))
     ((ConfigOptionFloats,              retract_restart_extra_toolchange))
+    // FOS: per-extruder multi-material supply system and its host address
+    ((ConfigOptionEnumsGeneric,        mms_system))
+    ((ConfigOptionStrings,             mms_host))
     ((ConfigOptionFloats,              retraction_speed))
     ((ConfigOptionString,              machine_start_gcode))
     ((ConfigOptionStrings,             filament_start_gcode))
