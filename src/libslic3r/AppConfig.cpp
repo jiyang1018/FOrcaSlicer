@@ -1646,7 +1646,16 @@ const std::map<std::string, std::string> AppConfig::filament_name_map = {
     {"Snapmaker Dual PVA", "Snapmaker PVA @Dual"},
     {"Snapmaker Dual TPE", "Snapmaker TPE @Dual"},
     {"Snapmaker Dual TPU", "Snapmaker TPU @Dual"},
-    {"Snapmaker Dual TPU High-Flow", "Snapmaker TPU High-Flow @Dual"}};
+    {"Snapmaker Dual TPU High-Flow", "Snapmaker TPU High-Flow @Dual"},
+    // FOS: U1 rename map. Upstream renamed the bare @U1 presets to @U1 0.4 nozzle
+    // in bundle 02.02.55.02 but never added them here (this map was J1-only).
+    {"Snapmaker ABS @U1", "Snapmaker ABS @U1 0.4 nozzle"},
+    {"Snapmaker ASA @U1", "Snapmaker ASA @U1 0.4 nozzle"},
+    {"Snapmaker PETG-CF @U1", "Snapmaker PETG-CF @U1 0.4 nozzle"},
+    {"Snapmaker PLA Wood @U1", "Snapmaker PLA Wood @U1 0.4 nozzle"},
+    {"Snapmaker PLA-CF @U1", "Snapmaker PLA-CF @U1 0.4 nozzle"},
+    {"Snapmaker TPU 95A HF @U1", "Snapmaker TPU 95A HF @U1 0.4 nozzle"},
+};
 
 void AppConfig::update_filament_names(json& j)
 {
