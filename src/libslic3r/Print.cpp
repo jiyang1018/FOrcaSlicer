@@ -212,6 +212,11 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "filament_retraction_distances_when_cut"
     };
 
+    // FOS 8.5 stage 1b: fos_filament_nozzle / fos_filament_mms_slot were parked here in 1a
+    // while the map was display-only. They are now live - full_fff_config() re-indexes
+    // nozzle_diameter and extruder_offset through the map, so a mapping change moves line
+    // widths and XY offsets. They deliberately fall through to the catch-all below
+    // (invalidate_all_steps), which is conservative and correct.
     static std::unordered_set<std::string> steps_ignore;
 
     std::vector<PrintStep> steps;

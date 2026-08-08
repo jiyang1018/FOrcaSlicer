@@ -1,4 +1,5 @@
 #include <cassert>
+#include <memory>
 
 #include "PresetBundle.hpp"
 #include "PrintConfig.hpp"
@@ -45,6 +46,9 @@ static std::vector<std::string> s_project_options {
     // FOS: per-nozzle slot plumbing (fos.8.5). MAPS layer-height arrays intentionally omitted.
     "print_filament_presets",
     "fos_slot_config_serial",
+    // FOS 8.5 stage 1a: filament -> nozzle assignment map (+ MMS slot within that nozzle).
+    "fos_filament_nozzle",
+    "fos_filament_mms_slot",
     // FOS 8.5: resolved per-nozzle width/speed arrays (region/object scope) + tower.
     // tower_line_width itself is NOT here - it is a per-slot PRESET key, not a project key.
     "fos_nozzle_outer_wall_line_width",
@@ -1916,6 +1920,22 @@ void PresetBundle::set_num_filaments(unsigned int n, std::vector<std::string> ne
     ConfigOptionStrings* filament_color = project_config.option<ConfigOptionStrings>("filament_colour");
     filament_color->resize(n);
     ams_multi_color_filment.resize(n);
+
+    // FOS 8.5 stage 1a: keep the filament -> nozzle map in step with the filament count.
+    // New filaments take identity while nozzles remain (filament i -> nozzle i); past that
+    // they are -1 (unassigned) so the user must wire them explicitly in the mapping window.
+    {
+        size_t nozzle_n = 1;
+        if (const auto* nd = printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter"))
+            nozzle_n = std::max<size_t>(1, nd->values.size());
+        ConfigOptionInts* fos_noz  = project_config.option<ConfigOptionInts>("fos_filament_nozzle", true);
+        ConfigOptionInts* fos_slot = project_config.option<ConfigOptionInts>("fos_filament_mms_slot", true);
+        size_t old_n = fos_noz->values.size();
+        fos_noz->values.resize(n, -1);
+        fos_slot->values.resize(n, 0);
+        for (size_t i = old_n; i < (size_t)n; ++i)
+            fos_noz->values[i] = (i < nozzle_n) ? (int)i : -1;
+    }
     // BBS set new filament color to new_color
     if (old_filament_count < n) {
         if (!new_colors.empty()) {
@@ -1938,6 +1958,22 @@ void PresetBundle::set_num_filaments(unsigned int n, std::string new_color)
     ConfigOptionStrings* filament_color = project_config.option<ConfigOptionStrings>("filament_colour");
     filament_color->resize(n);
     ams_multi_color_filment.resize(n);
+
+    // FOS 8.5 stage 1a: keep the filament -> nozzle map in step with the filament count.
+    // New filaments take identity while nozzles remain (filament i -> nozzle i); past that
+    // they are -1 (unassigned) so the user must wire them explicitly in the mapping window.
+    {
+        size_t nozzle_n = 1;
+        if (const auto* nd = printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter"))
+            nozzle_n = std::max<size_t>(1, nd->values.size());
+        ConfigOptionInts* fos_noz  = project_config.option<ConfigOptionInts>("fos_filament_nozzle", true);
+        ConfigOptionInts* fos_slot = project_config.option<ConfigOptionInts>("fos_filament_mms_slot", true);
+        size_t old_n = fos_noz->values.size();
+        fos_noz->values.resize(n, -1);
+        fos_slot->values.resize(n, 0);
+        for (size_t i = old_n; i < (size_t)n; ++i)
+            fos_noz->values[i] = (i < nozzle_n) ? (int)i : -1;
+    }
 
     //BBS set new filament color to new_color
     if (old_filament_count < n) {
@@ -2448,6 +2484,122 @@ DynamicPrintConfig PresetBundle::full_fff_config() const
                 if (outer_wall_loops > wall_loops)
                     out.set_key_value("outer_wall_loops", new ConfigOptionInt(wall_loops));
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // FOS 8.5 stage 1b: re-index the physical per-nozzle arrays BY FILAMENT.
+    //
+    // WHY HERE, AND NOT AT ~40 CALL SITES. Every consumer in libslic3r already indexes
+    // nozzle_diameter / extruder_offset with a FILAMENT index: Print::extruders() returns
+    // filament indices, PrintRegion::extruder() returns *_filament, and GCode.cpp's
+    // EXTRUDER_CONFIG macro feeds it m_writer.extruder()->id(). Rewriting the arrays once,
+    // here, from nozzle-indexed to filament-indexed makes every one of those call sites read
+    // the correct nozzle with no change at all.
+    //
+    // READ THIS BEFORE TRUSTING nozzle_diameter.size(). From this point on the SLICING config
+    // has one entry per FILAMENT, not per physical nozzle. The physical list still lives in
+    // the printer preset (printers.get_edited_preset()), which is what the sidebar nozzle
+    // panel and the Tab extruder pages read - those are unaffected. This also repairs
+    // Print.cpp:2999/3000, which set num_filaments/num_extruders from nozzle_diameter.size()
+    // and were wrong whenever the filament count exceeded the nozzle count.
+    //
+    // DELIBERATELY NOT REMAPPED: min_layer_height / max_layer_height. They appear in BOTH
+    // m_extruder_option_keys and m_filament_option_keys, so they already carry a filament-side
+    // override - remapping them would apply the mapping twice.
+    //
+    // has_mixed_nozzle_sizes is computed ABOVE, on the physical array, on purpose: keeping it
+    // physical preserves the existing PerimeterGenerator behaviour exactly. A filament-scoped
+    // version (mixed only when the filaments actually in use span sizes) would be tighter, but
+    // that is a behaviour change and belongs in its own step.
+    //
+    // T-NUMBER EMISSION IS UNTOUCHED. FOS stays vendor-neutral: the slicer still writes the
+    // filament index as T. Translating that into a supply system's own addressing (multiACE
+    // encodes slot as a synthetic T = ace * 4 + slot; Sidecar's scheme is unknown) belongs in
+    // the Send-to-MMS path, where mms_system is known per extruder - never in GCode.cpp.
+    {
+        const size_t num_filaments = this->filament_presets.size();
+        const auto * nd_phys       = out.option<ConfigOptionFloats>("nozzle_diameter");
+        const size_t nozzle_n      = (nd_phys != nullptr) ? nd_phys->values.size() : 0;
+
+        if (num_filaments > 0 && nozzle_n > 0) {
+            std::vector<int> map;
+            if (const auto *m = out.option<ConfigOptionInts>("fos_filament_nozzle"))
+                map = m->values;
+
+            // Source nozzle per filament. An unassigned (-1) or stale out-of-range entry has to
+            // reproduce the PRE-mapping behaviour exactly, and that behaviour is NOT "clamp to the
+            // last nozzle": ConfigOptionVector::get_at() returns values.FRONT() when the index is
+            // past the end (Config.hpp:437). So a filament with no nozzle takes identity while
+            // nozzles last, and NOZZLE 0 beyond that. Getting this wrong silently pushed every
+            // filament past the nozzle count onto the last nozzle - on a 4442 printer that is the
+            // 0.2 mm one, so unassigned filaments came out at 0.22 line width instead of 0.42.
+            std::vector<size_t> src(num_filaments);
+            for (size_t f = 0; f < num_filaments; ++f) {
+                int n = (f < map.size()) ? map[f] : -1;
+                if (n < 0 || n >= int(nozzle_n))
+                    n = (f < nozzle_n) ? int(f) : 0;
+                src[f] = size_t(n);
+            }
+
+            auto remap_floats = [&out, &src, num_filaments](const char *key) {
+                auto *opt = out.option<ConfigOptionFloats>(key);
+                if (opt == nullptr || opt->values.empty())
+                    return;
+                const std::vector<double> in = opt->values;
+                std::vector<double>       re(num_filaments);
+                for (size_t f = 0; f < num_filaments; ++f)
+                    re[f] = in[std::min(src[f], in.size() - 1)];
+                opt->values = re;
+            };
+            // EVERY per-extruder array must come out the SAME length. ToolOrdering.cpp:217
+            // (calc_max_layer_height) bounds its loop on nozzle_diameter.values.size() and then
+            // raw-indexes max_layer_height.values[i]. Re-indexing nozzle_diameter alone made that
+            // loop read past the end of every other per-extruder array as soon as the filament
+            // count exceeded the nozzle count - an intermittent access violation. Gather
+            // generically through ConfigOptionVectorBase::set_at so coFloats / coPoints / coBools
+            // / coStrings / coEnums all travel together. This covers nozzle_diameter and
+            // extruder_offset too, so they need no special case.
+            for (const std::string &key : print_config_def.extruder_option_keys()) {
+                ConfigOption *opt = out.optptr(key);
+                if (opt == nullptr || !opt->is_vector())
+                    continue;
+                ConfigOptionVectorBase *vec = static_cast<ConfigOptionVectorBase *>(opt);
+                const size_t in_n = vec->size();
+                if (in_n == 0)
+                    continue;
+                const std::unique_ptr<ConfigOption> snapshot(opt->clone());
+                if (in_n != num_filaments)
+                    vec->resize(num_filaments);
+                for (size_t f = 0; f < num_filaments; ++f)
+                    vec->set_at(snapshot.get(), f, std::min(src[f], in_n - 1));
+            }
+
+            // The FOS per-nozzle resolved width/speed arrays. fos_stamp_per_nozzle_region()
+            // and fos_stamp_per_nozzle_object() index these with (filament - 1), so once they
+            // are filament-indexed those two functions become correct unchanged.
+            static const char *fos_nozzle_arrays[] = {
+                "fos_nozzle_outer_wall_line_width",
+                "fos_nozzle_inner_wall_line_width",
+                "fos_nozzle_top_surface_line_width",
+                "fos_nozzle_sparse_infill_line_width",
+                "fos_nozzle_internal_solid_infill_line_width",
+                "fos_nozzle_outer_wall_speed",
+                "fos_nozzle_inner_wall_speed",
+                "fos_nozzle_small_perimeter_speed",
+                "fos_nozzle_small_perimeter_threshold",
+                "fos_nozzle_sparse_infill_speed",
+                "fos_nozzle_internal_solid_infill_speed",
+                "fos_nozzle_top_surface_speed",
+                "fos_nozzle_gap_infill_speed",
+                "fos_nozzle_ironing_speed",
+                "fos_nozzle_support_line_width",
+                "fos_nozzle_support_speed",
+                "fos_nozzle_support_interface_speed",
+                "fos_nozzle_tower_line_widths"
+            };
+            for (const char *key : fos_nozzle_arrays)
+                remap_floats(key);
         }
     }
 

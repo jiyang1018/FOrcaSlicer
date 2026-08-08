@@ -147,6 +147,8 @@
 #include <libslic3r/miniz_extension.hpp>
 #include "WipeTowerDialog.hpp"
 #include "ObjColorDialog.hpp"
+// FOS 8.5 stage 1a: filament <-> nozzle node mapping window.
+#include "FilamentNozzleMapDialog.hpp"
 
 #include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/Platform.hpp"
@@ -700,6 +702,8 @@ struct Sidebar::priv
     ScalableButton *  m_bpButton_del_filament;
     ScalableButton *  m_bpButton_ams_filament;
     ScalableButton *  m_bpButton_set_filament;
+    // FOS 8.5 stage 1a: opens the filament <-> nozzle node mapping window.
+    ScalableButton *  m_bpButton_map_filament{nullptr};
     int                         m_menu_filament_id = -1;
     wxPanel* m_panel_filament_content;
     wxScrolledWindow* m_scrolledWindow_filament_content;
@@ -1699,6 +1703,17 @@ Sidebar::Sidebar(Plater *parent)
     bSizer39->Add(ams_btn, 0, wxALIGN_CENTER | wxLEFT, FromDIP(SidebarProps::IconSpacing()));
     //bSizer39->Add(FromDIP(10), 0, 0, 0, 0 );
 
+    // FOS 8.5 stage 1a: filament <-> nozzle mapping. Placeholder icon reuses the filament
+    // glyph until a dedicated one is drawn.
+    ScalableButton* map_btn = new ScalableButton(p->m_panel_filament_title, wxID_ANY, "add_filament");
+    map_btn->SetToolTip(_L("Map filaments to nozzles"));
+    map_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
+        FilamentNozzleMapDialog dlg(wxGetApp().mainframe);
+        dlg.ShowModal();
+    });
+    p->m_bpButton_map_filament = map_btn;
+    bSizer39->Add(map_btn, 0, wxALIGN_CENTER | wxLEFT, FromDIP(SidebarProps::IconSpacing()));
+
     ScalableButton* set_btn = new ScalableButton(p->m_panel_filament_title, wxID_ANY, "settings");
     set_btn->SetToolTip(_L("Set filaments to use"));
     set_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
@@ -2359,6 +2374,7 @@ void Sidebar::msw_rescale()
     p->m_printer_setting->msw_rescale();
     p->m_filament_icon->msw_rescale();
     p->m_bpButton_add_filament->msw_rescale();
+    if (p->m_bpButton_map_filament) p->m_bpButton_map_filament->msw_rescale(); // FOS 8.5
     p->m_bpButton_del_filament->msw_rescale();
     p->m_bpButton_ams_filament->msw_rescale();
     p->m_bpButton_set_filament->msw_rescale();
@@ -2431,6 +2447,7 @@ void Sidebar::sys_color_changed()
     p->m_printer_setting->msw_rescale();
     p->m_filament_icon->msw_rescale();
     p->m_bpButton_add_filament->msw_rescale();
+    if (p->m_bpButton_map_filament) p->m_bpButton_map_filament->msw_rescale(); // FOS 8.5
     p->m_bpButton_del_filament->msw_rescale();
     p->m_bpButton_ams_filament->msw_rescale();
     p->m_bpButton_set_filament->msw_rescale();
@@ -2849,6 +2866,8 @@ void Sidebar::show_SEMM_buttons(bool bshow)
 {
     if(p->m_bpButton_add_filament)
         p->m_bpButton_add_filament->Show(bshow);
+    if (p->m_bpButton_map_filament) // FOS 8.5 stage 1a
+        p->m_bpButton_map_filament->Show(bshow);
     if (p->m_bpButton_del_filament && p->combos_filament.size() > 1) // ORCA add filament count as condition to prevent showing Flushing volumes and Del Filament icon visible while only 1 filament exist
         p->m_bpButton_del_filament->Show(bshow);
     if (p->m_flushing_volume_btn && p->combos_filament.size() > 1) // ORCA add filament count as condition to prevent showing Flushing volumes and Del Filament icon visible while only 1 filament exist
@@ -14615,21 +14634,19 @@ void Plater::fos_send_to_mms(int mms_system)
 
     const DynamicPrintConfig &pcfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
 
-    // Gate 1: multiACE's preflight is not nozzle-aware yet, so a mixed-nozzle
-    // job would be silently mis-arranged on the printer. Refuse, do not warn.
-    const ConfigOptionFloats *nozzles = dynamic_cast<const ConfigOptionFloats*>(pcfg.option("nozzle_diameter"));
-    if (nozzles != nullptr && nozzles->values.size() > 1) {
-        const double first = nozzles->values.front();
-        for (double d : nozzles->values) {
-            if (std::fabs(d - first) > 1e-6) {
-                show_error(this, _L("This printer is configured with mixed nozzle sizes. The supply "
-                                    "system cannot arrange spools for a mixed-nozzle job yet, so the "
-                                    "send was blocked. Set every nozzle to the same diameter, or "
-                                    "export the G-code and load it by hand."), false);
-                return;
-            }
-        }
-    }
+    // NOTE: there is deliberately NO mixed-nozzle gate here any more.
+    // multiACE's preflight became nozzle-aware (LOADOUT_API.md s3): it reads the
+    // per-filament diameters from the G-code header, matches each filament to a
+    // head carrying that diameter, and refuses rather than printing wrong widths.
+    // Blocking mixed nozzles here would disable the one thing this fork exists
+    // for. Do not re-add it.
+    //
+    // Caveat worth knowing: the CONFIG_BLOCK "nozzle_diameter" list is already
+    // sized per filament, but entries past the physical head count are padding,
+    // not a real binding -- a filament on a "@U1 0.8 nozzle" preset can still
+    // declare 0.2. multiACE shows such filaments unassigned rather than
+    // guessing, so this is visible to the user, not silent. The real fix is a
+    // per-filament to head binding (node UI workstream).
 
     // Gate 2: the inbox answers 409 for G-code that already carries multiACE's
     // processed markers, because double-processing corrupts the swaps. Catch a

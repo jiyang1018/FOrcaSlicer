@@ -17,6 +17,9 @@
 #include "BitmapComboBox.hpp"
 #include "Widgets/StaticBox.hpp"
 #include "Widgets/Label.hpp"
+// FOS 8.5 stage 1a: per-filament translucency lookup for the colour swatches.
+#include <wx/image.h>
+#include "libslic3r/PresetBundle.hpp"
 
 #ifndef __linux__
 // msw_menuitem_bitmaps is used for MSW and OSX
@@ -522,6 +525,27 @@ wxBitmap* get_default_extruder_color_icon(bool thin_icon/* = false*/)
     return bitmap;
 }
 
+// FOS 8.5 stage 1a: give a translucent filament's colour a 50% alpha channel, so that
+// get_extruder_color_icon() below renders it over the checker instead of as a flat swatch.
+// Returns the colour untouched for opaque filaments and for anything that is not #RRGGBB.
+static std::string fos_apply_filament_alpha(const std::string &color, size_t filament_idx)
+{
+    if (color.size() != 7 || color.front() != '#')
+        return color;
+    auto *bundle = Slic3r::GUI::wxGetApp().preset_bundle;
+    if (bundle == nullptr || filament_idx >= bundle->filament_presets.size())
+        return color;
+    const std::string &   preset_name = bundle->filament_presets[filament_idx];
+    const Slic3r::Preset &edited      = bundle->filaments.get_edited_preset();
+    const Slic3r::Preset *preset      = (edited.name == preset_name) ? &edited : bundle->filaments.find_preset(preset_name);
+    if (preset == nullptr)
+        return color;
+    const auto *opt = preset->config.option<Slic3r::ConfigOptionBools>("fos_filament_transparent");
+    if (opt == nullptr || opt->values.empty() || !opt->values.front())
+        return color;
+    return color + "80"; // 50% alpha
+}
+
 std::vector<wxBitmap*> get_extruder_color_icons(bool thin_icon/* = false*/)
 {
     // Create the bitmap with color bars.
@@ -543,7 +567,8 @@ std::vector<wxBitmap*> get_extruder_color_icons(bool thin_icon/* = false*/)
     for (const std::string &color : colors)
     {
         auto label = std::to_string(++index);
-        bmps.push_back(get_extruder_color_icon(color, label, icon_width, icon_height));
+        // FOS 8.5 stage 1a: index is already incremented, so the filament index is index - 1.
+        bmps.push_back(get_extruder_color_icon(fos_apply_filament_alpha(color, size_t(index - 1)), label, icon_width, icon_height));
     }
 
     return bmps;
@@ -580,6 +605,32 @@ wxBitmap *get_extruder_color_icon(std::string color, std::string label, int icon
                 pt.x += size;
             }
             clr.SetRGB(0xffffff); // for text color
+            dc.SetBrush(*wxTRANSPARENT_BRUSH);
+        } else if (clr.Alpha() < 255) {
+            // FOS 8.5 stage 1a: translucent filament. Tile the same checker the fully
+            // transparent branch uses, then blend the colour over it by hand - wxDC has no
+            // alpha brush on MSW. The result is cached, so the per-pixel cost is one-off.
+            int             size    = icon_height * 2;
+            static wxBitmap checker = *Slic3r::GUI::BitmapCache().load_svg("transparent", size, size);
+            if (checker.GetHeight() != size) checker = *Slic3r::GUI::BitmapCache().load_svg("transparent", size, size);
+            wxPoint pt(0, 0);
+            while (pt.x < icon_width) {
+                dc.DrawBitmap(checker, pt);
+                pt.x += size;
+            }
+            dc.SelectObject(wxNullBitmap);
+            wxImage        img = bitmap->ConvertToImage();
+            const double   a   = double(clr.Alpha()) / 255.0;
+            unsigned char *d   = img.GetData();
+            const int      px  = img.GetWidth() * img.GetHeight();
+            for (int i = 0; i < px; ++i) {
+                d[3 * i + 0] = (unsigned char) (d[3 * i + 0] * (1.0 - a) + clr.Red()   * a);
+                d[3 * i + 1] = (unsigned char) (d[3 * i + 1] * (1.0 - a) + clr.Green() * a);
+                d[3 * i + 2] = (unsigned char) (d[3 * i + 2] * (1.0 - a) + clr.Blue()  * a);
+            }
+            *bitmap = wxBitmap(img);
+            dc.SelectObject(*bitmap);
+            dc.SetFont(::Label::Body_12);
             dc.SetBrush(*wxTRANSPARENT_BRUSH);
         } else {
             dc.SetBackground(wxBrush(clr));

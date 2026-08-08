@@ -4615,6 +4615,8 @@ void TabFilament::build()
         //optgroup->append_single_option_line("filament_colour");
         optgroup->append_single_option_line("required_nozzle_HRC");
         optgroup->append_single_option_line("default_filament_colour");
+        // FOS 8.5 stage 1a: translucency flag, read by the filament swatch renderer.
+        optgroup->append_single_option_line("fos_filament_transparent");
         optgroup->append_single_option_line("filament_diameter");
 
         optgroup->append_single_option_line("filament_density");

@@ -1226,6 +1226,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionStrings,             filament_type))
     ((ConfigOptionBools,               filament_soluble))
     ((ConfigOptionBools,               filament_is_support))
+    ((ConfigOptionBools,               fos_filament_transparent))
     ((ConfigOptionFloats,              filament_cost))
     ((ConfigOptionStrings,             default_filament_colour))
     ((ConfigOptionInts,                temperature_vitrification))  //BBS
@@ -1523,6 +1524,10 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     // step, NOT posSlice.
     ((ConfigOptionFloats,              fos_nozzle_tower_line_widths))
     ((ConfigOptionInt,                 fos_slot_config_serial))
+    // FOS 8.5 stage 1a: filament -> nozzle map + MMS slot. Project scope, saved in the 3mf.
+    // Not read by slicing yet (stage 1b), so no invalidation branch is needed.
+    ((ConfigOptionInts,                fos_filament_nozzle))
+    ((ConfigOptionInts,                fos_filament_mms_slot))
 )
 
 // This object is mapped to Perl as Slic3r::Config::Full.

@@ -2429,6 +2429,16 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBools { false });
 
+    // FOS 8.5 stage 1a: per-filament translucency flag. Drives the 50% checkered swatch in
+    // the filament pool and the node mapping window. Cosmetic only - no slicing effect.
+    def = this->add("fos_filament_transparent", coBools);
+    def->label = L("Translucent");
+    def->tooltip = L("Mark this filament as translucent or transparent. Its colour swatch is then "
+                     "drawn at 50% over a checker background so it reads differently from an "
+                     "opaque filament of the same colour. Has no effect on slicing.");
+    def->mode = comSimple;
+    def->set_default_value(new ConfigOptionBools { false });
+
     // BBS
     def = this->add("temperature_vitrification", coInts);
     def->label = L("Softening temperature");
@@ -4016,6 +4026,26 @@ void PrintConfigDef::init_fff_params()
     def->tooltip = L("Incremented on every slot config change to trigger reslice via config diff.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionInt(0));
+
+    // FOS 8.5 stage 1a: filament -> nozzle assignment map. Project scope, saved in the 3mf.
+    // One entry per filament; value is a 0-based NOZZLE index, or -1 for unassigned.
+    // NOT yet consumed by slicing - stage 1b splits filament-id from tool-id. Until then the
+    // slicer still treats filament index as extruder index and this map is display-only.
+    def = this->add("fos_filament_nozzle", coInts);
+    def->label = L("Filament to nozzle map");
+    def->tooltip = L("Per filament, the 0-based index of the nozzle it is assigned to, or -1 "
+                     "when the filament is not assigned to any nozzle.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts { 0 });
+
+    // FOS 8.5 stage 1a: slot within a multi-material supply system, for filaments assigned to
+    // a nozzle whose mms_system is not None. 0-based. Always 0 for a directly fed nozzle.
+    def = this->add("fos_filament_mms_slot", coInts);
+    def->label = L("Filament MMS slot");
+    def->tooltip = L("Per filament, the 0-based slot index within the multi-material supply "
+                     "system feeding its assigned nozzle. Zero when the nozzle is fed directly.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInts { 0 });
 
     // FOS 8.5: authored per-slot prime tower line width. Percent ratios over the nozzle
     // it is handed (8.4 rule), so 125% self-scales per slot.
