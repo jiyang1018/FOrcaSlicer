@@ -77,6 +77,8 @@
 #include "GUI_Utils.hpp"
 #include "GUI_Factories.hpp"
 #include "wxExtensions.hpp"
+// FOS 8.5 stage 2: styled scrollbar for the nozzle panel once a printer has >4 nozzles.
+#include "Widgets/ScrolledWindow.hpp"
 #include "MainFrame.hpp"
 #include "format.hpp"
 #include "3DScene.hpp"
@@ -706,6 +708,16 @@ struct Sidebar::priv
     ScalableButton *  m_bpButton_map_filament{nullptr};
     int                         m_menu_filament_id = -1;
     wxPanel* m_panel_filament_content;
+    // FOS 8.5 stage 2b: the pool scrolls at 7+ filaments. m_filament_pool_cap_h is the
+    // computed 3-row height, remembered so the titlebar collapse can restore it.
+    wxScrolledWindow* m_filament_scroll{nullptr};
+    int             m_filament_pool_cap_h{-1};
+    // FOS 8.5 stage 2b: the pool/process divider and its drag state.
+    wxPanel*        m_pool_sash{nullptr};
+    int             m_pool_drag_y0{-1};
+    int             m_pool_drag_h0{-1};
+    int             m_pool_content_h{0};
+    int             m_pool_row_h{0};
     wxScrolledWindow* m_scrolledWindow_filament_content;
     wxStaticLine* m_staticline2;
     wxPanel* m_panel_project_title;
@@ -725,11 +737,25 @@ struct Sidebar::priv
 
     // FOS: nozzle panel controls (replaces notebook)
     StaticBox*                   m_nozzle_container{nullptr};
+    wxScrolledWindow*            m_nozzle_scroll{nullptr};
+    // FOS 8.5 stage 2: the nozzle/pool divider and its drag state. m_nozzle_min_cap_h is the
+    // four-nozzle floor - the panel can be dragged taller, never shorter.
+    wxPanel*                     m_nozzle_sash{nullptr};
+    int                          m_nozzle_drag_y0{-1};
+    int                          m_nozzle_drag_h0{-1};
+    int                          m_nozzle_content_h{0};
+    int                          m_nozzle_min_cap_h{0};
+    int                          m_nozzle_cap_h{-1};
     wxPanel*                     m_nozzle_content{nullptr};
     wxBoxSizer*                  m_nozzle_grid_sizer{nullptr};
     SwitchButton*                m_fos_mixed_toggle{nullptr};
     bool                         m_fos_mixed_nozzle_mode{false};
     std::vector<ComboBox*>       m_fos_nozzle_combos;
+    // FOS 8.5 stage 2: slot cell widgets, flat index nozzle * FOS_MMS_SLOTS + slot. nullptr
+    // where the nozzle does not own that slot. Kept so a map / colour / preset change
+    // repaints in place instead of rebuilding the whole nozzle section.
+    std::vector<wxStaticBitmap*> m_fos_slot_swatches;
+    std::vector<wxStaticText*>   m_fos_slot_labels;
     // legacy - kept for compatibility
     CustomNotebook*              m_nozzle_notebook{nullptr};
     std::vector<ComboBox*>       m_nozzle_diameter_lists;
@@ -1492,21 +1518,37 @@ Sidebar::Sidebar(Plater *parent)
         // FOS: Nozzle content panel (2-column grid, mirrors filament content)
         p->m_nozzle_container = new StaticBox(p->m_panel_printer_content, wxID_ANY,
             wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxBORDER_NONE);
-        p->m_nozzle_content = new wxPanel(p->m_nozzle_container, wxID_ANY);
+        // FOS 8.5 stage 2: nozzle rows are taller now (each carries a 4-slot strip), so the
+        // panel is capped at enough rows to show FOS_NOZZLE_MIN_VISIBLE nozzles, and scrolls past that.
+        // STOCK wxScrolledWindow, deliberately NOT Widgets/ScrolledWindow: that one's OnSize()
+        // only resizes its user panel in the clientH >= virtY branch, and the overflow branch
+        // is commented out - so the panel is never sized in the one case that matters, and
+        // with marginWidth 0 its scrollbar container is zero-width as well.
+        // m_nozzle_content still names the panel every other call site parents to.
+        p->m_nozzle_scroll = new wxScrolledWindow(p->m_nozzle_container, wxID_ANY,
+            wxDefaultPosition, wxDefaultSize, wxVSCROLL | wxBORDER_NONE);
+        p->m_nozzle_scroll->SetBackgroundColour(wxColour(255, 255, 255));
+        p->m_nozzle_scroll->SetScrollRate(0, FromDIP(8));
+        p->m_nozzle_content = new wxPanel(p->m_nozzle_scroll, wxID_ANY);
         p->m_nozzle_content->SetBackgroundColour(wxColour(255, 255, 255));
+        wxBoxSizer* nozzle_scroll_sizer = new wxBoxSizer(wxVERTICAL);
+        nozzle_scroll_sizer->Add(p->m_nozzle_content, 1, wxEXPAND);
+        p->m_nozzle_scroll->SetSizer(nozzle_scroll_sizer);
         p->m_nozzle_grid_sizer = new wxBoxSizer(wxHORIZONTAL);
         p->m_nozzle_grid_sizer->Add(new wxBoxSizer(wxVERTICAL), 1, wxEXPAND);
         p->m_nozzle_grid_sizer->Add(new wxBoxSizer(wxVERTICAL), 1, wxEXPAND);
         wxSizer* nozzle_content_sizer = new wxBoxSizer(wxVERTICAL);
         nozzle_content_sizer->AddSpacer(FromDIP(8));
         nozzle_content_sizer->Add(p->m_nozzle_grid_sizer, 0, wxEXPAND);
-        nozzle_content_sizer->AddSpacer(FromDIP(8));
+        // 4 here plus the 4px drag sash below keeps the last dropdown 8px above the pool title.
+        nozzle_content_sizer->AddSpacer(FromDIP(4));
         p->m_nozzle_content->SetSizer(nozzle_content_sizer);
         wxBoxSizer* nozzle_container_sizer = new wxBoxSizer(wxVERTICAL);
-        nozzle_container_sizer->Add(p->m_nozzle_content, 1, wxEXPAND);
+        nozzle_container_sizer->Add(p->m_nozzle_scroll, 1, wxEXPAND);
         p->m_nozzle_container->SetSizer(nozzle_container_sizer);
         vsizer_printer->Add(p->m_nozzle_container, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(4));
-        vsizer_printer->AddSpacer(FromDIP(4));
+        // FOS 8.5 stage 2: no trailing spacer - the nozzle content sizer already ends with
+        // FromDIP(8), and this extra 4 pushed the last dropdown to 12px above the pool title.
 
         // FOS: Mixed toggle handler
         p->m_fos_mixed_toggle->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent& e) {
@@ -1577,17 +1619,25 @@ Sidebar::Sidebar(Plater *parent)
         if (e.GetPosition().x > (p->m_flushing_volume_btn->IsShown()
                 ? p->m_flushing_volume_btn->GetPosition().x : (p->m_bpButton_add_filament->GetPosition().x - FromDIP(30)))) // ORCA exclude area of del button from titlebar collapse/expand feature to fix undesired collapse when user spams del filament button 
             return;
-        if (p->m_panel_filament_content->GetMaxHeight() == 0)
-            p->m_panel_filament_content->SetMaxSize({-1, -1});
-        else
-            p->m_panel_filament_content->SetMaxSize({-1, 0});
+        // FOS 8.5 stage 2b: the content panel now lives inside m_filament_scroll, so the
+        // collapse has to bound the SCROLL window - bounding the inner panel would just be
+        // absorbed by the scroller. Expanding restores the computed 3-row cap, not -1.
+        if (p->m_filament_scroll->GetMaxHeight() == 0) {
+            p->m_filament_scroll->SetMinSize({-1, p->m_filament_pool_cap_h});
+            p->m_filament_scroll->SetMaxSize({-1, p->m_filament_pool_cap_h});
+        } else {
+            // Zero BOTH. The scroller now carries a min height, and a min size floors a max
+            // size in wx - setting only the max leaves the panel stubbornly expanded.
+            p->m_filament_scroll->SetMinSize({-1, 0});
+            p->m_filament_scroll->SetMaxSize({-1, 0});
+        }
         m_scrolled_sizer->Layout();
     });
 
     wxBoxSizer* bSizer39;
     bSizer39 = new wxBoxSizer( wxHORIZONTAL );
     p->m_filament_icon = new ScalableButton(p->m_panel_filament_title, wxID_ANY, "filament");
-    p->m_staticText_filament_settings = new Label(p->m_panel_filament_title, _L("Filament"), LB_PROPAGATE_MOUSE_EVENT);
+    p->m_staticText_filament_settings = new Label(p->m_panel_filament_title, _L("Filament Pool"), LB_PROPAGATE_MOUSE_EVENT);
     bSizer39->Add(p->m_filament_icon, 0, wxALIGN_CENTER | wxLEFT, FromDIP(SidebarProps::TitlebarMargin()));
     bSizer39->AddSpacer(FromDIP(SidebarProps::ElementSpacing()));
     bSizer39->Add( p->m_staticText_filament_settings, 0, wxALIGN_CENTER );
@@ -1596,6 +1646,45 @@ Sidebar::Sidebar(Plater *parent)
 
     p->m_panel_filament_title->SetSizer( bSizer39 );
     p->m_panel_filament_title->Layout();
+
+    // FOS 8.5 stage 2: drag bar on the TOP edge of the filament pool, i.e. the bottom edge of
+    // the nozzle panel. Same hand-rolled strip as the pool/process divider - the sidebar is a
+    // single wxAUI pane, so there is no sash here to inherit. Dragging DOWN reveals more
+    // nozzle rows; dragging up stops at the four-nozzle floor.
+    p->m_nozzle_sash = new wxPanel(p->scrolled, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(4)));
+    p->m_nozzle_sash->SetBackgroundColour(wxColour(0xE8, 0xE8, 0xE8));
+    p->m_nozzle_sash->SetCursor(wxCursor(wxCURSOR_SIZENS));
+    p->m_nozzle_sash->SetToolTip(_L("Drag to resize the nozzle panel"));
+    p->m_nozzle_sash->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& e) {
+        if (p->m_nozzle_sash->HasCapture()) // AP-114: double capture asserts
+            return;
+        p->m_nozzle_drag_y0 = p->m_nozzle_sash->ClientToScreen(e.GetPosition()).y;
+        p->m_nozzle_drag_h0 = (p->m_nozzle_cap_h > 0)
+            ? p->m_nozzle_cap_h : p->m_nozzle_scroll->GetSize().GetHeight();
+        p->m_nozzle_sash->CaptureMouse();
+    });
+    p->m_nozzle_sash->Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
+        if (!p->m_nozzle_sash->HasCapture() || p->m_nozzle_drag_y0 < 0)
+            return;
+        // Screen coords: the strip moves under the cursor as the panel resizes, so a client
+        // coord delta would feed back on itself and the drag would run away.
+        const int dy = p->m_nozzle_sash->ClientToScreen(e.GetPosition()).y - p->m_nozzle_drag_y0;
+        set_nozzle_panel_height(p->m_nozzle_drag_h0 + dy);
+    });
+    auto nozzle_drag_end = [this]() {
+        if (p->m_nozzle_sash->HasCapture())
+            p->m_nozzle_sash->ReleaseMouse();
+        if (p->m_nozzle_drag_y0 >= 0 && p->m_nozzle_cap_h > 0)
+            wxGetApp().app_config->set("fos_nozzle_panel_height",
+                                       std::to_string(p->m_nozzle_cap_h));
+        p->m_nozzle_drag_y0 = -1;
+    };
+    p->m_nozzle_sash->Bind(wxEVT_LEFT_UP, [nozzle_drag_end](wxMouseEvent&) { nozzle_drag_end(); });
+    // AP-114: wx REQUIRES a wxEVT_MOUSE_CAPTURE_LOST handler wherever CaptureMouse() is used.
+    p->m_nozzle_sash->Bind(wxEVT_MOUSE_CAPTURE_LOST,
+                           [nozzle_drag_end](wxMouseCaptureLostEvent&) { nozzle_drag_end(); });
+    scrolled_sizer->Add(p->m_nozzle_sash, 0, wxEXPAND);
+
     auto spliter_1 = new ::StaticLine(p->scrolled);
     spliter_1->SetLineColour("#A6A9AA");
     scrolled_sizer->Add(spliter_1, 0, wxEXPAND);
@@ -1709,7 +1798,11 @@ Sidebar::Sidebar(Plater *parent)
     map_btn->SetToolTip(_L("Map filaments to nozzles"));
     map_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         FilamentNozzleMapDialog dlg(wxGetApp().mainframe);
-        dlg.ShowModal();
+        // FOS 8.5 stage 2: the nozzle panel mirrors the map, so refresh it when the dialog
+        // commits. Slot cells only - the nozzles themselves did not change, and a full
+        // update_nozzle_settings() here is a visible stall.
+        if (dlg.ShowModal() == wxID_OK)
+            update_nozzle_filament_slots();
     });
     p->m_bpButton_map_filament = map_btn;
     bSizer39->Add(map_btn, 0, wxALIGN_CENTER | wxLEFT, FromDIP(SidebarProps::IconSpacing()));
@@ -1728,8 +1821,19 @@ Sidebar::Sidebar(Plater *parent)
     bSizer39->AddSpacer(FromDIP(SidebarProps::TitlebarMargin()));
 
     // add filament content
-    p->m_panel_filament_content = new wxPanel( p->scrolled, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+    // FOS 8.5 stage 2b: the pool shows 3 rows of 2 and scrolls beyond that. Stock
+    // wxScrolledWindow with its own sizer - see the note on m_nozzle_scroll for why the
+    // custom Widgets/ScrolledWindow is not used. m_panel_filament_content stays the parent
+    // every combo and button is created on, so nothing downstream changes.
+    p->m_filament_scroll = new wxScrolledWindow(p->scrolled, wxID_ANY,
+        wxDefaultPosition, wxDefaultSize, wxVSCROLL | wxBORDER_NONE);
+    p->m_filament_scroll->SetBackgroundColour(wxColour(255, 255, 255));
+    p->m_filament_scroll->SetScrollRate(0, FromDIP(8));
+    p->m_panel_filament_content = new wxPanel( p->m_filament_scroll, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
     p->m_panel_filament_content->SetBackgroundColour( wxColour( 255, 255, 255 ) );
+    wxBoxSizer* filament_scroll_sizer = new wxBoxSizer(wxVERTICAL);
+    filament_scroll_sizer->Add(p->m_panel_filament_content, 1, wxEXPAND);
+    p->m_filament_scroll->SetSizer(filament_scroll_sizer);
 
     //wxBoxSizer* bSizer_filament_content;
     //bSizer_filament_content = new wxBoxSizer( wxHORIZONTAL );
@@ -1780,12 +1884,64 @@ Sidebar::Sidebar(Plater *parent)
 
     //bSizer_filament_content->Add(p->sizer_filaments, 1, wxALIGN_CENTER | wxALL);
     wxSizer *sizer_filaments2 = new wxBoxSizer(wxVERTICAL);
-    sizer_filaments2->AddSpacer(FromDIP(16));
+    // FOS 8.5 stage 2b: 6 here plus the combo's own FromDIP(2) border puts the first dropdown
+    // 8px under the title bar. Was 16, i.e. 18 total.
+    sizer_filaments2->AddSpacer(FromDIP(6));
     sizer_filaments2->Add(p->sizer_filaments, 0, wxEXPAND, 0);
     sizer_filaments2->AddSpacer(FromDIP(16));
     p->m_panel_filament_content->SetSizer(sizer_filaments2);
     p->m_panel_filament_content->Layout();
-    scrolled_sizer->Add(p->m_panel_filament_content, 0, wxEXPAND, 0);
+    // FOS 8.5 stage 2b: the scroller is added with proportion 0, so with no min height it
+    // lays out at ZERO and the pool renders empty - the combos exist but the container has
+    // no room. Seed both the scroller and the inner panel from the content sizer's min size;
+    // update_filament_pool_scroll() refines this to the 3-row cap once filaments arrive.
+    // This is a sizer min size, not GetClientSize(), so it is safe here (cf. AP-116).
+    {
+        const int pool_h = sizer_filaments2->GetMinSize().GetHeight();
+        p->m_filament_scroll->SetMinSize(wxSize(-1, pool_h));
+        p->m_filament_scroll->Layout();
+        p->m_filament_scroll->FitInside();
+        p->m_filament_pool_cap_h = pool_h;
+    }
+    scrolled_sizer->Add(p->m_filament_scroll, 0, wxEXPAND, 0);
+
+    // FOS 8.5 stage 2b: draggable divider on the top edge of the process title bar. The
+    // sidebar is ONE wxAUI pane (see AddPane("sidebar")), so there is no pane boundary here
+    // for wxAuiManager to hang a sash on - this is a hand-rolled grab strip instead.
+    p->m_pool_sash = new wxPanel(p->scrolled, wxID_ANY, wxDefaultPosition, wxSize(-1, FromDIP(4)));
+    p->m_pool_sash->SetBackgroundColour(wxColour(0xE8, 0xE8, 0xE8));
+    p->m_pool_sash->SetCursor(wxCursor(wxCURSOR_SIZENS));
+    p->m_pool_sash->SetToolTip(_L("Drag to resize the filament pool"));
+    p->m_pool_sash->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& e) {
+        // AP-114: capturing twice without an intervening release asserts.
+        if (p->m_pool_sash->HasCapture())
+            return;
+        p->m_pool_drag_y0 = p->m_pool_sash->ClientToScreen(e.GetPosition()).y;
+        p->m_pool_drag_h0 = (p->m_filament_pool_cap_h > 0)
+            ? p->m_filament_pool_cap_h : p->m_filament_scroll->GetSize().GetHeight();
+        p->m_pool_sash->CaptureMouse();
+    });
+    p->m_pool_sash->Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
+        if (!p->m_pool_sash->HasCapture() || p->m_pool_drag_y0 < 0)
+            return;
+        // Screen coords: the strip moves under the cursor as the pool resizes, so a delta
+        // taken in client coords would feed back on itself and the drag would run away.
+        const int dy = p->m_pool_sash->ClientToScreen(e.GetPosition()).y - p->m_pool_drag_y0;
+        set_filament_pool_height(p->m_pool_drag_h0 + dy);
+    });
+    auto pool_drag_end = [this]() {
+        if (p->m_pool_sash->HasCapture())
+            p->m_pool_sash->ReleaseMouse();
+        if (p->m_pool_drag_y0 >= 0 && p->m_filament_pool_cap_h > 0)
+            wxGetApp().app_config->set("fos_filament_pool_height",
+                                       std::to_string(p->m_filament_pool_cap_h));
+        p->m_pool_drag_y0 = -1;
+    };
+    p->m_pool_sash->Bind(wxEVT_LEFT_UP, [pool_drag_end](wxMouseEvent&) { pool_drag_end(); });
+    // AP-114: wx REQUIRES a wxEVT_MOUSE_CAPTURE_LOST handler wherever CaptureMouse() is used.
+    p->m_pool_sash->Bind(wxEVT_MOUSE_CAPTURE_LOST,
+                         [pool_drag_end](wxMouseCaptureLostEvent&) { pool_drag_end(); });
+    scrolled_sizer->Add(p->m_pool_sash, 0, wxEXPAND);
     }
 
     {
@@ -2098,7 +2254,7 @@ void Sidebar::update_all_preset_comboboxes(bool reload_printer_view)
 		p->m_staticText_filament_settings->SetLabel(_L("Pellets"));
         p->m_filament_icon->SetBitmap_("pellets");
     } else {
-		p->m_staticText_filament_settings->SetLabel(_L("Filament"));
+		p->m_staticText_filament_settings->SetLabel(_L("Filament Pool"));
         p->m_filament_icon->SetBitmap_("filament");
     }
 
@@ -2245,6 +2401,9 @@ void Sidebar::update_presets(Preset::Type preset_type)
             p->combos_filament[i]->update();
 
         update_dynamic_filament_list();
+        // FOS 8.5 stage 2: slot cells carry the material text and the preset colour, so a
+        // filament preset swap has to repaint them.
+        update_nozzle_filament_slots();
         break;
     }
 
@@ -2558,6 +2717,10 @@ void Sidebar::on_filaments_change(size_t num_filaments)
         }
     }
 
+    // FOS 8.5 stage 2b: the row count just changed, so recompute the pool cap before the
+    // layout pass below.
+    update_filament_pool_scroll();
+
     Layout();
     p->m_panel_filament_title->Refresh();
     update_ui_from_settings();
@@ -2618,6 +2781,9 @@ void Sidebar::on_filaments_delete(size_t filament_id)
     for (size_t idx = filament_id; idx < p->combos_filament.size(); ++idx) {
         p->combos_filament[idx]->update();
     }
+
+    // FOS 8.5 stage 2b: same recompute on the delete path.
+    update_filament_pool_scroll();
 
     Layout();
     p->m_panel_filament_title->Refresh();
@@ -2884,6 +3050,66 @@ void Sidebar::update_dynamic_filament_list()
     dynamic_filament_list_gated.update();
 }
 
+// FOS 8.5 stage 2: slot occupancy for the sidebar nozzle panel. slots[nozzle][slot] is a
+// filament index, or -1 for an empty slot. First writer wins on a double-booked slot, which
+// matches FilamentNozzleMapCanvas::load_from_config().
+static std::vector<std::vector<int>> fos_gather_slots(size_t nozzle_count)
+{
+    std::vector<std::vector<int>> slots(nozzle_count, std::vector<int>(FOS_MMS_SLOTS, -1));
+    auto *bundle = wxGetApp().preset_bundle;
+    if (bundle == nullptr)
+        return slots;
+    const auto * map_noz  = bundle->project_config.option<ConfigOptionInts>("fos_filament_nozzle");
+    const auto * map_slot = bundle->project_config.option<ConfigOptionInts>("fos_filament_mms_slot");
+    const size_t fil_n    = bundle->filament_presets.size();
+    for (size_t f = 0; f < fil_n; ++f) {
+        int nz = (map_noz  != nullptr && f < map_noz->values.size())  ? map_noz->values[f]  : -1;
+        int sl = (map_slot != nullptr && f < map_slot->values.size()) ? map_slot->values[f] : 0;
+        if (nz < 0 || nz >= (int) nozzle_count)
+            continue;
+        if (sl < 0 || sl >= FOS_MMS_SLOTS)
+            sl = 0;
+        if (slots[nz][sl] == -1)
+            slots[nz][sl] = (int) f;
+    }
+    return slots;
+}
+
+// FOS 8.5 stage 2: filament_type lives on the filament PRESET, not in project_config, so the
+// preset has to be resolved by name the way wxExtensions.cpp does.
+static wxString fos_material_of(int f)
+{
+    auto *bundle = wxGetApp().preset_bundle;
+    if (bundle == nullptr || f < 0 || (size_t) f >= bundle->filament_presets.size())
+        return wxString();
+    const std::string &pname  = bundle->filament_presets[f];
+    const Preset &     edited = bundle->filaments.get_edited_preset();
+    const Preset *     pr     = (edited.name == pname) ? &edited : bundle->filaments.find_preset(pname);
+    if (pr == nullptr)
+        return wxString();
+    const auto *opt = pr->config.option<ConfigOptionStrings>("filament_type");
+    if (opt == nullptr || opt->values.empty())
+        return wxString();
+    return wxString::FromUTF8(opt->values.front().c_str());
+}
+
+// FOS 8.5 stage 2: swatch bitmap for one slot. f < 0 draws the grey "empty slot" cell.
+static wxBitmap *fos_slot_bitmap(int f, int w, int h)
+{
+    if (f < 0)
+        return get_extruder_color_icon("#E6E6E6", "", w, h);
+    auto *      bundle = wxGetApp().preset_bundle;
+    const auto *clr    = (bundle != nullptr)
+        ? bundle->project_config.option<ConfigOptionStrings>("filament_colour") : nullptr;
+    const std::string hex = (clr != nullptr && (size_t) f < clr->values.size())
+        ? clr->values[f] : std::string("#FFFFFF");
+    return get_extruder_color_icon(fos_apply_filament_alpha(hex, (size_t) f),
+                                   std::to_string(f + 1), w, h);
+}
+
+static const wxColour FOS_SLOT_TEXT       = wxColour(0x26, 0x2E, 0x30);
+static const wxColour FOS_SLOT_TEXT_EMPTY = wxColour(0x99, 0x99, 0x99);
+
 void Sidebar::update_nozzle_settings(bool switch_machine)
 {
     if (!p->m_nozzle_container || !p->m_nozzle_content || !p->m_nozzle_grid_sizer)
@@ -2918,23 +3144,42 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
     // Rebuild grid
     p->m_nozzle_content->DestroyChildren();
     p->m_fos_nozzle_combos.clear();
+    // FOS 8.5 stage 2: DestroyChildren() just invalidated every slot handle.
+    p->m_fos_slot_swatches.assign(nozzle_count * FOS_MMS_SLOTS, nullptr);
+    p->m_fos_slot_labels.assign(nozzle_count * FOS_MMS_SLOTS, nullptr);
 
-    wxBoxSizer* grid = new wxBoxSizer(wxHORIZONTAL);
-    wxBoxSizer* col0 = new wxBoxSizer(wxVERTICAL);
-    wxBoxSizer* col1 = new wxBoxSizer(wxVERTICAL);
-    grid->Add(col0, 1, wxEXPAND);
-    grid->Add(col1, 1, wxEXPAND);
+    // FOS 8.5 stage 2: one nozzle per row, six columns -
+    // nz# | diameter | slot 1 | slot 2 | slot 3 | slot 4
+    const int FOS_NOZZLE_MIN_VISIBLE = 4;   // NOZZLES, not rows - packing makes them differ
+    const int FOS_SLOT_CELL_W = FromDIP(70);
+    // FOS 8.5 stage 2: the nozzle-number box and the slot swatches use the SAME square as the
+    // filament preset swatch. 2 * em_unit() is the literal expression get_extruder_color_icons()
+    // uses for its icon height, so these track it at any DPI instead of matching only at 100%.
+    const int FOS_SQUARE_PX = 2 * wxGetApp().em_unit();
+    // Column 2 is a FIXED 76px so the dropdown does not breathe with the sidebar width.
+    // FOS 8.5 stage 2: a vertical stack of per-row sizers, NOT a wxFlexGridSizer - a flex
+    // grid forces one column count on every row, and this layout has two row shapes: an MSS
+    // nozzle needs four slot cells and takes a whole row, plain nozzles pair two to a row.
+    // Every horizontal gap is an explicit wxLEFT, so the box offset, the dropdown offset and
+    // the slot pitch stay independently tunable.
+    wxBoxSizer* grid = new wxBoxSizer(wxVERTICAL);
+    wxBoxSizer* open_row = nullptr;          // a paired row still waiting for its 2nd nozzle
+    int fos_row_count = 0;
+    std::vector<int> fos_row_of(nozzle_count, 0);
 
     bool is_dark = wxGetApp().app_config->get("dark_color_mode") == "1";
 
+    const auto* fos_mms = dynamic_cast<const ConfigOptionEnumsGeneric*>(
+        wxGetApp().preset_bundle->printers.get_edited_preset().config.option("mms_system"));
+    const std::vector<std::vector<int>> fos_slots = fos_gather_slots(nozzle_count);
+
     for (size_t i = 0; i < nozzle_count; i++) {
-        wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
 
         // FOS: nozzle number now shown in color bar label
 
         // Diameter combo with background color per diameter value
         ComboBox* combo = new ComboBox(p->m_nozzle_content, wxID_ANY, wxEmptyString,
-            wxDefaultPosition, {-1, FromDIP(30)}, 0, nullptr, wxCB_READONLY);
+            wxDefaultPosition, {FromDIP(76), FromDIP(30)}, 0, nullptr, wxCB_READONLY);
 
         if (p->m_fos_mixed_nozzle_mode) {
             // Mixed mode: show all standard sizes
@@ -2974,15 +3219,16 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
             else if (d == "0.8") return wxColour(0xB3, 0xB3, 0xB3);
             else                 return wxColour(0xFF, 0xFF, 0xFF);
         };
-        // FOS: left color bar showing diameter
+        // FOS 8.5 stage 2: the bar is the nozzle NUMBER only now - the diameter moved to the
+        // dropdown in column 2. The greyscale background still keys off the diameter.
         wxPanel* color_bar = new wxPanel(p->m_nozzle_content, wxID_ANY,
-            wxDefaultPosition, wxSize(FromDIP(100), -1));
+            wxDefaultPosition, wxSize(FOS_SQUARE_PX, FOS_SQUARE_PX));
         color_bar->SetBackgroundColour(get_diam_color(diam_str));
         color_bar->SetName(wxString::Format("fos_bar_%d", (int)i));
 
         // FOS: nozzle label on the color bar
         wxStaticText* bar_label = new wxStaticText(color_bar, wxID_ANY,
-            wxString::Format("%d: %smm", (int)(i+1), wxString(diam_str)),
+            wxString::Format("%d", (int)(i+1)),
             wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE_HORIZONTAL);
         bar_label->SetFont(Label::Body_14);
         bar_label->SetName(wxString::Format("fos_bar_label_%d", (int)i));
@@ -3016,10 +3262,9 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
                 else if (dstr == "0.8") bg = wxColour(0xB3, 0xB3, 0xB3);
                 else                   bg = wxColour(0xFF, 0xFF, 0xFF);
                 if (auto* bar = p->m_nozzle_content->FindWindow(wxString::Format("fos_bar_%d", (int)i))) {
+                    // FOS 8.5 stage 2: the label is the nozzle number only, so a diameter
+                    // change repaints the bar but must NOT rewrite its text.
                     bar->SetBackgroundColour(bg);
-                    if (auto* lbl = bar->FindWindow(wxString::Format("fos_bar_label_%d", (int)i)))
-                        dynamic_cast<wxStaticText*>(lbl)->SetLabel(
-                            wxString::Format("%d: %smm", (int)(i+1), wxString(dstr)));
                     bar->Refresh();
                 }
                 wxGetApp().CallAfter([this, i, dval, dstr, ow_ext_idx]() {
@@ -3106,14 +3351,62 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
             }
         });
 
-        row->Add(color_bar, 0, wxEXPAND);
-        row->AddSpacer(FromDIP(4));
-        row->Add(combo, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
+        // FOS 8.5 stage 2: slot cells are DISPLAY ONLY - no bind, no menu. A plain nozzle
+        // owns exactly one slot, so it draws one cell and pairs up with the next plain
+        // nozzle; an MSS nozzle draws four and takes the row to itself.
+        const int fos_mms_sys = (fos_mms != nullptr && i < fos_mms->values.size()) ? fos_mms->values[i] : 0;
+        const int fos_slot_n  = (fos_mms_sys != 0) ? FOS_MMS_SLOTS : 1;
+        const int fos_sw_w    = FOS_SQUARE_PX;
+        const int fos_sw_h    = FOS_SQUARE_PX;
+        // A second-column nozzle sits FromDIP(2) inside its half, which is exactly where the
+        // filament pool puts filament 2's combo (a FromDIP(2) border on a proportion-1 half).
+        // Halves below are added with proportion 1 for the same reason, so the two panels
+        // line up at any sidebar width rather than only at 420px.
+        const bool fos_second_half = (fos_mms_sys == 0 && open_row != nullptr);
 
-        if (i % 2 == 0)
-            col0->Add(row, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
-        else
-            col1->Add(row, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
+        wxBoxSizer* cell = new wxBoxSizer(wxHORIZONTAL);
+        cell->Add(color_bar, 0, wxALIGN_CENTER_VERTICAL | wxLEFT,
+                  fos_second_half ? FromDIP(2) : FromDIP(8));
+        cell->Add(combo, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(5));
+        for (int s = 0; s < fos_slot_n; ++s) {
+            const int f = fos_slots[i][s];
+            wxBoxSizer* slot_cell = new wxBoxSizer(wxHORIZONTAL);
+            wxStaticBitmap* sw = new wxStaticBitmap(p->m_nozzle_content, wxID_ANY,
+                *fos_slot_bitmap(f, fos_sw_w, fos_sw_h));
+            sw->SetToolTip(f >= 0
+                ? wxString::Format(_L("Nozzle %d, slot %d: filament %d"), (int)i + 1, s + 1, f + 1)
+                : wxString::Format(_L("Nozzle %d, slot %d: empty"), (int)i + 1, s + 1));
+            slot_cell->Add(sw, 0, wxALIGN_CENTER_VERTICAL);
+            wxStaticText* mat = new wxStaticText(p->m_nozzle_content, wxID_ANY,
+                (f >= 0) ? fos_material_of(f) : wxString());
+            mat->SetFont(Label::Body_12);
+            mat->SetForegroundColour((f >= 0) ? FOS_SLOT_TEXT : FOS_SLOT_TEXT_EMPTY);
+            slot_cell->Add(mat, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(3));
+            cell->Add(slot_cell, 0, wxEXPAND | wxLEFT, FromDIP(5))->SetMinSize(FOS_SLOT_CELL_W, fos_sw_h);
+            // FOS 8.5 stage 2: keep the handles so update_nozzle_filament_slots() can
+            // repaint this cell without destroying it.
+            p->m_fos_slot_swatches[i * FOS_MMS_SLOTS + s] = sw;
+            p->m_fos_slot_labels[i * FOS_MMS_SLOTS + s]   = mat;
+        }
+
+        // Place the cell. An MSS nozzle also BREAKS a pending pair, so a plain nozzle that
+        // follows one starts a fresh row instead of half-filling the MSS row.
+        if (fos_mms_sys != 0) {
+            wxBoxSizer* full_row = new wxBoxSizer(wxHORIZONTAL);
+            full_row->Add(cell, 1, wxEXPAND);
+            grid->Add(full_row, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
+            open_row = nullptr;
+            fos_row_of[i] = fos_row_count++;
+        } else if (open_row == nullptr) {
+            open_row = new wxBoxSizer(wxHORIZONTAL);
+            open_row->Add(cell, 1, wxEXPAND);
+            grid->Add(open_row, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
+            fos_row_of[i] = fos_row_count++;
+        } else {
+            open_row->Add(cell, 1, wxEXPAND);
+            fos_row_of[i] = fos_row_count - 1;
+            open_row = nullptr;
+        }
 
         p->m_fos_nozzle_combos.push_back(combo);
     }
@@ -3121,9 +3414,44 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
     wxSizer* content_sizer = new wxBoxSizer(wxVERTICAL);
     content_sizer->AddSpacer(FromDIP(8));
     content_sizer->Add(grid, 0, wxEXPAND);
-    content_sizer->AddSpacer(FromDIP(8));
+    // 4 here plus the 4px drag sash below keeps the last dropdown 8px above the pool title.
+    content_sizer->AddSpacer(FromDIP(4));
     p->m_nozzle_content->SetSizer(content_sizer);
     p->m_nozzle_content->Layout();
+
+    // FOS 8.5 stage 2: cap the visible height at the rows holding the first
+    // the overflow to the scrollbar. Row height is MEASURED from the built grid rather than
+    // hard-coded, so it tracks DPI and any later change to the slot strip.
+    if (p->m_nozzle_scroll != nullptr && nozzle_count > 0 && fos_row_count > 0) {
+        const int pad       = FromDIP(12); // AddSpacer(8) above the grid, AddSpacer(4) below
+        const int content_h = content_sizer->GetMinSize().GetHeight();
+        // The floor is "enough rows to show FOS_NOZZLE_MIN_VISIBLE nozzles", NOT that many
+        // rows - with packing the two differ: four plain nozzles are two rows, four MSS
+        // nozzles are four. fos_row_of[] records where each nozzle actually landed.
+        const int idx_last   = std::min<int>(FOS_NOZZLE_MIN_VISIBLE - 1, (int) nozzle_count - 1);
+        const int rows_shown = fos_row_of[idx_last] + 1;
+        const int min_cap_h = int(double(content_h - pad) * double(rows_shown)
+                                  / double(fos_row_count) + 0.5) + pad;
+        p->m_nozzle_content_h = content_h;
+        p->m_nozzle_min_cap_h = min_cap_h;
+        // FOS 8.5 stage 2: a dragged height can only GROW the panel past four nozzles.
+        // min_cap_h is a hard floor and is re-clamped here, so a height saved against a
+        // printer with more nozzles cannot shrink this one below four rows.
+        int cap_h = min_cap_h;
+        const std::string saved_nz = wxGetApp().app_config->get("fos_nozzle_panel_height");
+        if (!saved_nz.empty()) {
+            const int v = atoi(saved_nz.c_str());
+            if (v > 0)
+                cap_h = std::max(min_cap_h, std::min(v, content_h));
+        }
+        p->m_nozzle_cap_h = cap_h;
+        p->m_nozzle_scroll->SetMinSize(wxSize(-1, cap_h));
+        p->m_nozzle_scroll->SetMaxSize(wxSize(-1, cap_h));
+        // The scroller's own sizer owns m_nozzle_content, so FitInside() derives the virtual
+        // size from it. No manual SetSize, which is what the custom widget forced.
+        p->m_nozzle_scroll->Layout();
+        p->m_nozzle_scroll->FitInside();
+    }
     p->m_nozzle_container->Layout();
 
     // FOS: refresh PRP when switching PTP
@@ -3178,6 +3506,130 @@ void Sidebar::update_nozzle_settings(bool switch_machine)
         wxGetApp().CallAfter([pp, fos_mixed]() { pp->update_prp_nozzle_rows(fos_mixed); });
     }
 }
+// FOS 8.5 stage 2b: cap the filament pool at FOS_POOL_ROWS_VISIBLE rows of two and hand the
+// overflow to the scrollbar. Row height is MEASURED from the built content rather than
+// hard-coded, so it tracks DPI and the combo/button row height. Called from
+// on_filaments_change(), which is the one place the pool's row count actually changes.
+void Sidebar::update_filament_pool_scroll()
+{
+    static const int FOS_POOL_ROWS_VISIBLE = 3;
+    if (p->m_filament_scroll == nullptr || p->m_panel_filament_content == nullptr)
+        return;
+    wxSizer *content = p->m_panel_filament_content->GetSizer();
+    if (content == nullptr)
+        return;
+    const int n = (int) combos_filament().size();
+    if (n <= 0)
+        return;
+    // Two per row, so 7 filaments is 4 rows and the first count that scrolls.
+    const int rows_total = (n + 1) / 2;
+    const int rows_shown = std::min<int>(FOS_POOL_ROWS_VISIBLE, rows_total);
+    const int pad        = FromDIP(22); // AddSpacer(6) above sizer_filaments, AddSpacer(16) below
+    const int content_h  = content->GetMinSize().GetHeight();
+    if (content_h <= 0)
+        return;
+    p->m_pool_content_h = content_h;
+    p->m_pool_row_h     = (content_h > pad) ? (content_h - pad) / rows_total : content_h;
+    // Below the padding the row maths is meaningless, but returning early here is what left
+    // the scroller at zero height and the pool blank. Fall back to the full content height.
+    int cap_h = (content_h > pad)
+        ? int(double(content_h - pad) * double(rows_shown) / double(rows_total) + 0.5) + pad
+        : content_h;
+    // FOS 8.5 stage 2b: a height the user dragged beats the 3-row default. Re-clamped on
+    // every recompute, so a height saved against a larger pool cannot strand the panel
+    // oversized after filaments are removed.
+    const std::string saved = wxGetApp().app_config->get("fos_filament_pool_height");
+    if (!saved.empty()) {
+        const int v = atoi(saved.c_str());
+        if (v > 0)
+            cap_h = std::max(p->m_pool_row_h, std::min(v, content_h));
+    }
+    p->m_filament_pool_cap_h = cap_h;
+    // A collapsed pool must stay collapsed across a filament add/remove.
+    if (p->m_filament_scroll->GetMaxHeight() != 0) {
+        p->m_filament_scroll->SetMinSize(wxSize(-1, cap_h));
+        p->m_filament_scroll->SetMaxSize(wxSize(-1, cap_h));
+    }
+    p->m_panel_filament_content->Layout();
+    p->m_filament_scroll->Layout();
+    p->m_filament_scroll->FitInside();
+}
+
+// FOS 8.5 stage 2: apply a dragged nozzle-panel height. The FLOOR is the four-nozzle cap, so
+// the panel can only be grown to reveal more nozzles - never shrunk below four rows plus the
+// 8px above the filament pool title. Ceiling is the full content height; past that there is
+// nothing left to scroll. Persisting happens on mouse-up, not per motion event.
+void Sidebar::set_nozzle_panel_height(int h)
+{
+    if (p->m_nozzle_scroll == nullptr || p->m_nozzle_content_h <= 0)
+        return;
+    const int cap = std::max(p->m_nozzle_min_cap_h, std::min(h, p->m_nozzle_content_h));
+    if (cap == p->m_nozzle_cap_h)
+        return;
+    p->m_nozzle_cap_h = cap;
+    p->m_nozzle_scroll->SetMinSize(wxSize(-1, cap));
+    p->m_nozzle_scroll->SetMaxSize(wxSize(-1, cap));
+    p->m_nozzle_scroll->Layout();
+    p->m_nozzle_scroll->FitInside();
+    m_scrolled_sizer->Layout();
+}
+
+// FOS 8.5 stage 2b: apply a dragged pool height. Clamped to one row at the bottom and the
+// full content height at the top - taller than the content just shows blank space, and the
+// scrollbar has nothing left to scroll. Persisting happens on mouse-up, not here, so a drag
+// writes app_config once instead of on every motion event.
+void Sidebar::set_filament_pool_height(int h)
+{
+    if (p->m_filament_scroll == nullptr || p->m_pool_content_h <= 0)
+        return;
+    const int lo  = std::max(p->m_pool_row_h, FromDIP(24));
+    const int cap = std::max(lo, std::min(h, p->m_pool_content_h));
+    if (cap == p->m_filament_pool_cap_h)
+        return;
+    p->m_filament_pool_cap_h = cap;
+    p->m_filament_scroll->SetMinSize(wxSize(-1, cap));
+    p->m_filament_scroll->SetMaxSize(wxSize(-1, cap));
+    p->m_filament_scroll->Layout();
+    p->m_filament_scroll->FitInside();
+    m_scrolled_sizer->Layout();
+}
+
+// FOS 8.5 stage 2: repaint the slot cells IN PLACE. Deliberately touches no combo, no colour
+// bar and no sizer. update_nozzle_settings() calls DestroyChildren() and rebuilds every window
+// in the section, which is what made closing the map dialog feel slow; seeding the cells with
+// placeholder content would not have helped, because the cost is the window churn, not the
+// content. Nozzle COUNT changes still need the full rebuild - this only tracks the map, the
+// filament colours and the filament presets.
+void Sidebar::update_nozzle_filament_slots()
+{
+    if (p->m_nozzle_content == nullptr || p->m_fos_slot_swatches.empty())
+        return;
+    const size_t nozzle_count = p->m_fos_slot_swatches.size() / FOS_MMS_SLOTS;
+    const std::vector<std::vector<int>> slots = fos_gather_slots(nozzle_count);
+    // Must match FOS_SQUARE_PX in update_nozzle_settings(), or a refresh would silently
+    // resize every swatch.
+    const int sw_w = 2 * wxGetApp().em_unit();
+    const int sw_h = 2 * wxGetApp().em_unit();
+    for (size_t i = 0; i < nozzle_count; ++i) {
+        for (int s = 0; s < FOS_MMS_SLOTS; ++s) {
+            const size_t    k   = i * FOS_MMS_SLOTS + s;
+            wxStaticBitmap *sw  = p->m_fos_slot_swatches[k];
+            wxStaticText *  lbl = p->m_fos_slot_labels[k];
+            if (sw == nullptr || lbl == nullptr)
+                continue;
+            const int f = slots[i][s];
+            sw->SetBitmap(*fos_slot_bitmap(f, sw_w, sw_h));
+            sw->SetToolTip(f >= 0
+                ? wxString::Format(_L("Nozzle %d, slot %d: filament %d"), (int) i + 1, s + 1, f + 1)
+                : wxString::Format(_L("Nozzle %d, slot %d: empty"), (int) i + 1, s + 1));
+            lbl->SetLabel((f >= 0) ? fos_material_of(f) : wxString());
+            lbl->SetForegroundColour((f >= 0) ? FOS_SLOT_TEXT : FOS_SLOT_TEXT_EMPTY);
+        }
+    }
+    p->m_nozzle_content->Layout();
+    p->m_nozzle_content->Refresh();
+}
+
 ObjectList* Sidebar::obj_list()
 {
     // BBS
@@ -8120,6 +8572,11 @@ void Plater::priv::on_select_preset(wxCommandEvent &evt)
 wxGetApp().plater()->update_project_dirty_from_presets();
 wxGetApp().preset_bundle->export_selections(*wxGetApp().app_config);
 sidebar->update_dynamic_filament_list();
+        // FOS 8.5 stage 2: the slot cells carry the material text and the preset colour, so a
+        // filament preset swap has to repaint them. THIS is the sidebar's preset path -
+        // Sidebar::update_presets(TYPE_FILAMENT) is only reached from MainFrame and from the
+        // nozzle-diameter CallAfters, which is why hooking there alone did nothing.
+        sidebar->update_nozzle_filament_slots();
         bool flag_is_change = is_support_filament(idx);
         if (flag != flag_is_change) {
             sidebar->auto_calc_flushing_volumes(idx);
@@ -15045,6 +15502,13 @@ void Plater::on_config_change(const DynamicPrintConfig &config)
     for (auto opt_key : diff_keys) {
         if (opt_key == "filament_colour") {
             update_scheduled = true; // update should be scheduled (for update 3DScene) #2738
+            // FOS 8.5 stage 2: the nozzle panel draws each slot in its filament's colour.
+            // Deferred, because this branch has two exits and project_config is not settled
+            // until the whole diff pass finishes.
+            wxGetApp().CallAfter([this]() {
+                if (p->sidebar != nullptr)
+                    p->sidebar->update_nozzle_filament_slots();
+            });
 
             if (update_filament_colors_in_full_config()) {
                 p->sidebar->obj_list()->update_filament_colors();

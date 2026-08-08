@@ -528,7 +528,7 @@ wxBitmap* get_default_extruder_color_icon(bool thin_icon/* = false*/)
 // FOS 8.5 stage 1a: give a translucent filament's colour a 50% alpha channel, so that
 // get_extruder_color_icon() below renders it over the checker instead of as a flat swatch.
 // Returns the colour untouched for opaque filaments and for anything that is not #RRGGBB.
-static std::string fos_apply_filament_alpha(const std::string &color, size_t filament_idx)
+std::string fos_apply_filament_alpha(const std::string &color, size_t filament_idx)
 {
     if (color.size() != 7 || color.front() != '#')
         return color;

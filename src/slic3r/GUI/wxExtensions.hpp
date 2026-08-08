@@ -75,6 +75,9 @@ wxBitmap create_scaled_bitmap(const std::string& bmp_name, wxWindow *win = nullp
 wxBitmap* get_default_extruder_color_icon(bool thin_icon = false);
 std::vector<wxBitmap *> get_extruder_color_icons(bool thin_icon = false);
 wxBitmap * get_extruder_color_icon(std::string color, std::string label, int icon_width, int icon_height);
+// FOS 8.5 stage 2: exported so the sidebar nozzle panel draws slot swatches with the same
+// translucency rule the filament dropdowns use. Do not duplicate the rule at the call site.
+std::string fos_apply_filament_alpha(const std::string &color, size_t filament_idx);
 namespace Slic3r {
 namespace GUI {
 class BitmapComboBox;

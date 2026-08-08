@@ -165,6 +165,15 @@ public:
     void show_SEMM_buttons(bool bshow);
     void update_dynamic_filament_list();
     void update_nozzle_settings(bool switch_machine = false);
+    // FOS 8.5 stage 2: repaint the per-nozzle slot cells in place. update_nozzle_settings()
+    // destroys and rebuilds every window in the section; this only swaps bitmap + label.
+    void update_nozzle_filament_slots();
+    // FOS 8.5 stage 2: cap the filament pool at 3 rows of 2 and scroll past that.
+    void update_filament_pool_scroll();
+    // FOS 8.5 stage 2b: apply a dragged pool height, clamped and persisted.
+    void set_filament_pool_height(int h);
+    // FOS 8.5 stage 2: apply a dragged nozzle-panel height. Floored at four nozzles.
+    void set_nozzle_panel_height(int h);
 
     ObjectList*             obj_list();
     ObjectSettings*         obj_settings();
