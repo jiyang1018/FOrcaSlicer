@@ -164,7 +164,10 @@ public:
     // Orca
     void show_SEMM_buttons(bool bshow);
     void update_dynamic_filament_list();
+    // FOS: coalescing shim - accumulates requests, rebuilds once per event-loop turn.
     void update_nozzle_settings(bool switch_machine = false);
+    // FOS: the actual rebuild. Call the shim above unless you genuinely need it synchronous.
+    void update_nozzle_settings_now(bool switch_machine);
     // FOS 8.5 stage 2: repaint the per-nozzle slot cells in place. update_nozzle_settings()
     // destroys and rebuilds every window in the section; this only swaps bitmap + label.
     void update_nozzle_filament_slots();

@@ -168,6 +168,7 @@
 
 #include "sentry_wrapper/SentryWrapper.hpp"
 #include <chrono>
+#include <wx/wupdlock.h>   // FOS: wxWindowUpdateLocker, nozzle panel rebuild
 
 using boost::optional;
 namespace fs = boost::filesystem;
@@ -750,6 +751,10 @@ struct Sidebar::priv
     wxBoxSizer*                  m_nozzle_grid_sizer{nullptr};
     SwitchButton*                m_fos_mixed_toggle{nullptr};
     bool                         m_fos_mixed_nozzle_mode{false};
+    // FOS: coalescing state for update_nozzle_settings(). One user action reaches the
+    // rebuild up to three times; accumulate and run the real body once per event-loop turn.
+    bool                         m_fos_nz_rebuild_scheduled{false};
+    bool                         m_fos_nz_pending_switch{false};
     std::vector<ComboBox*>       m_fos_nozzle_combos;
     // FOS 8.5 stage 2: slot cell widgets, flat index nozzle * FOS_MMS_SLOTS + slot. nullptr
     // where the nozzle does not own that slot. Kept so a map / colour / preset change
@@ -3110,10 +3115,37 @@ static wxBitmap *fos_slot_bitmap(int f, int w, int h)
 static const wxColour FOS_SLOT_TEXT       = wxColour(0x26, 0x2E, 0x30);
 static const wxColour FOS_SLOT_TEXT_EMPTY = wxColour(0x99, 0x99, 0x99);
 
+// FOS: coalescing shim. One user action reaches this up to three times - the wizard OK path
+// runs load_current_presets(), which re-selects the printer preset (one rebuild) and then
+// calls here itself (two), after which run_wizard() calls here again (three). Each one ran a
+// full DestroyChildren() rebuild, which is the refresh flicker. Accumulate instead and
+// rebuild once on the next event-loop turn. switch_machine is OR-ed across the window so the
+// mixed-mode auto-detect carried by a switch_machine=true request is never lost when it
+// merges with switch_machine=false ones.
 void Sidebar::update_nozzle_settings(bool switch_machine)
+{
+    p->m_fos_nz_pending_switch = p->m_fos_nz_pending_switch || switch_machine;
+    if (p->m_fos_nz_rebuild_scheduled)
+        return;
+    p->m_fos_nz_rebuild_scheduled = true;
+
+    wxGetApp().CallAfter([this]() {
+        p->m_fos_nz_rebuild_scheduled = false;
+        const bool sw = p->m_fos_nz_pending_switch;
+        p->m_fos_nz_pending_switch = false;
+        update_nozzle_settings_now(sw);
+    });
+}
+
+void Sidebar::update_nozzle_settings_now(bool switch_machine)
 {
     if (!p->m_nozzle_container || !p->m_nozzle_content || !p->m_nozzle_grid_sizer)
         return;
+
+    // FOS: the code below destroys every child and recreates it. Without this the panel is
+    // painted empty and then refilled, which reads as a flicker. RAII, so no early return
+    // below can leave the window frozen.
+    wxWindowUpdateLocker freeze_guard(p->m_nozzle_container);
 
     // FOS: auto-detect mixed mode only when switching PTP (not on manual toggle)
     if (switch_machine) {
