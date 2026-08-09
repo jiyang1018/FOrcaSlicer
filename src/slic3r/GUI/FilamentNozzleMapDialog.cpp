@@ -22,6 +22,7 @@
 #include "I18N.hpp"
 // FOS: MainFrame must be complete - the ctor static_casts wxGetApp().mainframe to wxWindow*.
 #include "MainFrame.hpp"
+#include "MsgDialog.hpp"
 #include "Plater.hpp"
 #include "Widgets/Button.hpp"
 #include "Widgets/Label.hpp"
@@ -31,6 +32,8 @@ namespace Slic3r { namespace GUI {
 // Popup menu ids. Kept in disjoint bands so one GetPopupMenuSelectionFromUser() return
 // value tells us both what was chosen and which list it came from.
 static const int FOS_MENU_UNLINK       = 1;
+static const int FOS_MENU_DELETE_FIL   = 2;
+static const int FOS_MENU_PRESET_BASE = 10000;  // + index into the offerable list
 static const int FOS_MENU_FILAMENT_BASE = 100;   // + filament index
 static const int FOS_MENU_NOZZLE_BASE   = 1000;  // + nozzle * 16 + slot
 
@@ -778,6 +781,16 @@ void FilamentNozzleMapCanvas::draw_filament(wxDC &dc, const FosFilamentNode &f)
     dc.DrawRoundedRectangle(hr, radius);
     dc.DrawRectangle(hr.x, hr.y + radius, hr.width, hr.height - radius);
 
+    // FOS: re-stroke the outline AFTER the header fill. The header is drawn with a
+    // transparent pen and paints over the node's top edge, so an unassigned node's thicker
+    // orange border stopped at the header instead of enclosing it - the header appeared to
+    // sit outside the border. Stroking last makes assigned and unassigned nodes consistent.
+    dc.SetPen(wxPen(linked ? (dark ? wxColour(0x5A, 0x5A, 0x5A) : wxColour(0xBC, 0xBC, 0xBC))
+                           : wxColour(0xE0, 0x8A, 0x2E),
+                    linked ? 1 : std::max(1, int(std::lround(2 * m_zoom)))));
+    dc.SetBrush(*wxTRANSPARENT_BRUSH);
+    dc.DrawRoundedRectangle(r, radius);
+
     const int pad = std::max(2, int(std::lround(FromDIP(8) * m_zoom)));
     dc.SetTextForeground(dark ? *wxWHITE : wxColour(0x26, 0x26, 0x26));
     dc.SetFont(scaled_font(::Label::Head_13));
@@ -1052,8 +1065,16 @@ void FilamentNozzleMapCanvas::on_right_down(wxMouseEvent &evt)
     int nozzle = -1, slot = -1;
     const bool on_nozzle_pin   = hit_nozzle_pin(p, nozzle, slot);
     const int  on_filament_pin = on_nozzle_pin ? -1 : hit_filament_pin(p);
-    if (!on_nozzle_pin && on_filament_pin == -1)
+    // FOS: the node BODY is only consulted once both pin tests miss, so the existing pin
+    // menus keep priority and a right-click on a pin behaves exactly as before.
+    const int  on_filament_node = (on_nozzle_pin || on_filament_pin != -1)
+                                      ? -1 : hit_filament_node(p);
+    if (!on_nozzle_pin && on_filament_pin == -1 && on_filament_node == -1)
         return;
+
+    // Declared out here so the handler below can index it: GetPopupMenuSelectionFromUser()
+    // is synchronous, so the list stays alive across the call.
+    std::vector<std::string> offerable;
 
     wxMenu menu;
     if (on_nozzle_pin) {
@@ -1065,6 +1086,24 @@ void FilamentNozzleMapCanvas::on_right_down(wxMouseEvent &evt)
             sub->Append(FOS_MENU_FILAMENT_BASE + f.index,
                         wxString::Format("%d - %s %s", f.index + 1, f.brand, f.material));
         menu.AppendSubMenu(sub, _L("Assign filament"));
+    } else if (on_filament_node != -1) {
+        // FOS: filament NODE body menu.
+        menu.Append(FOS_MENU_DELETE_FIL, _L("Delete this from pool"));
+        // delete_filament() itself refuses to drop the last filament; mirror that here so
+        // the item reads as unavailable rather than silently doing nothing.
+        menu.Enable(FOS_MENU_DELETE_FIL, m_filaments.size() > 1);
+
+        // FOS: the FLP list for this node, from the shared builder - constrained to the
+        // assigned nozzle's diameter, or to every variant this model ships when unassigned.
+        offerable = wxGetApp().preset_bundle->fos_offerable_filament_presets(
+                        m_nozzle_of[on_filament_node]);
+        if (!offerable.empty()) {
+            wxMenu *sub = new wxMenu();
+            for (size_t i = 0; i < offerable.size(); ++i)
+                sub->Append(FOS_MENU_PRESET_BASE + int(i),
+                            wxString::FromUTF8(offerable[i].c_str()));
+            menu.AppendSubMenu(sub, _L("Change filament"));
+        }
     } else {
         menu.Append(FOS_MENU_UNLINK, _L("Unlink"));
         menu.Enable(FOS_MENU_UNLINK, m_nozzle_of[on_filament_pin] != -1);
@@ -1088,6 +1127,46 @@ void FilamentNozzleMapCanvas::on_right_down(wxMouseEvent &evt)
     const int sel = GetPopupMenuSelectionFromUser(menu, p);
     if (sel == wxID_NONE)
         return;
+
+    if (sel == FOS_MENU_DELETE_FIL && on_filament_node != -1) {
+        const FosFilamentNode &fn = m_filaments[on_filament_node];
+        wxString msg = wxString::Format(_L("Delete filament %d (%s %s) from the pool?"),
+                                        fn.index + 1, fn.brand, fn.material);
+        MessageDialog dlg(this, msg, _L("Delete filament"), wxICON_WARNING | wxYES | wxNO);
+        dlg.SetButtonLabel(wxID_YES, _L("Delete"));
+        dlg.SetButtonLabel(wxID_NO,  _L("Cancel"));
+        if (dlg.ShowModal() != wxID_YES)
+            return;
+        // FOS: a pool delete is STRUCTURAL and applies immediately, like the sidebar's own
+        // delete - this dialog's OK/Cancel governs the WIRING only. Persist the wiring
+        // first: reload_from_config() re-reads project_config and would otherwise discard
+        // wire edits made since the dialog opened.
+        write_to_config();
+        wxGetApp().plater()->sidebar().delete_filament(size_t(on_filament_node), -1);
+        reload_from_config();
+        Refresh();
+        return;
+    }
+
+    if (sel >= FOS_MENU_PRESET_BASE) {
+        const size_t pi = size_t(sel - FOS_MENU_PRESET_BASE);
+        if (on_filament_node != -1 && pi < offerable.size()) {
+            // Persist wiring first - reload_from_config() below re-reads project_config.
+            write_to_config();
+            // Mirrors the sidebar combo's commit sequence (Plater.cpp, TYPE_FILAMENT branch).
+            // KNOWN GAP: that path also recomputes flushing volumes when the preset's
+            // support-ness flips; is_support_filament() is not reachable from here.
+            wxGetApp().preset_bundle->set_filament_preset(size_t(on_filament_node), offerable[pi]);
+            wxGetApp().plater()->update_project_dirty_from_presets();
+            wxGetApp().preset_bundle->export_selections(*wxGetApp().app_config);
+            wxGetApp().plater()->sidebar().update_dynamic_filament_list();
+            wxGetApp().plater()->sidebar().update_nozzle_filament_slots();
+            wxGetApp().plater()->sidebar().update_all_preset_comboboxes(false);
+            reload_from_config();
+        }
+        Refresh();
+        return;
+    }
 
     if (sel == FOS_MENU_UNLINK) {
         unlink_filament(on_nozzle_pin ? filament_on(nozzle, slot) : on_filament_pin);
@@ -1138,6 +1217,20 @@ FilamentNozzleMapDialog::FilamentNozzleMapDialog(wxWindow *parent)
 
     wxBoxSizer *btns = new wxBoxSizer(wxHORIZONTAL);
 
+    // FOS: pool add, immediately left of Auto align.
+    m_btn_add = new Button(this, _L("Add filament"));
+    m_btn_add->SetStyle(ButtonStyle::Regular, ButtonType::Window);
+    m_btn_add->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) {
+        // Same contract as the node delete: structural, immediate, wiring persisted first.
+        // A new filament is appended UNASSIGNED (-1) by PresetBundle::set_num_filaments,
+        // which is what we want - it must not inherit any nozzle's diameter.
+        m_canvas->write_to_config();
+        wxGetApp().plater()->sidebar().add_filament();
+        m_canvas->reload_from_config();
+        m_canvas->Refresh();
+    });
+    btns->Add(m_btn_add, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+
     m_btn_align = new Button(this, _L("Auto align"));
     m_btn_align->SetStyle(ButtonStyle::Regular, ButtonType::Window);
     m_btn_align->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { m_canvas->auto_align(); });
@@ -1166,6 +1259,34 @@ FilamentNozzleMapDialog::FilamentNozzleMapDialog(wxWindow *parent)
             wxGetApp().plater()->update_project_dirty_from_presets();
             wxGetApp().plater()->schedule_background_process();
         }
+
+        // FOS: a filament KEEPS its preset when its nozzle assignment changes - we never
+        // swap it silently. That can leave a preset whose diameter no longer matches the
+        // nozzle it now feeds. Name them here rather than letting it surface as a wrong
+        // line width at slice time. Advisory only: nothing is blocked and nothing changed.
+        {
+            PresetBundle *pb = wxGetApp().preset_bundle;
+            wxString shifted;
+            for (size_t i = 0; i < pb->filament_presets.size(); ++i) {
+                const std::vector<std::string> ok =
+                    pb->fos_offerable_filament_presets(pb->fos_assigned_nozzle_for(i));
+                if (ok.empty())
+                    continue;   // nothing offerable to compare against; do not cry wolf
+                if (std::find(ok.begin(), ok.end(), pb->filament_presets[i]) == ok.end())
+                    shifted += wxString::Format("\n    %d  -  %s", int(i) + 1,
+                                   wxString::FromUTF8(pb->filament_presets[i].c_str()));
+            }
+            if (!shifted.empty()) {
+                MessageDialog dlg(this,
+                    _L("These filament presets no longer match the nozzle they are assigned to:")
+                        + shifted + "\n\n" +
+                    _L("Nothing was changed for you - the presets are exactly as you left them. "
+                       "Verify them before slicing."),
+                    _L("Check filament presets"), wxICON_WARNING | wxOK);
+                dlg.ShowModal();
+            }
+        }
+
         EndModal(wxID_OK);
     });
     btns->Add(m_btn_ok, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(10));

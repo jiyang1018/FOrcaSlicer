@@ -1806,8 +1806,16 @@ Sidebar::Sidebar(Plater *parent)
         // FOS 8.5 stage 2: the nozzle panel mirrors the map, so refresh it when the dialog
         // commits. Slot cells only - the nozzles themselves did not change, and a full
         // update_nozzle_settings() here is a visible stall.
-        if (dlg.ShowModal() == wxID_OK)
+        if (dlg.ShowModal() == wxID_OK) {
             update_nozzle_filament_slots();
+            // FOS: the map decides which nozzle each filament feeds, and the filament preset
+            // list is filtered by THAT nozzle's diameter (fos_assigned_nozzle_for). Without
+            // this the combos keep serving the list computed for the OLD assignment until
+            // something else rebuilds them - re-selecting the printer preset, typically -
+            // so a filament assigned here looked unfiltered until the next PTP switch.
+            for (auto *c : p->combos_filament)
+                c->update();
+        }
     });
     p->m_bpButton_map_filament = map_btn;
     bSizer39->Add(map_btn, 0, wxALIGN_CENTER | wxLEFT, FromDIP(SidebarProps::IconSpacing()));

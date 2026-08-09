@@ -179,6 +179,7 @@ protected:
 
 private:
     FilamentNozzleMapCanvas *m_canvas       = nullptr;
+    Button                  *m_btn_add      = nullptr;
     Button                  *m_btn_align    = nullptr;
     Button                  *m_btn_reset    = nullptr;
     Button                  *m_btn_ok       = nullptr;

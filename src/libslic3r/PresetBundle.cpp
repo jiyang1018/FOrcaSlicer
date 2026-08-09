@@ -2,6 +2,7 @@
 #include <memory>
 
 #include "PresetBundle.hpp"
+#include "LocalesUtils.hpp"   // FOS: float_to_string_decimal_point
 #include "PrintConfig.hpp"
 #include "libslic3r.h"
 #include "Utils.hpp"
@@ -2247,6 +2248,79 @@ const std::set<std::string> ignore_settings_list ={
     "print_settings_id", "filament_settings_id", "printer_settings_id"
 };
 
+// FOS 8.5: see the contract comment in PresetBundle.hpp. These two must stay separate.
+int fos_assigned_nozzle(const std::vector<int> &map, size_t filament_idx, size_t nozzle_n)
+{
+    if (nozzle_n == 0 || filament_idx >= map.size())
+        return -1;
+    const int n = map[filament_idx];
+    return (n >= 0 && n < int(nozzle_n)) ? n : -1;
+}
+
+size_t fos_effective_nozzle(const std::vector<int> &map, size_t filament_idx, size_t nozzle_n)
+{
+    if (nozzle_n == 0)
+        return 0;
+    const int n = fos_assigned_nozzle(map, filament_idx, nozzle_n);
+    if (n >= 0)
+        return size_t(n);
+    // Unassigned or stale: identity while nozzles last, then nozzle 0.
+    return (filament_idx < nozzle_n) ? filament_idx : 0;
+}
+
+std::vector<std::string> PresetBundle::fos_offerable_filament_presets(int assigned_nozzle) const
+{
+    std::vector<std::string> out;
+    const auto       *nd            = printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+    const std::string printer_model = printers.get_edited_preset().config.opt_string("printer_model");
+    const bool        mixed         = (nd != nullptr && nd->values.size() > 1);
+
+    // Empty when unassigned: no diameter constraint, only the printer-model gate below.
+    std::string want;
+    if (mixed && assigned_nozzle >= 0 && size_t(assigned_nozzle) < nd->values.size())
+        want = float_to_string_decimal_point(nd->values[assigned_nozzle], 1);
+
+    for (const Preset &p : filaments.get_presets()) {
+        // is_compatible already restricts to diameters actually fitted on this printer
+        // (Preset.cpp update_compatible_internal, FOS block), which is what makes an
+        // unassigned list on a 4/4/4/4 machine show only 0.4.
+        if (p.is_default || !p.is_visible || !p.is_compatible)
+            continue;
+        // FOS: require an EXPLICIT compatible_printers entry naming this printer model.
+        // A preset with no compatible_printers is "compatible with everything" by
+        // is_compatible_with_printer()'s !has_compatible_printers rule, which is how other
+        // brands reached this menu - the Orca filament library ships 274 filaments and
+        // effectively none of them declare compatible_printers. Snapmaker's own U1 presets
+        // all do (e.g. ["Snapmaker U1 (0.2 nozzle)"]), so this keeps the list to filaments
+        // that actually name this machine, and user presets inherit the parent's values.
+        const auto *cp = p.config.option<ConfigOptionStrings>("compatible_printers");
+        if (cp == nullptr || cp->values.empty())
+            continue;
+        bool ok = false;
+        for (const std::string &pn : cp->values) {
+            if (!printer_model.empty() && pn.find(printer_model) == std::string::npos)
+                continue;
+            // want is empty when unassigned - printer-model gate only, every nozzle variant.
+            if (want.empty() || pn.find(want) != std::string::npos) { ok = true; break; }
+        }
+        if (!ok)
+            continue;
+        out.push_back(p.name);
+    }
+    return out;
+}
+
+int PresetBundle::fos_assigned_nozzle_for(size_t filament_idx) const
+{
+    size_t nozzle_n = 0;
+    if (const auto *nd = printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter"))
+        nozzle_n = nd->values.size();
+    std::vector<int> map;
+    if (const auto *m = project_config.option<ConfigOptionInts>("fos_filament_nozzle"))
+        map = m->values;
+    return fos_assigned_nozzle(map, filament_idx, nozzle_n);
+}
+
 DynamicPrintConfig PresetBundle::full_fff_config() const
 {
     DynamicPrintConfig out;
@@ -2535,12 +2609,8 @@ DynamicPrintConfig PresetBundle::full_fff_config() const
             // filament past the nozzle count onto the last nozzle - on a 4442 printer that is the
             // 0.2 mm one, so unassigned filaments came out at 0.22 line width instead of 0.42.
             std::vector<size_t> src(num_filaments);
-            for (size_t f = 0; f < num_filaments; ++f) {
-                int n = (f < map.size()) ? map[f] : -1;
-                if (n < 0 || n >= int(nozzle_n))
-                    n = (f < nozzle_n) ? int(f) : 0;
-                src[f] = size_t(n);
-            }
+            for (size_t f = 0; f < num_filaments; ++f)
+                src[f] = fos_effective_nozzle(map, f, nozzle_n);
 
             auto remap_floats = [&out, &src, num_filaments](const char *key) {
                 auto *opt = out.option<ConfigOptionFloats>(key);

@@ -1095,17 +1095,37 @@ void PlaterPresetComboBox::update()
         // FOS: per-slot nozzle diameter filter for mixed nozzle setups
         if (m_type == Preset::TYPE_FILAMENT && !is_selected) {
             const auto* nd_opt = m_preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter");
+            // FOS: ask which nozzle this filament is ASSIGNED to. An unassigned filament
+            // (-1) carries no diameter constraint and must not be filtered at all. This
+            // previously clamped the FILAMENT index to the last nozzle, so on a 4-nozzle
+            // machine filament 5+ was filtered by nozzle 4's diameter while the slicer
+            // sliced it at nozzle 0's - the UI and the slicer disagreed about one filament.
+            const int fos_assigned = (m_filament_idx >= 0)
+                ? m_preset_bundle->fos_assigned_nozzle_for(size_t(m_filament_idx)) : -1;
             if (nd_opt && nd_opt->values.size() > 1) {
-                size_t nozzle_idx = std::min((size_t)m_filament_idx, nd_opt->values.size() - 1);
-                float slot_nozzle = (float)nd_opt->values[nozzle_idx];
                 const auto* cp = preset.config.option<ConfigOptionStrings>("compatible_printers");
                 if (cp && !cp->values.empty()) {
-                    std::string nozzle_str = float_to_string_decimal_point(slot_nozzle, 1);
                     std::string printer_model = m_preset_bundle->printers.get_edited_preset().config.opt_string("printer_model");
                     bool nozzle_match = false;
-                    for (const auto& printer_name : cp->values) {
-                        if (printer_name.find(nozzle_str) != std::string::npos &&
-                            (printer_model.empty() || printer_name.find(printer_model) != std::string::npos)) {
+                    if (fos_assigned >= 0) {
+                        // Assigned: constrained to THAT nozzle's diameter, on this model.
+                        std::string nozzle_str = float_to_string_decimal_point((float)nd_opt->values[fos_assigned], 1);
+                        for (const auto& printer_name : cp->values) {
+                            if (printer_name.find(nozzle_str) != std::string::npos &&
+                                (printer_model.empty() || printer_name.find(printer_model) != std::string::npos)) {
+                                nozzle_match = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        // FOS: UNASSIGNED - no diameter constraint yet, but STILL THIS PRINTER
+                        // MODEL. Skipping the filter outright leaked every other printer's
+                        // presets into the list (@test and friends). Offer every nozzle variant
+                        // this model ships and let assignment narrow it down.
+                        for (const auto& printer_name : cp->values) {
+                            if (!printer_model.empty() &&
+                                printer_name.find(printer_model) == std::string::npos)
+                                continue;
                             nozzle_match = true;
                             break;
                         }

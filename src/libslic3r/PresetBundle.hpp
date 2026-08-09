@@ -37,6 +37,23 @@ struct ConnectMachineInfo
 
 namespace Slic3r {
 
+// FOS 8.5: filament -> nozzle resolution. TWO DISTINCT QUESTIONS, deliberately separate.
+//
+//   fos_assigned_nozzle()  - the nozzle the USER assigned, or -1 when unassigned. UI
+//     filtering asks this one. -1 means "no diameter constraint yet", NOT "nozzle 0": an
+//     unassigned filament must not inherit any nozzle's diameter.
+//
+//   fos_effective_nozzle() - the nozzle that physically SLICES this filament. Never -1.
+//     Reproduces the pre-mapping ConfigOptionVector::get_at() rule exactly - identity while
+//     nozzles last, then NOZZLE 0, because get_at() returns values.FRONT() past the end
+//     (Config.hpp:437). It is NOT "clamp to the last nozzle"; that was a real defect once.
+//
+// Keep these apart. PresetComboBoxes used to answer a THIRD question - clamp the FILAMENT
+// index to the last nozzle - which bound every filament past the nozzle count to the last
+// nozzle's diameter, and disagreed with the slicer about the very same filament.
+int    fos_assigned_nozzle (const std::vector<int> &map, size_t filament_idx, size_t nozzle_n);
+size_t fos_effective_nozzle(const std::vector<int> &map, size_t filament_idx, size_t nozzle_n);
+
 // Bundle of Print + Filament + Printer presets.
 class PresetBundle
 {
@@ -306,6 +323,17 @@ public:
 
     // Orca: for validation only
     bool has_errors() const;
+
+    // FOS: convenience wrapper - pulls fos_filament_nozzle from project_config and the
+    // nozzle count from the edited printer preset. Returns -1 when unassigned. PUBLIC
+    // because the GUI preset combos ask it; full_fff_config() next door is private.
+    int  fos_assigned_nozzle_for(size_t filament_idx) const;
+
+    // FOS: the filament presets offerable for a given assignment - the ONE list builder.
+    // assigned_nozzle < 0 means unassigned: every nozzle variant this printer model ships.
+    // Otherwise: only presets matching that nozzle's diameter. Same rule the sidebar combo
+    // applies, so the map window's node menu and the dropdown cannot disagree.
+    std::vector<std::string> fos_offerable_filament_presets(int assigned_nozzle) const;
 
 private:
     //std::pair<PresetsConfigSubstitutions, std::string> load_system_presets(ForwardCompatibilitySubstitutionRule compatibility_rule);
