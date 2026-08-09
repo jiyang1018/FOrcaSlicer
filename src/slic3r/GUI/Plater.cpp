@@ -2658,6 +2658,14 @@ void Sidebar::sys_color_changed()
 
     p->scrolled->Layout();
 
+    // FOS: the nozzle panel bakes theme colours into its cells when it is built
+    // (FOS_SLOT_TEXT and the swatch bitmaps), so a theme switch left stale text colours
+    // until something else happened to rebuild it - editing the filament arrangement, for
+    // instance. sys_color_changed() never knew about the panel. Cheap to hook now that
+    // update_nozzle_settings() is the coalescing shim: this merges with any other pending
+    // request and costs at most one rebuild on the next event-loop turn.
+    update_nozzle_settings();
+
     p->searcher.dlg_sys_color_changed();
 }
 

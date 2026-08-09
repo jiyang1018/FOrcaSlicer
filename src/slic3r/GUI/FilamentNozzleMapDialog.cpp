@@ -705,6 +705,19 @@ void FilamentNozzleMapCanvas::draw_wire(wxDC &dc, const wxPoint &a, const wxPoin
     dc.DrawLines(N + 1, pts);
 }
 
+// FOS: nozzle diameter -> grey. Identical steps to the sidebar nozzle panel's swatch
+// (Plater.cpp, get_diam_color), so the two views read as one system. Keyed on the VALUE
+// rather than a formatted string, so "0.4" and "0.40" cannot diverge; anything
+// unrecognised falls back to white, matching the sidebar's else branch.
+static wxColour fos_diam_colour(double d)
+{
+    if (std::abs(d - 0.2) < 0.001) return wxColour(0xFF, 0xFF, 0xFF);
+    if (std::abs(d - 0.4) < 0.001) return wxColour(0xE6, 0xE6, 0xE6);
+    if (std::abs(d - 0.6) < 0.001) return wxColour(0xCC, 0xCC, 0xCC);
+    if (std::abs(d - 0.8) < 0.001) return wxColour(0xB3, 0xB3, 0xB3);
+    return wxColour(0xFF, 0xFF, 0xFF);
+}
+
 void FilamentNozzleMapCanvas::draw_nozzle(wxDC &dc, const FosNozzleNode &n)
 {
     const bool   dark   = fos_is_dark();
@@ -715,19 +728,30 @@ void FilamentNozzleMapCanvas::draw_nozzle(wxDC &dc, const FosNozzleNode &n)
     dc.SetBrush(wxBrush(dark ? wxColour(0x33, 0x33, 0x33) : wxColour(0xFA, 0xFA, 0xFA)));
     dc.DrawRoundedRectangle(r, radius);
 
-    // header
+    // header - FOS: shaded by nozzle diameter, same four steps as the sidebar swatch.
     wxRect hr(r.x, r.y, r.width, int(m_header_h * m_zoom));
-    dc.SetBrush(wxBrush(dark ? wxColour(0x45, 0x52, 0x45) : wxColour(0xDF, 0xEA, 0xDF)));
+    dc.SetBrush(wxBrush(fos_diam_colour(n.diameter)));
     dc.SetPen(*wxTRANSPARENT_PEN);
     dc.DrawRoundedRectangle(hr, radius);
     dc.DrawRectangle(hr.x, hr.y + radius, hr.width, hr.height - radius);
 
+    // FOS: re-stroke the outline AFTER the header fill so the border encloses the header,
+    // exactly as draw_filament does. The header uses a transparent pen and would otherwise
+    // paint over the node's top edge, leaving the header sitting outside the border.
+    dc.SetPen(wxPen(dark ? wxColour(0x5A, 0x5A, 0x5A) : wxColour(0xBC, 0xBC, 0xBC), 1));
+    dc.SetBrush(*wxTRANSPARENT_BRUSH);
+    dc.DrawRoundedRectangle(r, radius);
+
     const int pad = std::max(2, int(std::lround(FromDIP(8) * m_zoom)));
-    dc.SetTextForeground(dark ? *wxWHITE : wxColour(0x26, 0x26, 0x26));
+    // Every diameter shade is light (0xB3..0xFF), so the header label is dark in BOTH
+    // themes - following `dark` here would put white text on a near-white header.
+    dc.SetTextForeground(wxColour(0x26, 0x26, 0x26));
     dc.SetFont(scaled_font(::Label::Head_13));
     dc.DrawText(wxString::Format(_L("Nozzle %d"), n.index + 1), hr.x + pad, hr.y + pad / 2);
 
-    // body: diameter, then the supply system when one is selected
+    // body: diameter, then the supply system when one is selected. Restore the
+    // theme-aware colour - the body sits on the node background, not on the header.
+    dc.SetTextForeground(dark ? *wxWHITE : wxColour(0x26, 0x26, 0x26));
     dc.SetFont(scaled_font(::Label::Body_12));
     int ty = hr.GetBottom() + pad / 2;
     dc.DrawText(wxString::Format("%.1f mm", n.diameter), r.x + pad, ty);
@@ -1246,7 +1270,6 @@ FilamentNozzleMapDialog::FilamentNozzleMapDialog(wxWindow *parent)
     m_btn_cancel = new Button(this, _L("Cancel"));
     m_btn_cancel->SetStyle(ButtonStyle::Regular, ButtonType::Window);
     m_btn_cancel->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { EndModal(wxID_CANCEL); });
-    btns->Add(m_btn_cancel, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
 
     m_btn_ok = new Button(this, _L("OK"));
     m_btn_ok->SetStyle(ButtonStyle::Confirm, ButtonType::Window);
@@ -1289,7 +1312,13 @@ FilamentNozzleMapDialog::FilamentNozzleMapDialog(wxWindow *parent)
 
         EndModal(wxID_OK);
     });
-    btns->Add(m_btn_ok, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(10));
+    // FOS: OK sits LEFT of Cancel - Windows convention, and it matches the rest of the app
+    // (ReleaseNote.cpp adds OK then Cancel). Sizer insertion order is what positions them,
+    // so BOTH Add calls live here rather than beside their construction: the OK handler
+    // above is long enough that a split pair reads as an accident. The rightmost button
+    // carries wxRIGHT for the trailing margin, so that moved to Cancel.
+    btns->Add(m_btn_ok,     0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+    btns->Add(m_btn_cancel, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(10));
 
     main->Add(btns, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(10));
 
