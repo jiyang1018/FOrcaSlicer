@@ -1,0 +1,21 @@
+{
+  "code": 200,
+  "data": {
+    "version": "8.5.7-beta.2",
+    "release_type": "beta",
+    "platform_type": "win",
+    "is_full_upgrade": true,
+    "is_force_upgrade": false,
+    "full": {
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.5.7-beta.2\n\n预设修复：四个 FOrcaSlicer 选项（色块启用、色块圈数、外墙接缝位置、内墙最大层高）已定义但未注册到预设类型，因此无法保存，并在加载时被从每个预设中移除。现已修复，这些选项可正常保存。\n\n新增：更新提醒。启动时以及通过“帮助 > 检查更新”可检查新版本，更新对话框中可切换 beta 通道。",
+      "default": {
+        "file_size": 0,
+        "file_md5": "",
+        "file_sha256": "",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.5.7-beta.2/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.5.7-beta.2.exe",
+        "reserved_1": "",
+        "reserved_2": ""
+      }
+    }
+  }
+}
