@@ -3292,14 +3292,9 @@ this->compatible_widget_reload(m_compatible_printers);
         int wall_fil = m_config->option("wall_filament") ? m_config->option("wall_filament")->getInt() : 1;
         m_config->set_key_value("inner_wall_filament", new ConfigOptionInt(wall_fil));
     }
-    if (m_config->option("outer_wall_layer_height_max") == nullptr)
-        m_config->set_key_value("outer_wall_layer_height_max", new ConfigOptionFloat(0.f));
-    if (m_config->option("outer_wall_seam_position") == nullptr)
-        m_config->set_key_value("outer_wall_seam_position", new ConfigOptionEnum<SeamPosition>(spAligned));
-    if (m_config->option("color_patch_loops") == nullptr)
-        m_config->set_key_value("color_patch_loops", new ConfigOptionInts({0, 0, 0, 0}));
-    if (m_config->option("color_patch_enabled") == nullptr)
-        m_config->set_key_value("color_patch_enabled", new ConfigOptionBools({false, false, false, false}));
+    // FOS: default-injection removed. color_patch_* are filament-scope options and
+    // must not be written into the process config; the other two are registered in
+    // s_Preset_print_options and default from the print default config.
     Tab::reload_config();
     // FOS: sync slot 0 (N1) from m_config before reloading optgroups
     wxGetApp().CallAfter([this]() {

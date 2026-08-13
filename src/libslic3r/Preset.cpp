@@ -397,19 +397,11 @@ void Preset::normalize(DynamicPrintConfig &config)
                 static_cast<ConfigOptionStrings*>(opt)->values.resize(n, std::string());
         }
     }
-	if (config.option("inner_wall_filament") == nullptr)
-    config.set_key_value("inner_wall_filament", new ConfigOptionInt(1));
-    // FOS: ensure FOrcaSlicer-specific options have defaults when loading foreign presets
-    if (config.option("outer_wall_loops") == nullptr)
-        config.set_key_value("outer_wall_loops", new ConfigOptionInt(1));
-    if (config.option("outer_wall_layer_height_max") == nullptr)
-        config.set_key_value("outer_wall_layer_height_max", new ConfigOptionFloat(0.f));
-    if (config.option("outer_wall_seam_position") == nullptr)
-        config.set_key_value("outer_wall_seam_position", new ConfigOptionEnum<SeamPosition>(spAligned));
-    if (config.option("color_patch_loops") == nullptr)
-        config.set_key_value("color_patch_loops", new ConfigOptionInts({0, 0, 0, 0}));
-    if (config.option("color_patch_enabled") == nullptr)
-        config.set_key_value("color_patch_enabled", new ConfigOptionBools({false, false, false, false}));
+    // FOS: do not inject FOS options here. normalize() is type-agnostic, so this
+    // pushed process-scope keys into filament and machine configs, which
+    // remove_invalid_keys then stripped and logged. The options are registered in
+    // s_Preset_print_options / s_Preset_filament_options and default from the
+    // per-type default config.
     handle_legacy_sla(config);
 }
 
@@ -837,7 +829,7 @@ bool Preset::has_cali_lines(PresetBundle* preset_bundle)
 }
 
 static std::vector<std::string> s_Preset_print_options {
-    "layer_height", "initial_layer_print_height", "wall_loops", "outer_wall_loops", "alternate_extra_wall", "slice_closing_radius", "spiral_mode", "spiral_mode_smooth", "spiral_mode_max_xy_smoothing", "spiral_starting_flow_ratio", "spiral_finishing_flow_ratio", "slicing_mode",
+    "layer_height", "initial_layer_print_height", "wall_loops", "outer_wall_loops", "outer_wall_layer_height_max", "outer_wall_seam_position", "alternate_extra_wall", "slice_closing_radius", "spiral_mode", "spiral_mode_smooth", "spiral_mode_max_xy_smoothing", "spiral_starting_flow_ratio", "spiral_finishing_flow_ratio", "slicing_mode",
     "top_shell_layers", "top_shell_thickness", "top_surface_density", "bottom_surface_density", "bottom_shell_layers", "bottom_shell_thickness",
     "extra_perimeters_on_overhangs", "ensure_vertical_shell_thickness", "reduce_crossing_wall", "detect_thin_wall", "detect_overhang_wall", "overhang_reverse", "overhang_reverse_threshold","overhang_reverse_internal_only", "wall_direction",
     "seam_position", "staggered_inner_seams", "wall_sequence", "is_infill_first", "sparse_infill_density","fill_multiline", "sparse_infill_pattern", "lateral_lattice_angle_1", "lateral_lattice_angle_2", "infill_overhang_angle", "top_surface_pattern", "bottom_surface_pattern",
@@ -900,7 +892,7 @@ static std::vector<std::string> s_Preset_print_options {
 };
 
 static std::vector<std::string> s_Preset_filament_options {
-    /*"filament_colour", */ "default_filament_colour","required_nozzle_HRC","filament_diameter", "pellet_flow_coefficient", "filament_type", "filament_soluble", "filament_is_support",
+    /*"filament_colour", */ "default_filament_colour","required_nozzle_HRC","filament_diameter", "pellet_flow_coefficient", "filament_type", "filament_soluble", "filament_is_support", "color_patch_enabled", "color_patch_loops",
     "filament_max_volumetric_speed",
     "filament_flow_ratio", "filament_density", "filament_cost", "filament_minimal_purge_on_wipe_tower",
     "nozzle_temperature", "nozzle_temperature_initial_layer",
