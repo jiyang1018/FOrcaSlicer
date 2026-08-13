@@ -1218,6 +1218,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBools,               filament_is_support))
     ((ConfigOptionFloats,              filament_cost))
     ((ConfigOptionStrings,             default_filament_colour))
+    // FOS: carried by 21 Snapmaker filament profiles from bundle 02.02.55.02.
+    ((ConfigOptionBools,               filament_is_high_temperature))
     ((ConfigOptionInts,                temperature_vitrification))  //BBS
     ((ConfigOptionFloats,              filament_max_volumetric_speed))
     ((ConfigOptionInts,                required_nozzle_HRC))

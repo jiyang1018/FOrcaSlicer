@@ -2417,6 +2417,15 @@ void PrintConfigDef::init_fff_params()
     def->set_default_value(new ConfigOptionBools { false });
 
     // BBS
+    // FOS: registered to match upstream Snapmaker bundle 02.02.55.02, whose filament
+    // profiles carry this key. Stored and persisted only - the upstream
+    // chamber_cooling_mode consumer in GCode.cpp is deliberately NOT ported.
+    def          = this->add("filament_is_high_temperature", coBools);
+    def->label   = L("Is high-temperature filament");
+    def->tooltip = L("Indicates whether this is a high-temperature filament that requires elevated printing temperatures.");
+    def->mode    = comSimple;
+    def->set_default_value(new ConfigOptionBools{false});
+
     def = this->add("temperature_vitrification", coInts);
     def->label = L("Softening temperature");
     def->tooltip = L("The material softens at this temperature, so when the bed temperature is equal to or greater than this, "
