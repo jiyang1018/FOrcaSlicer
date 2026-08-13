@@ -43,8 +43,14 @@ static const std::string PROFILE_UPDATE_URL = "/upgrade/profile/";
 static const std::string FLUTTER_UPDATE_URL = "/upgrade/flutter/";
 static const std::string MODELS_STR = "models";
 
-#define APP_UPDATE_URL_BASE_CN "https://meta-cfg.snapmaker.cn"
-#define APP_UPDATE_URL_BASE_EN "https://meta-cfg.snapmaker.com"
+// FOS: primary update metadata rides on GitHub Pages for both regions. Region here is a
+// user-declared setting, not geolocation, so it is not trustworthy for CN routing; the
+// fallback below is selected by REACHABILITY instead, which is the real GFW signal.
+#define APP_UPDATE_URL_BASE_CN "https://jiyang1018.github.io/FOrcaSlicer"
+#define APP_UPDATE_URL_BASE_EN "https://jiyang1018.github.io/FOrcaSlicer"
+// FOS: small self-hosted checker, used only when the primary is unreachable. Serves JSON
+// only - never installer bytes. Its file_url points at the CN download-options page.
+#define APP_UPDATE_URL_BASE_FALLBACK "https://fos-release.design4paragon.com"
 
 #if defined(_WIN32)
 static const std::string APP_UPDATE_URL = std::string("/upgrade/orca/win/");
@@ -287,8 +293,7 @@ void AppConfig::set_defaults()
     if(get("check_stable_update_only").empty()) {
         set_bool("check_stable_update_only", false);
     }
-    // SM prerelease does not update
-    set_bool("check_stable_update_only", true);
+    // FOS: do not re-force stable-only on every startup; honor the user's channel choice.
 
 
     // Orca
@@ -1501,6 +1506,21 @@ std::string AppConfig::get_version_upgrade_url(bool stable_only /* = false*/)
         url = APP_UPDATE_URL_BASE_CN + APP_UPDATE_URL + localLanguage + std::string("/version.json");
 
     return url; 
+}
+
+// FOS: secondary checker, tried only when the primary fetch fails. Failure to reach the
+// primary is the GFW signal, so this copy advertises CN-reachable download options.
+std::string AppConfig::get_version_fallback_url()
+{
+    std::string resourceUrl = get("orca_upgrade_fallback_url");
+    if (!resourceUrl.empty())
+        return resourceUrl;
+
+    std::string localLanguage = get("language");
+    if (localLanguage != "zh_CN")
+        localLanguage = "en";
+
+    return APP_UPDATE_URL_BASE_FALLBACK + APP_UPDATE_URL + localLanguage + std::string("/version.json");
 }
 
 std::string AppConfig::version_check_url(bool stable_only/* = false*/) const

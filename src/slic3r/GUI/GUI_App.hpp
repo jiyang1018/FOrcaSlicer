@@ -614,7 +614,8 @@ private:
 
     void            check_web_version();
     void            check_preset_version();
-    void            check_new_version_sf(bool show_tips = false, bool by_user = false);
+    // FOS: fos_attempt 0 = primary host, 1 = self-hosted fallback.
+    void            check_new_version_sf(bool show_tips = false, bool by_user = false, int fos_attempt = 0);
     void            process_network_msg(std::string dev_id, std::string msg);
     void            enter_force_upgrade();
     void            set_skip_version(bool skip = true);

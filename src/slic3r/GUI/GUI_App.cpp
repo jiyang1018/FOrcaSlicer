@@ -4785,15 +4785,32 @@ void GUI_App::check_preset_version()
     if (preset_updater != nullptr)
         preset_updater->sync_config_async();
 }
-void GUI_App::check_new_version_sf(bool show_tips, bool by_user)
+void GUI_App::check_new_version_sf(bool show_tips, bool by_user, int fos_attempt)
 {
-    std::string update_url = app_config->get_version_upgrade_url();
+    // FOS: attempt 0 hits the primary host; on failure we retry once against the
+    // self-hosted fallback. A failed primary fetch is the GFW signal.
+    std::string update_url = (fos_attempt == 0) ? app_config->get_version_upgrade_url()
+                                                : app_config->get_version_fallback_url();
 
     AppConfig* app_config = wxGetApp().app_config;
 
     Http::get(update_url)
-        .on_error([&, by_user](std::string body, std::string error, unsigned http_status) {
+        // FOS: explicit captures. The stock [&] captured locals by reference while
+        // .perform() runs async - latent dangling reference, harmless only because
+        // nothing dereferenced them.
+        .on_error([this, show_tips, by_user, fos_attempt](std::string body, std::string error, unsigned http_status) {
           (void)body;
+
+          BOOST_LOG_TRIVIAL(error) << format("Error getting: `%1%`: HTTP %2%, %3%", "check_new_version_sf", http_status,
+                                             error);
+
+            if (fos_attempt == 0) {
+                // FOS: primary unreachable - try the fallback before reporting failure.
+                GUI::wxGetApp().CallAfter([this, show_tips, by_user]() {
+                    this->check_new_version_sf(show_tips, by_user, 1);
+                });
+                return;
+            }
 
             wxCommandEvent* evt = new wxCommandEvent(EVT_REQUEST_SERVER_FAIL);
             wxString errorMsg   = wxString::Format(_L("request to server update soft fail with body:%s,error:%s,status:%d"), body,
@@ -4801,8 +4818,6 @@ void GUI_App::check_new_version_sf(bool show_tips, bool by_user)
             evt->SetString(errorMsg);
             if(by_user)
                 GUI::wxGetApp().QueueEvent(evt);
-          BOOST_LOG_TRIVIAL(error) << format("Error getting: `%1%`: HTTP %2%, %3%", "check_new_version_sf", http_status,
-                                             error);
         })
         .timeout_connect(TIMEOUT_CONNECT)
         .on_complete([this,by_user](std::string body, unsigned http_status) {
@@ -4825,7 +4840,12 @@ void GUI_App::check_new_version_sf(bool show_tips, bool by_user)
             version_info.version_str = dataObj.value("version", "");
             auto releaseType         = dataObj.value("release_type", "");
 
-            if (releaseType != RELEASE_TYPE_STABLE)
+            // FOS: stable is always accepted; beta is accepted unless the user
+            // ticked "Check for stable updates only". Alpha is never auto-offered.
+            bool fos_stable_only = wxGetApp().app_config->get_bool("check_stable_update_only");
+            bool fos_accept      = (releaseType == RELEASE_TYPE_STABLE)
+                                   || (!fos_stable_only && releaseType == RELEASE_TYPE_BETA);
+            if (!fos_accept)
             {
                 if (by_user)
                     this->no_new_version();
@@ -4891,8 +4911,18 @@ void GUI_App::check_new_version_sf(bool show_tips, bool by_user)
                 return;
             }
 
-            std::regex matcher("[0-9]+\\.[0-9]+(\\.[0-9]+)*(-[A-Za-z0-9]+)?(\\+[A-Za-z0-9]+)?");
-            Semver     current_version = get_version(Snapmaker_VERSION, matcher);
+            // FOS: FOS_VERSION is "<snapmaker base>-fos.<fos version>", e.g.
+            // "2.3.2-fos.8.5.7-beta.2". The 2.3.2 base is frozen across every FOS release,
+            // so compare ONLY the part after "-fos.". version.json must therefore carry
+            // the bare FOS version ("8.5.8-beta.1"), not the full FOS_VERSION string.
+            std::string  fos_cur(FOS_VERSION);
+            const size_t fos_pos = fos_cur.find("-fos.");
+            if (fos_pos != std::string::npos)
+                fos_cur = fos_cur.substr(fos_pos + 5);
+            // FOS: dots are legal inside a semver prerelease/build segment; the stock
+            // pattern rejected them, so "8.5.7-beta.1" parsed as invalid.
+            std::regex matcher("[0-9]+\\.[0-9]+(\\.[0-9]+)*(-[A-Za-z0-9.]+)?(\\+[A-Za-z0-9.]+)?");
+            Semver     current_version = get_version(fos_cur, matcher);
 
             Semver server_version = get_version(version_info.version_str, matcher);
 
