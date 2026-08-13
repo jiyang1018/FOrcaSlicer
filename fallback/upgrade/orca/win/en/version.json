@@ -9,10 +9,10 @@
     "full": {
       "file_describe": "FOrcaSlicer 2.3.2-fos.8.5.7-beta.2\n\nPreset fix: four FOrcaSlicer options (color patch enabled, color patch loops, outer wall seam position, inner wall max layer height) were defined but never registered to a preset type, so they could not be saved and were stripped from every preset on load. Two code paths compensated by injecting them into the wrong preset types, producing hundreds of 'incorrect keys' errors per launch and quietly dropping settings. These options now persist correctly.\n\nNew: update notification. FOrcaSlicer now checks for new releases at startup and from Help > Check for Update, with a beta channel toggle in the update dialog.",
       "default": {
-        "file_size": 0,
-        "file_md5": "",
-        "file_sha256": "",
-        "file_url": "https://fos-release.design4paragon.com/download/8.5.7-beta.2.html",
+        "file_size": 105208476,
+        "file_md5": "8b683f125c2cd1c8e8811f8215d4fb5f",
+        "file_sha256": "00f5dfb943c2e873512271bed4cb7cc713007cd8b4747a51312c89dd2fe35b3a",
+        "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
       }
