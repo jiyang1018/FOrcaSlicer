@@ -325,6 +325,8 @@ public:
 	// This returns a hardcoded string unless it is overriden by "version_check_url" in the ini file.
 	std::string 		version_check_url(bool stable_only = false) const;
 	std::string 		get_version_upgrade_url(bool stable_only = false);
+	// FOS: secondary checker used when the primary host is unreachable.
+	std::string 		get_version_fallback_url();
 	std::string 		get_preset_upgrade_url();
 	std::string 		get_web_resource_upgrade_url();
 
