@@ -14401,7 +14401,10 @@ int Plater::export_3mf(const boost::filesystem::path& output_path, SaveStrategy 
     // modify model
     publish(p->model, strategy);
 
-    DynamicPrintConfig cfg = wxGetApp().preset_bundle->full_config_secure();
+    // FOS 8.6: export the PHYSICAL config, not the slicing view. full_fff_config() re-indexes
+    // every extruder_option_keys() array by FILAMENT; persisting that made a project reopen
+    // with one nozzle per filament and mangled per-nozzle state such as mms_system/mms_host.
+    DynamicPrintConfig cfg = wxGetApp().preset_bundle->full_config_secure(/*fos_remap_by_filament=*/false);
     const std::string path_u8 = into_u8(path);
     wxBusyCursor wait;
 

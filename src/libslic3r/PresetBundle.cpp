@@ -2222,16 +2222,16 @@ bool PresetBundle::is_the_only_edited_filament(unsigned int filament_index)
     return true;
 }
 
-DynamicPrintConfig PresetBundle::full_config() const
+DynamicPrintConfig PresetBundle::full_config(bool fos_remap_by_filament) const
 {
     return (this->printers.get_edited_preset().printer_technology() == ptFFF) ?
-        this->full_fff_config() :
+        this->full_fff_config(fos_remap_by_filament) :
         this->full_sla_config();
 }
 
-DynamicPrintConfig PresetBundle::full_config_secure() const
+DynamicPrintConfig PresetBundle::full_config_secure(bool fos_remap_by_filament) const
 {
-    DynamicPrintConfig config = this->full_config();
+    DynamicPrintConfig config = this->full_config(fos_remap_by_filament);
     //FIXME legacy, the keys should not be there after conversion to a Physical Printer profile.
     config.erase("print_host");
     config.erase("print_host_webui");
@@ -2321,7 +2321,7 @@ int PresetBundle::fos_assigned_nozzle_for(size_t filament_idx) const
     return fos_assigned_nozzle(map, filament_idx, nozzle_n);
 }
 
-DynamicPrintConfig PresetBundle::full_fff_config() const
+DynamicPrintConfig PresetBundle::full_fff_config(bool fos_remap_by_filament) const
 {
     DynamicPrintConfig out;
     out.apply(FullPrintConfig::defaults());
@@ -2596,7 +2596,23 @@ DynamicPrintConfig PresetBundle::full_fff_config() const
         const auto * nd_phys       = out.option<ConfigOptionFloats>("nozzle_diameter");
         const size_t nozzle_n      = (nd_phys != nullptr) ? nd_phys->values.size() : 0;
 
-        if (num_filaments > 0 && nozzle_n > 0) {
+        // FOS 8.6: snapshot the PHYSICAL per-nozzle diameters BEFORE the re-index below
+        // rewrites nozzle_diameter to be filament-indexed. Two consumers need the physical
+        // list after this point:
+        //   1. legacy 3mf detection. Projects saved before the export switched to the physical
+        //      config carry filament-indexed arrays; a length mismatch against this snapshot
+        //      is how load_config_file_config() recognises one.
+        //   2. the map-vs-T guard, which must compare the mapped nozzle diameter against the
+        //      head the T number actually routes to.
+        // DERIVED STATE. Recomputed here on every assembly, never authored and never trusted
+        // from a preset. On load, honour it only when it disagrees with nozzle_diameter.
+        if (nd_phys != nullptr && nozzle_n > 0)
+            out.set_key_value("fos_physical_nozzle_diameter", new ConfigOptionFloats(nd_phys->values));
+
+        // FOS 8.6: fos_remap_by_filament == false leaves the PHYSICAL arrays in place.
+        // The 3mf export uses that: a project file records the printer as configured,
+        // and fos_filament_nozzle in the same file reconstructs the slicing view.
+        if (fos_remap_by_filament && num_filaments > 0 && nozzle_n > 0) {
             std::vector<int> map;
             if (const auto *m = out.option<ConfigOptionInts>("fos_filament_nozzle"))
                 map = m->values;

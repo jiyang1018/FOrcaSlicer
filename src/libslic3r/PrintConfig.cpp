@@ -4056,6 +4056,17 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionInts { 0 });
 
+    // FOS 8.6: physical per-nozzle diameters, snapshotted in full_fff_config() before the
+    // stage-1b re-index makes nozzle_diameter filament-indexed. One entry per PHYSICAL
+    // nozzle. Consumers: the 3mf project round-trip (nozzle count and diameters on reopen)
+    // and the map-vs-T guard. Never authored by the user; recomputed on every assembly.
+    def = this->add("fos_physical_nozzle_diameter", coFloats);
+    def->label = L("Physical nozzle diameters");
+    def->tooltip = L("Per physical nozzle, its diameter as configured on the printer. "
+                     "Recorded because nozzle_diameter is re-indexed by filament for slicing.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats({ 0.4 }));
+
     // FOS 8.5: authored per-slot prime tower line width. Percent ratios over the nozzle
     // it is handed (8.4 rule), so 125% self-scales per slot.
     def = this->add("tower_line_width", coFloatOrPercent);

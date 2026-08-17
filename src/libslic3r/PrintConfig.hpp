@@ -1530,6 +1530,10 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     // Not read by slicing yet (stage 1b), so no invalidation branch is needed.
     ((ConfigOptionInts,                fos_filament_nozzle))
     ((ConfigOptionInts,                fos_filament_mms_slot))
+    // FOS 8.6: snapshot of the PHYSICAL per-nozzle diameters, written in full_fff_config()
+    // before the stage-1b re-index rewrites nozzle_diameter to be filament-indexed. Project
+    // scope, saved in the 3mf. Derived state - recomputed on every write, never authored.
+    ((ConfigOptionFloats,              fos_physical_nozzle_diameter))
 )
 
 // This object is mapped to Perl as Slic3r::Config::Full.
