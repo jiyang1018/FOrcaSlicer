@@ -5606,16 +5606,31 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                     std::vector<Preset *>     project_presets;
                     // BBS: backup & restore
                     q->skip_thumbnail_invalid = true;
+                    // FOS 8.6: throttle the import progress callback. s29 probe: one slow
+                    // load = 190 combo rebuilds (0.17 s total) but 18,000 Button::paintEvent
+                    // calls over 69 s. proFn fires far more often than the percent changes and
+                    // every dlg.Update() yields the event loop, repainting every custom Button
+                    // in the app. Declared here so the state resets per input file.
+                    int  fos_last_pct = -1;
+                    auto fos_last_at  = std::chrono::steady_clock::now() - std::chrono::seconds(1);
                     model = Slic3r::Model::read_from_archive(path.string(), &config_loaded, &config_substitutions, en_3mf_file_type, strategy, &plate_data, &project_presets,
                                                              &file_version,
                                                              [this, &dlg, real_filename, &progress_percent, &file_percent, stage_percent, INPUT_FILES_RATIO, total_files, i,
-                                                              &is_user_cancel](int import_stage, int current, int total, bool &cancel) {
+                                                              &is_user_cancel, &fos_last_pct, &fos_last_at](int import_stage, int current, int total, bool &cancel) {
                                                                  bool     cont = true;
                                                                  float percent_float = (100.0f * (float)i / (float)total_files) + INPUT_FILES_RATIO * ((float)stage_percent[import_stage] + (float)current * (float)(stage_percent[import_stage + 1] - stage_percent[import_stage]) /(float) total) / (float)total_files;
                                                                  BOOST_LOG_TRIVIAL(trace) << "load_3mf_file: percent(float)=" << percent_float << ", stage = " << import_stage << ", curr = " << current << ", total = " << total;
                                                                  progress_percent = (int)percent_float;
                                                                  wxString msg  = wxString::Format(_L("Loading file: %s"), from_path(real_filename));
-                                                                 cont          = dlg.Update(progress_percent, msg);
+                                                                 // FOS 8.6: only pump the UI when the percent actually moved, and at
+                                                                 // most 10x a second. Skipping leaves cont == true, i.e. "keep going".
+                                                                 const auto fos_now = std::chrono::steady_clock::now();
+                                                                 if (progress_percent != fos_last_pct &&
+                                                                     std::chrono::duration_cast<std::chrono::milliseconds>(fos_now - fos_last_at).count() >= 100) {
+                                                                     fos_last_pct = progress_percent;
+                                                                     fos_last_at  = fos_now;
+                                                                     cont         = dlg.Update(progress_percent, msg);
+                                                                 }
                                                                  cancel        = !cont;
                                                                  if (cancel)
                                                                      is_user_cancel = cancel;
