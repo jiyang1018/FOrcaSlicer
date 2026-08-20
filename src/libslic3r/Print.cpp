@@ -1131,6 +1131,37 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
                       "whichever filament happens to be loaded. Select a filament for Wipe tower.")};
     }
 
+    // FOS: unassigned-but-used hard block (s27 decision 2). fos_effective_nozzle() resolves a
+    // filament with no map entry as identity while nozzles last and NOZZLE 0 past that
+    // (PresetBundle.cpp:2260), so a used-but-unassigned filament beyond the nozzle count
+    // silently inherits nozzle 0's diameter AND its extruder_offset. Refuse to slice rather
+    // than emit G-code nobody asked for. Deliberately NOT gated on has_mixed_nozzle_sizes:
+    // the extruder_offset collapse is wrong on a uniform-diameter machine too.
+    {
+        // nozzle_diameter is FILAMENT-indexed by the time it reaches Print (the stage 1b
+        // re-index in full_fff_config()), so it cannot supply the physical nozzle count.
+        // fos_physical_nozzle_diameter is the snapshot taken before that re-index.
+        const std::vector<double> &phys    = m_config.fos_physical_nozzle_diameter.values;
+        const std::vector<int>    &fos_map = m_config.fos_filament_nozzle.values;
+        const size_t              nozzle_n = phys.empty() ? size_t(nozzles) : phys.size();
+        // An empty map means a project written before the map existed - do not block those.
+        if (!fos_map.empty() && nozzle_n > 0) {
+            std::string bad;
+            for (unsigned int f : extruders) {
+                const bool assigned = size_t(f) < fos_map.size() && fos_map[f] >= 0 && fos_map[f] < int(nozzle_n);
+                if (!assigned) {
+                    if (!bad.empty())
+                        bad += ", ";
+                    bad += std::to_string(f + 1);
+                }
+            }
+            if (!bad.empty())
+                return {Slic3r::format(L("Filament %1% is used by this print but is not assigned to any nozzle. "
+                                         "Open the filament to nozzle map and assign it, or remove it from the model."),
+                                       bad)};
+        }
+    }
+
     if (nozzles < 2 && extruders.size() > 1 && m_config.print_sequence != PrintSequence::ByObject) {
         auto ret = check_multi_filament_valid(*this);
         if (!ret.string.empty())
