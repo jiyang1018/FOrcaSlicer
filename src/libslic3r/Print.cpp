@@ -1162,6 +1162,50 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
         }
     }
 
+    // FOS: map vs T routing hard block. The map decides which nozzle's SETTINGS a filament
+    // resolves against (the stage 1b re-index), but GCodeWriter::toolchange() still emits the
+    // FILAMENT index as T (GCodeWriter.cpp:466), so the physical head is chosen by index and
+    // never by the map. Those agree only for an identity map. On a mixed-diameter printer a
+    // non-identity map therefore computes widths for one nozzle and prints them through a head
+    // of a different diameter, silently - proven on 4442 hardware output 2026-08-08, where
+    // 0.42 mm beads were routed to the 0.2 mm head via T3. Same used-filament set as the guard
+    // above, so every "filament for features" selection is covered.
+    // See FOS_STAGE4_map_vs_tool_routing_constraint.md.
+    {
+        // phys is NOZZLE-indexed (the pre-re-index snapshot): the head that T f actually reaches.
+        // nozzle_diameter is FILAMENT-indexed post-1b: the diameter the widths were built for.
+        const std::vector<double> &phys    = m_config.fos_physical_nozzle_diameter.values;
+        const std::vector<double> &mapped  = m_config.nozzle_diameter.values;
+        const std::vector<int>    &fos_map = m_config.fos_filament_nozzle.values;
+        if (!phys.empty()) {
+            std::string bad;
+            for (unsigned int f : extruders) {
+                // Past the physical head count there is no head f for T f to reach, so there is
+                // nothing to compare. Those filaments route through the send-to-MMS translation,
+                // not through a bare T number. The guard above already requires them to be mapped.
+                if (size_t(f) >= phys.size() || size_t(f) >= mapped.size())
+                    continue;
+                if (std::abs(phys[f] - mapped[f]) > EPSILON) {
+                    if (!bad.empty())
+                        bad += "\n";
+                    // The guard above has already rejected any unassigned filament, so the map
+                    // entry is in range here. Report nozzles 1-based; the T number is an
+                    // implementation detail the user never sees in the UI.
+                    const int mapped_nz = (size_t(f) < fos_map.size() && fos_map[f] >= 0) ? fos_map[f] + 1 : 0;
+                    bad += Slic3r::format(L("Filament %1%: mapped to nozzle %2% (%3% mm), but printed by nozzle %4% (%5% mm)."),
+                                          f + 1, mapped_nz, mapped[f], f + 1, phys[f]);
+                }
+            }
+            if (!bad.empty())
+                return {Slic3r::format(L("The filament to nozzle map changes which nozzle's settings a filament "
+                                         "uses, but not which nozzle prints it - that still follows the filament "
+                                         "number. These filaments would be extruded through a nozzle their line "
+                                         "widths were not computed for:\n\n%1%\n\nUntil tool routing follows the "
+                                         "map, map each of these filaments to the nozzle that prints it, or to a "
+                                         "nozzle of the same diameter."), bad)};
+        }
+    }
+
     if (nozzles < 2 && extruders.size() > 1 && m_config.print_sequence != PrintSequence::ByObject) {
         auto ret = check_multi_filament_valid(*this);
         if (!ret.string.empty())
