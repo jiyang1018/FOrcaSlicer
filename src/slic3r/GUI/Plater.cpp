@@ -15164,12 +15164,15 @@ void Plater::fos_send_to_mms(int mms_system)
     // Blocking mixed nozzles here would disable the one thing this fork exists
     // for. Do not re-add it.
     //
-    // Caveat worth knowing: the CONFIG_BLOCK "nozzle_diameter" list is already
-    // sized per filament, but entries past the physical head count are padding,
-    // not a real binding -- a filament on a "@U1 0.8 nozzle" preset can still
-    // declare 0.2. multiACE shows such filaments unassigned rather than
-    // guessing, so this is visible to the user, not silent. The real fix is a
-    // per-filament to head binding (node UI workstream).
+    // Caveat, CORRECTED fos8-s30: the CONFIG_BLOCK "nozzle_diameter" list is sized per
+    // filament and every entry is a TRUTHFUL declaration, not padding -- FOS really did
+    // slice that filament for the diameter it states. What made entries past the head
+    // count look like padding was fos_effective_nozzle()'s fallback: an unassigned
+    // filament resolved to identity while nozzles lasted and then to NOZZLE 0, so
+    // filaments 5+ all declared nozzle 0's diameter. Print::validate() now refuses a
+    // used-but-unassigned filament outright, so such a file can no longer be produced.
+    // decay71 reads this array as per-filament DEMAND and matches it against the heads'
+    // real diameters, which he reads live from Klipper and never from the G-code.
 
     // Gate 2: the inbox answers 409 for G-code that already carries multiACE's
     // processed markers, because double-processing corrupts the swaps. Catch a

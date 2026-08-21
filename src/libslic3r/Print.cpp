@@ -1146,63 +1146,200 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
         const size_t              nozzle_n = phys.empty() ? size_t(nozzles) : phys.size();
         // An empty map means a project written before the map existed - do not block those.
         if (!fos_map.empty() && nozzle_n > 0) {
-            std::string bad;
-            for (unsigned int f : extruders) {
-                const bool assigned = size_t(f) < fos_map.size() && fos_map[f] >= 0 && fos_map[f] < int(nozzle_n);
-                if (!assigned) {
-                    if (!bad.empty())
-                        bad += ", ";
-                    bad += std::to_string(f + 1);
+            // FOS: build our own used-filament set. Print::extruders() cannot be used here
+            // because it coerces "unset" into FILAMENT 1 in two separate places:
+            //   PrintRegion::collect_object_printing_extruders - std::max(0, id - 1) turns a
+            //     Default (0) feature key into index 0;
+            //   ModelVolume::get_extruders (Model.cpp:2465-2470) - extruder_id() returns 0 when
+            //     neither the volume's nor the object's "extruder" key is set, and 0 is pushed
+            //     back as 1.
+            // Unset means "inherit the object's filament", NOT "filament 1", and an object
+            // whose every feature key is explicit never materialises its base filament at all.
+            // Inheriting that coercion made three correctly-configured projects unsliceable in
+            // fos8-s30, on uniform machines as well as mixed. So: count explicit selections,
+            // and count the object's base filament only when something really falls through to
+            // it. Upstream's own behaviour is unchanged - this set is the guard's alone.
+            std::vector<unsigned int> by_feature, by_volume, by_paint, by_range, by_support,
+                                      by_tower, by_custom, by_inherit;
+            for (const PrintObject *object : m_objects) {
+                const ModelObject *mo = object->model_object();
+
+                // The object's base filament. 1-based; 0/absent is Orca's "unset", which
+                // resolves to filament 1 only because nothing else claims it.
+                const ConfigOption *oopt = mo->config.option("extruder");
+                int base = (oopt == nullptr) ? 0 : oopt->getInt();
+                if (base <= 0)
+                    base = 1;
+
+                bool falls_through = false;
+                auto note = [&](int key) {
+                    if (key > 0) by_feature.push_back((unsigned int)(key - 1));
+                    else         falls_through = true;
+                };
+                for (const PrintRegion &region : object->all_regions()) {
+                    const PrintRegionConfig &rc = region.config();
+                    if (rc.wall_loops.value > 0 || this->has_brim()) {
+                        note(rc.wall_filament.value);
+                        note(rc.inner_wall_filament.value);
+                    }
+                    if (rc.sparse_infill_density.value > 0)
+                        note(rc.sparse_infill_filament.value);
+                    if (rc.top_shell_layers.value > 0 || rc.bottom_shell_layers.value > 0)
+                        note(rc.solid_infill_filament.value);
                 }
+
+                for (const ModelVolume *mv : mo->volumes) {
+                    // Same exclusions ModelVolume::get_extruders() applies: these print nothing.
+                    if (mv->type() == ModelVolumeType::INVALID
+                        || mv->type() == ModelVolumeType::NEGATIVE_VOLUME
+                        || mv->type() == ModelVolumeType::SUPPORT_BLOCKER
+                        || mv->type() == ModelVolumeType::SUPPORT_ENFORCER)
+                        continue;
+                    for (size_t e : mv->get_extruders_from_multi_material_painting())
+                        by_paint.push_back((unsigned int)e);
+                    const int ve = mv->extruder_id();
+                    if (ve > 0)
+                        by_volume.push_back((unsigned int)(ve - 1));
+                    // ve == 0 contributes nothing on its own - see falls_through.
+                }
+
+                for (const auto &lr : mo->layer_config_ranges)
+                    if (lr.second.has("extruder")) {
+                        const int v = lr.second.option("extruder")->getInt();
+                        if (v > 0)
+                            by_range.push_back((unsigned int)(v - 1));
+                    }
+
+                if (object->has_support_material()) {
+                    const PrintObjectConfig &oc = object->config();
+                    if (oc.support_filament.value > 0)
+                        by_support.push_back((unsigned int)(oc.support_filament.value - 1));
+                    else
+                        falls_through = true;
+                    if (oc.support_interface_filament.value > 0)
+                        by_support.push_back((unsigned int)(oc.support_interface_filament.value - 1));
+                    else
+                        falls_through = true;
+                }
+
+                if (falls_through)
+                    by_inherit.push_back((unsigned int)(base - 1));
+            }
+
+            if (this->has_wipe_tower() && m_config.wipe_tower_filament.value > 0)
+                by_tower.push_back((unsigned int)(m_config.wipe_tower_filament.value - 1));
+
+            {   // custom G-code tool changes, as Print::extruders() collects them
+                const int num_filaments = (int)m_config.filament_colour.size();
+                auto it = m_model.plates_custom_gcodes.find(m_model.curr_plate_index);
+                if (it != m_model.plates_custom_gcodes.end())
+                    for (const auto &item : it->second.gcodes)
+                        if (item.type == CustomGCode::Type::ToolChange && item.extruder <= num_filaments && item.extruder > 0)
+                            by_custom.push_back((unsigned int)(item.extruder - 1));
+            }
+
+            std::vector<unsigned int> used;
+            for (const std::vector<unsigned int> *v : { &by_feature, &by_volume, &by_paint, &by_range,
+                                                        &by_support, &by_tower, &by_custom, &by_inherit })
+                append(used, *v);
+            sort_remove_duplicates(used);
+
+            auto uses = [](const std::vector<unsigned int> &v, unsigned int f) {
+                return std::find(v.begin(), v.end(), f) != v.end();
+            };
+
+            std::string bad;
+            for (unsigned int f : used) {
+                if (size_t(f) < fos_map.size() && fos_map[f] >= 0 && fos_map[f] < int(nozzle_n))
+                    continue;
+                std::string why;
+                auto add = [&why](const char *s) { if (!why.empty()) why += ", "; why += s; };
+                if (uses(by_paint,   f)) add("painted on the model");
+                if (uses(by_feature, f)) add("a Filament for Features setting");
+                if (uses(by_volume,  f)) add("an object or part filament");
+                if (uses(by_range,   f)) add("a height range filament");
+                if (uses(by_support, f)) add("support or raft");
+                if (uses(by_tower,   f)) add("the prime tower");
+                if (uses(by_custom,  f)) add("a filament change in custom G-code");
+                if (uses(by_inherit, f)) add("inherited by a feature left on Default");
+                if (why.empty())
+                    why = "this print";
+                if (!bad.empty())
+                    bad += "\n";
+                bad += Slic3r::format(L("Filament %1% - used by: %2%"), f + 1, why);
             }
             if (!bad.empty())
-                return {Slic3r::format(L("Filament %1% is used by this print but is not assigned to any nozzle. "
-                                         "Open the filament to nozzle map and assign it, or remove it from the model."),
-                                       bad)};
+                return {Slic3r::format(L("These filaments are used by this print but are not assigned to any "
+                                         "nozzle:\n\n%1%\n\nOpen the filament to nozzle map and assign them, or "
+                                         "remove them from the print."), bad)};
         }
     }
 
-    // FOS: map vs T routing hard block. The map decides which nozzle's SETTINGS a filament
-    // resolves against (the stage 1b re-index), but GCodeWriter::toolchange() still emits the
-    // FILAMENT index as T (GCodeWriter.cpp:466), so the physical head is chosen by index and
-    // never by the map. Those agree only for an identity map. On a mixed-diameter printer a
-    // non-identity map therefore computes widths for one nozzle and prints them through a head
-    // of a different diameter, silently - proven on 4442 hardware output 2026-08-08, where
-    // 0.42 mm beads were routed to the 0.2 mm head via T3. Same used-filament set as the guard
-    // above, so every "filament for features" selection is covered.
-    // See FOS_STAGE4_map_vs_tool_routing_constraint.md.
+    // FOS: map vs printing nozzle. The map decides which nozzle's SETTINGS a filament
+    // resolves against (the stage 1b re-index). It does NOT choose the physical head, and WHO
+    // chooses the head depends on whether a supply system is in the path:
+    //
+    //   no supply system - change_filament_gcode / GCodeWriter::toolchange() emit the FILAMENT
+    //     index as T, so filament f really is printed by head f. A non-identity map on a mixed
+    //     printer then extrudes widths computed for one nozzle through another. Proven on 4442
+    //     output 2026-08-08: 0.42 mm beads routed to the 0.2 mm head. Refuse.
+    //
+    //   supply system    - the supply system re-routes. multiACE's preflight picks the slot,
+    //     and therefore the head, from what is physically loaded, filtered by its own nozzle
+    //     gate, which only ever lands a filament on a head carrying the diameter the file
+    //     declares. head = T % 4 holds for ITS synthetic T, not for ours. Blocking a
+    //     non-identity map here would disable the one thing this fork exists for - the same
+    //     reasoning that removed the send-side gate (Plater.cpp, fos_send_to_mms; do not
+    //     re-add it there either). Without knowing the supply topology the only thing we can
+    //     still assert is that the demanded diameter exists on SOME head: nothing can place a
+    //     filament asking for a diameter this printer does not carry.
     {
-        // phys is NOZZLE-indexed (the pre-re-index snapshot): the head that T f actually reaches.
-        // nozzle_diameter is FILAMENT-indexed post-1b: the diameter the widths were built for.
         const std::vector<double> &phys    = m_config.fos_physical_nozzle_diameter.values;
         const std::vector<double> &mapped  = m_config.nozzle_diameter.values;
         const std::vector<int>    &fos_map = m_config.fos_filament_nozzle.values;
-        if (!phys.empty()) {
+
+        // mms_system is per extruder; any non-None entry means this export gets re-routed.
+        bool mms_in_path = false;
+        for (int v : m_config.mms_system.values)
+            if (v != int(mmsNone)) { mms_in_path = true; break; }
+
+        if (!phys.empty() && mms_in_path) {
             std::string bad;
             for (unsigned int f : extruders) {
-                // Past the physical head count there is no head f for T f to reach, so there is
-                // nothing to compare. Those filaments route through the send-to-MMS translation,
-                // not through a bare T number. The guard above already requires them to be mapped.
-                if (size_t(f) >= phys.size() || size_t(f) >= mapped.size())
+                if (size_t(f) >= mapped.size())
                     continue;
-                if (std::abs(phys[f] - mapped[f]) > EPSILON) {
+                bool carried = false;
+                for (double have : phys)
+                    if (std::abs(have - mapped[f]) <= EPSILON) { carried = true; break; }
+                if (!carried) {
                     if (!bad.empty())
                         bad += "\n";
-                    // The guard above has already rejected any unassigned filament, so the map
-                    // entry is in range here. Report nozzles 1-based; the T number is an
-                    // implementation detail the user never sees in the UI.
-                    const int mapped_nz = (size_t(f) < fos_map.size() && fos_map[f] >= 0) ? fos_map[f] + 1 : 0;
-                    bad += Slic3r::format(L("Filament %1%: mapped to nozzle %2% (%3% mm), but printed by nozzle %4% (%5% mm)."),
-                                          f + 1, mapped_nz, mapped[f], f + 1, phys[f]);
+                    bad += Slic3r::format(L("Filament %1%: sliced for a %2% mm nozzle."), f + 1, mapped[f]);
                 }
             }
             if (!bad.empty())
-                return {Slic3r::format(L("The filament to nozzle map changes which nozzle's settings a filament "
-                                         "uses, but not which nozzle prints it - that still follows the filament "
-                                         "number. These filaments would be extruded through a nozzle their line "
-                                         "widths were not computed for:\n\n%1%\n\nUntil tool routing follows the "
-                                         "map, map each of these filaments to the nozzle that prints it, or to a "
-                                         "nozzle of the same diameter."), bad)};
+                return {Slic3r::format(L("These filaments were sliced for a nozzle diameter that no nozzle on this "
+                                         "printer carries, so no supply system can place them:\n\n%1%\n\nMap each "
+                                         "of them to a nozzle that is actually fitted."), bad)};
+        } else if (!phys.empty()) {
+            std::string bad;
+            for (unsigned int f : extruders) {
+                if (size_t(f) >= phys.size() || size_t(f) >= mapped.size())
+                    continue;
+                if (std::abs(phys[f] - mapped[f]) <= EPSILON)
+                    continue;
+                const int mapped_nz = (size_t(f) < fos_map.size() && fos_map[f] >= 0) ? fos_map[f] + 1 : 0;
+                if (!bad.empty())
+                    bad += "\n";
+                bad += Slic3r::format(L("Filament %1%: mapped to nozzle %2% (%3% mm), but printed by nozzle %4% (%5% mm)."),
+                                      f + 1, mapped_nz, mapped[f], f + 1, phys[f]);
+            }
+            if (!bad.empty())
+                return {Slic3r::format(L("The filament to nozzle map changes which nozzle's settings a filament uses, "
+                                         "but not which nozzle prints it - that still follows the filament number. "
+                                         "These filaments would be extruded through a nozzle their line widths were "
+                                         "not computed for:\n\n%1%\n\nMap each of these filaments to the nozzle "
+                                         "that prints it, or to a nozzle of the same diameter."), bad)};
         }
     }
 
