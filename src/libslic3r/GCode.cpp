@@ -2003,6 +2003,26 @@ void GCode::_do_export(Print& print, GCodeOutputStream& file, ThumbnailsGenerato
             (filament_diameter_list += m_config.filament_diameter.serialize()) += '\n';
             file.writeln(filament_diameter_list);
 
+            // FOS: SUPPLY - the physical per-head nozzle diameters, HEAD-indexed, in machine
+            // order, snapshotted in full_fff_config() BEFORE the stage 1b re-index rewrites
+            // nozzle_diameter to be filament-indexed. Two different questions, deliberately
+            // kept apart: "; nozzle_diameter" is DEMAND, which nozzle each FILAMENT was sliced
+            // for, one entry per filament; this is SUPPLY, which nozzle each HEAD carries.
+            // Emitted ALWAYS, including uniform-diameter machines: its absence must mean
+            // "written by an older build", never "uniform" - the same trap the demand line has
+            // (decay71, fos8-s30). multiACE reads head_nozzles live from Klipper and treats
+            // this as a CROSS-CHECK: file-supply != machine-supply means the file was sliced
+            // for a different machine configuration, which it can then name instead of gating
+            // against the wrong set.
+            {
+                const ConfigOptionFloats &fos_phys = print.config().fos_physical_nozzle_diameter;
+                if (!fos_phys.values.empty()) {
+                    std::string fos_nozzle_list = "; fos_physical_nozzle_diameter = ";
+                    (fos_nozzle_list += fos_phys.serialize()) += '\n';
+                    file.writeln(fos_nozzle_list);
+                }
+            }
+
             coordf_t max_height_z = -1;
             for (const auto& object : print.objects())
                 max_height_z = std::max(object->layers().back()->print_z, max_height_z);
