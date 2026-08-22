@@ -462,6 +462,14 @@ static const t_config_enum_values s_keys_map_MultiMaterialSupply = {
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(MultiMaterialSupply)
 
+// FOS: supply topology. Written into every printer preset -- never rename, only append.
+static const t_config_enum_values s_keys_map_MultiMaterialTopology = {
+    { "normal",             mmtNormal },
+    { "multi",              mmtMulti },
+    { "head",               mmtHead }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(MultiMaterialTopology)
+
 static const t_config_enum_values s_keys_map_RetractLiftEnforceType = {
     {"All Surfaces",        rletAllSurfaces},
     {"Top Only",         rletTopOnly},
@@ -4634,30 +4642,82 @@ def = this->add("outer_wall_layer_height_max", coFloat);
     def->set_default_value(new ConfigOptionFloats { 0. });
 
     // FOS: per-extruder multi-material supply system (MMS)
-    def = this->add("mms_system", coEnums);
+    // FOS: supply topology -- a slicing input, because it decides which nozzle diameter each
+    // filament must be sliced for. Printer scope, single valued.
+    def = this->add("fos_mms_topology", coEnum);
+    def->label = L("Mode");
+    // FOS: the words are multiACE's own, shown on its Config tab as normal | multi | head.
+    // Deliberately NOT renamed to something more descriptive: a user reading one UI must
+    // find the same term in the other. The tooltip carries the explanation instead.
+    def->tooltip = L("How the supply units are wired to the toolheads, using the same terms "
+                     "the supply system itself uses. This decides which nozzle diameter each "
+                     "filament is sliced for, so it has to be set before slicing rather than "
+                     "at send time.\n\n"
+                     "normal - no supply unit; each toolhead is fed directly, one filament "
+                     "each.\n"
+                     "multi - units wired in parallel, slot 1 of every unit feeding toolhead "
+                     "1, slot 2 feeding toolhead 2 and so on. Up to 4 units x 4 slots.\n"
+                     "head - one unit feeds one toolhead through a combiner, giving it 4 "
+                     "filaments; toolheads without a unit stay on side feeders with 1 each.");
+    def->enum_keys_map = &ConfigOptionEnum<MultiMaterialTopology>::get_enum_values();
+    def->enum_values.push_back("normal");
+    def->enum_values.push_back("multi");
+    def->enum_values.push_back("head");
+    def->enum_labels.push_back(L("normal"));
+    def->enum_labels.push_back(L("multi"));
+    def->enum_labels.push_back(L("head"));
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<MultiMaterialTopology>(mmtNormal));
+
+    def = this->add("fos_mms_unit_count", coInt);
+    def->label = L("Supply units");
+    def->tooltip = L("How many supply units are connected. Only used in multi mode, where "
+                     "every toolhead can reach one slot in each unit: at most units x "
+                     "toolheads-of-that-diameter filaments may be sliced for a given nozzle "
+                     "diameter, and at most units x 4 filaments in total. In head mode the "
+                     "count follows from which unit feeds each toolhead and this is ignored. "
+                     "0 means unknown, which disables the checks that depend on it.");
+    def->min = 0;
+    def->max = 4;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(0));
+
+    def = this->add("fos_mms_head_ace", coBools);
+    def->label = L("Toolheads with a unit");
+    def->tooltip = L("In head mode, which toolheads have a supply unit wired to them. A "
+                     "unit-driven toolhead can hold 4 filaments; one without a unit is fed "
+                     "directly and holds 1. Every filament on a toolhead is sliced for that "
+                     "toolhead's nozzle, so this decides how many filaments may be sliced for "
+                     "each nozzle diameter. Each unit feeds exactly one toolhead, so the "
+                     "quantity follows from this rather than being entered. Ignored in multi "
+                     "mode, where every unit feeds every toolhead.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBools{ false });
+
+    def = this->add("mms_system", coEnum);
     def->label = L("Supply system");
     def->tooltip = L("Multi-material supply system feeding this extruder. None is stock "
                      "behaviour, where the extruder is fed directly. Selecting a system "
                      "enables the matching Send to entry in the print menu after slicing.");
     def->enum_keys_map = &ConfigOptionEnum<MultiMaterialSupply>::get_enum_values();
+    // FOS: "sidecar" stays in s_keys_map_MultiMaterialSupply so a preset written by
+    // v2.3.2-fos.8.5.7-beta.2 still parses, but it is not offered: no API was ever published
+    // and it reported not-implemented. Re-add the two lines here to bring it back.
     def->enum_values.push_back("none");
     def->enum_values.push_back("multiace");
-    def->enum_values.push_back("sidecar");
     def->enum_labels.push_back(L("None"));
     def->enum_labels.push_back("multiACE");
-    def->enum_labels.push_back("Sidecar");
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionEnumsGeneric{ MultiMaterialSupply::mmsNone });
+    def->set_default_value(new ConfigOptionEnum<MultiMaterialSupply>(MultiMaterialSupply::mmsNone));
 
     // FOS: LAN address of the supply system serving this extruder.
-    def = this->add("mms_host", coStrings);
+    def = this->add("mms_host", coString);
     def->label = L("Printer LAN IP");
     def->tooltip = L("LAN IP address or hostname of the printer running the supply system, "
                      "for example 192.168.1.50. Used as the target when sending sliced G-code "
-                     "to that system. Shared by every extruder: editing it on one extruder "
-                     "updates all of them.");
+                     "to that system.");
     def->mode = comAdvanced;
-    def->set_default_value(new ConfigOptionStrings { "" });
+    def->set_default_value(new ConfigOptionString(""));
 
     def = this->add("retraction_speed", coFloats);
     def->label = L("Retraction Speed");
@@ -6463,8 +6523,9 @@ void PrintConfigDef::init_extruder_option_keys()
         "retract_before_wipe", "retract_restart_extra", "retraction_minimum_travel", "wipe", "wipe_distance",
         "retract_when_changing_layer", "retract_length_toolchange", "retract_restart_extra_toolchange", "extruder_colour",
         "default_filament_profile","retraction_distances_when_cut","long_retractions_when_cut",
-        // FOS: per-extruder multi-material supply system and its host address
-        "mms_system", "mms_host"
+        // FOS: per-extruder multi-material supply system, its host address, and which
+        // supply unit is wired to this toolhead (one unit per toolhead wiring only).
+        "fos_mms_head_ace"
     };
 
     m_extruder_retract_keys = {

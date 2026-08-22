@@ -1298,10 +1298,8 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
         const std::vector<double> &mapped  = m_config.nozzle_diameter.values;
         const std::vector<int>    &fos_map = m_config.fos_filament_nozzle.values;
 
-        // mms_system is per extruder; any non-None entry means this export gets re-routed.
-        bool mms_in_path = false;
-        for (int v : m_config.mms_system.values)
-            if (v != int(mmsNone)) { mms_in_path = true; break; }
+        // mms_system is machine level: set means this export gets re-routed before printing.
+        const bool mms_in_path = m_config.mms_system.value != mmsNone;
 
         if (!phys.empty() && mms_in_path) {
             std::string bad;

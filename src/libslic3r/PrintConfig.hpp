@@ -348,6 +348,27 @@ enum MultiMaterialSupply {
     mmsCount
 };
 
+// FOS 8.6: how the supply system is physically wired. This is a SLICING INPUT, not a mirror of
+// machine state: the topology decides which nozzle DIAMETER each filament must be sliced for,
+// and line width is baked into the extrusions, so it cannot be deferred to the preflight the
+// way slot assignment can. Vocabulary follows multiACE's SET_ACE_MODE.
+//   mmtMulti  - units wired in parallel, slot k of every unit feeds head k, so slot == head.
+//   mmtHead   - one unit feeds one head through a combiner; the other heads are side feeders.
+//   mmtNormal - no unit; each toolhead fed directly, one filament each. The default.
+// "single" is NOT a mode: ACE_RUN_MODE_SWITCH accepts it and immediately rewrites it to
+// "multi" (ace.py:16392), and multiACE's own error text lists only normal, multi, head.
+// There is deliberately no "unknown" either: the supply system is always in one of these
+// three, and a fourth state meaning "not stated" only invites code that has to handle it.
+// mmtNormal says the same thing honestly, and every topology-derived check is inert there
+// regardless, because they all also require mms_system != mmsNone.
+// Never rename a serialized string, only append.
+enum MultiMaterialTopology {
+    mmtNormal = 0,
+    mmtMulti,
+    mmtHead,
+    mmtCount
+};
+
 enum FilamentMapMode {
     fmmAutoForFlush,
     fmmAutoForMatch,
@@ -1268,8 +1289,17 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloats,              retract_restart_extra))
     ((ConfigOptionFloats,              retract_restart_extra_toolchange))
     // FOS: per-extruder multi-material supply system and its host address
-    ((ConfigOptionEnumsGeneric,        mms_system))
-    ((ConfigOptionStrings,             mms_host))
+    // FOS 8.6: MACHINE level. One printer cannot be fed by two different supply systems at
+    // once and the address is one machine, so these are scalars, not per-extruder vectors.
+    // They were vectors up to v2.3.2-fos.8.5.7-beta.2; such a preset drops them on load and
+    // the user re-picks. Only fos_mms_head_ace is genuinely per toolhead.
+    ((ConfigOptionEnum<MultiMaterialSupply>, mms_system))
+    ((ConfigOptionString,              mms_host))
+    // FOS 8.6: supply topology. The mode and the unit count are printer wide; which unit
+    // feeds a given toolhead is PER EXTRUDER and registers through m_extruder_option_keys.
+    ((ConfigOptionEnum<MultiMaterialTopology>, fos_mms_topology))
+    ((ConfigOptionInt,                 fos_mms_unit_count))
+    ((ConfigOptionBools,               fos_mms_head_ace))
     ((ConfigOptionFloats,              retraction_speed))
     ((ConfigOptionString,              machine_start_gcode))
     ((ConfigOptionStrings,             filament_start_gcode))

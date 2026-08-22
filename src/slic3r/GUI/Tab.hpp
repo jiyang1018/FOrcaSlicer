@@ -688,6 +688,11 @@ public:
 	ScalableButton*	m_reset_to_filament_color = nullptr;
 
 	size_t		m_extruders_count;
+	// FOS: window IDs (NOT pointers) of the per-toolhead "has a supply unit" row, so
+	// toggle_options() can enable it only in head mode. Pointers go stale the moment the page
+	// is rebuilt, and Enable() on a destroyed ::CheckBox re-renders its bitmap and crashes in
+	// wxBitmap::Create. FindWindow() on a dead id simply returns nullptr.
+	std::vector<int> m_fos_head_ace_ids;
 	size_t		m_extruders_count_old = 0;
 	size_t		m_initial_extruders_count;
 	size_t		m_sys_extruders_count;

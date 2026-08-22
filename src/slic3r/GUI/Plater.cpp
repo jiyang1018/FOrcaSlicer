@@ -3217,8 +3217,12 @@ void Sidebar::update_nozzle_settings_now(bool switch_machine)
 
     bool is_dark = wxGetApp().app_config->get("dark_color_mode") == "1";
 
-    const auto* fos_mms = dynamic_cast<const ConfigOptionEnumsGeneric*>(
-        wxGetApp().preset_bundle->printers.get_edited_preset().config.option("mms_system"));
+    const DynamicPrintConfig& fos_pcfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+    // NOTE: coEnum in a DynamicPrintConfig is ConfigOptionEnumGeneric, so read via getInt().
+    const ConfigOption* fos_mms  = fos_pcfg.option("mms_system");
+    const ConfigOption* fos_topo = fos_pcfg.option("fos_mms_topology");
+    const auto* fos_qty  = dynamic_cast<const ConfigOptionInt*>(fos_pcfg.option("fos_mms_unit_count"));
+    const auto* fos_hace = dynamic_cast<const ConfigOptionBools*>(fos_pcfg.option("fos_mms_head_ace"));
     const std::vector<std::vector<int>> fos_slots = fos_gather_slots(nozzle_count);
 
     for (size_t i = 0; i < nozzle_count; i++) {
@@ -3402,8 +3406,19 @@ void Sidebar::update_nozzle_settings_now(bool switch_machine)
         // FOS 8.5 stage 2: slot cells are DISPLAY ONLY - no bind, no menu. A plain nozzle
         // owns exactly one slot, so it draws one cell and pairs up with the next plain
         // nozzle; an MSS nozzle draws four and takes the row to itself.
-        const int fos_mms_sys = (fos_mms != nullptr && i < fos_mms->values.size()) ? fos_mms->values[i] : 0;
-        const int fos_slot_n  = (fos_mms_sys != 0) ? FOS_MMS_SLOTS : 1;
+        const int fos_mms_sys = (fos_mms != nullptr) ? fos_mms->getInt() : 0;
+        // FOS: how many alternative supplies reach THIS toolhead, which is what a slot row
+        // means. multi wires every unit in parallel, so a head reaches one slot per unit;
+        // head gives a unit-driven head that unit's 4 slots and leaves the rest fed directly.
+        int fos_slot_n = 1;
+        if (fos_mms_sys != 0) {
+            const int fos_tp = (fos_topo != nullptr) ? fos_topo->getInt() : (int) mmtNormal;
+            if (fos_tp == (int) mmtMulti)
+                fos_slot_n = std::max(1, fos_qty != nullptr ? fos_qty->value : 1);
+            else if (fos_tp == (int) mmtHead)
+                fos_slot_n = (fos_hace != nullptr && i < fos_hace->values.size() && fos_hace->values[i])
+                             ? FOS_MMS_SLOTS : 1;
+        }
         const int fos_sw_w    = FOS_SQUARE_PX;
         const int fos_sw_h    = FOS_SQUARE_PX;
         // A second-column nozzle sits FromDIP(2) inside its half, which is exactly where the
@@ -15194,15 +15209,23 @@ void Plater::fos_send_to_mms(int mms_system)
 
     // Gate 3: the address. Every extruder holds the same value.
     std::string host;
-    const ConfigOptionStrings *hosts = dynamic_cast<const ConfigOptionStrings*>(pcfg.option("mms_host"));
-    if (hosts != nullptr && !hosts->values.empty())
-        host = hosts->values.front();
+    const ConfigOptionString *host_opt = dynamic_cast<const ConfigOptionString*>(pcfg.option("mms_host"));
+    if (host_opt != nullptr)
+        host = host_opt->value;
+    // FOS: mms_host was a per-extruder ConfigOptionStrings up to v2.3.2-fos.8.5.7-beta.2, and
+    // a vector option serializes as "a,a,a,a". Read back into the machine-level scalar that
+    // arrives VERBATIM rather than failing to parse, so the four copies end up concatenated
+    // into one unusable URL (seen live: curl "bad/illegal format or missing URL"). Every entry
+    // always held the same address, so the first field is the address. This also protects
+    // against a pasted list.
+    const size_t fos_comma = host.find(',');
+    if (fos_comma != std::string::npos)
+        host.erase(fos_comma);
     while (!host.empty() && (host.front() == ' ' || host.front() == '\t')) host.erase(host.begin());
     while (!host.empty() && (host.back()  == ' ' || host.back()  == '\t')) host.pop_back();
     if (host.empty()) {
         show_error(this, _L("No printer LAN IP is set for this supply system. Enter it in Printer "
-                            "Settings, on any extruder page, under the multi-material supply "
-                            "system section."), false);
+                            "Settings, on the Machine page, under Multi-material supply."), false);
         return;
     }
 

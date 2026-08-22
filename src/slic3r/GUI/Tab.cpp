@@ -45,6 +45,7 @@
 #include "Notebook.hpp"
 
 #include "Widgets/Label.hpp"
+#include "Widgets/CheckBox.hpp"
 #include "Widgets/TabCtrl.hpp"
 #include "MarkdownTip.hpp"
 #include "Search.hpp"
@@ -5245,6 +5246,116 @@ void TabPrinter::build_fff()
         optgroup->append_single_option_line("support_chamber_temp_control", "chamber-temperature");
         optgroup->append_single_option_line("support_air_filtration", "air-filtration");
 
+        // FOS: multi-material supply. MACHINE level -- one printer cannot be fed by two
+        // different supply systems at once, and the wiring is a property of the machine, so
+        // it belongs here rather than repeated on every extruder page. Only the toolhead row
+        // at the bottom is per toolhead.
+        optgroup = page->new_optgroup(L("Multi-material supply"), "param_accessory");
+        optgroup->append_single_option_line("mms_system");
+        optgroup->append_single_option_line("mms_host");
+        optgroup->append_single_option_line("fos_mms_topology");
+        optgroup->append_single_option_line("fos_mms_unit_count");
+        {
+            Line fos_head_line { L("Toolheads with a unit"),
+                                 L("Tick each toolhead that has a supply unit wired to it. Head mode "
+                                   "only. Each unit feeds exactly one toolhead, so the quantity above "
+                                   "follows the number ticked.") };
+            // FOS: a widget-only Line MUST set full_width. OptionsGroup::activate_line only
+            // takes the widget branch when it is set (OptionsGroup.cpp:263); without it the
+            // function falls through to option_set.front() on a line that has no options and
+            // dereferences an empty vector. Crashed on opening Printer Settings.
+            fos_head_line.full_width = 1;
+            fos_head_line.widget = [this](wxWindow *parent) -> wxSizer* {
+                auto *row = new wxBoxSizer(wxHORIZONTAL);
+                const auto *nd = m_preset_bundle->printers.get_edited_preset()
+                                     .config.option<ConfigOptionFloats>("nozzle_diameter");
+                const int heads = (nd != nullptr && !nd->values.empty()) ? (int) nd->values.size() : 1;
+                const auto *cur = m_config->option<ConfigOptionBools>("fos_mms_head_ace");
+
+                // FOS: the row is only live in head mode -- normal has no units at all, and
+                // multi wires every unit to every toolhead so there is nothing to pick. Set it
+                // here as well as in toggle_options(), because the widget is built on page
+                // activation and toggle_options() may have already run against an empty list.
+                // NOTE: a coEnum key in a DynamicPrintConfig is a ConfigOptionEnumGeneric, NOT
+                // ConfigOptionEnum<T> -- the template only exists in the static PrintConfig. So
+                // option<ConfigOptionEnum<T>>() returns nullptr here and every such read fails
+                // silently. getInt() is on the ConfigOption base and works for both.
+                const ConfigOption *tp_opt  = m_config->option("fos_mms_topology");
+                const ConfigOption *sys_opt = m_config->option("mms_system");
+                const bool  live = sys_opt != nullptr && sys_opt->getInt() != (int) MultiMaterialSupply::mmsNone
+                                   && tp_opt != nullptr && tp_opt->getInt() == (int) mmtHead;
+
+                // full_width lines draw no label of their own, so carry it in the row and give
+                // it the label column's width so the boxes line up with the fields above.
+                // FOS: fixed ids so toggle_options() can find these again without holding
+                // pointers across a page rebuild.
+                const int fos_id_base = wxID_HIGHEST + 3100;
+                m_fos_head_ace_ids.clear();
+                auto *fos_lbl = new wxStaticText(parent, fos_id_base, _L("Toolheads with a unit"));
+                m_fos_head_ace_ids.push_back(fos_id_base);
+                fos_lbl->SetFont(wxGetApp().normal_font());
+                // Width of the label column, so the first checkbox starts where the input
+                // fields above it do. SetMinSize is the effective size here, so too small a
+                // value clips the text rather than wrapping it.
+                fos_lbl->SetMinSize(wxSize(FromDIP(205), -1));
+                fos_lbl->Show(live);
+                row->Add(fos_lbl, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(15));
+
+                for (int h = 0; h < heads; ++h) {
+                    auto *cb = new ::CheckBox(parent, fos_id_base + 1 + h);
+                    m_fos_head_ace_ids.push_back(fos_id_base + 1 + h);
+                    cb->SetValue(cur != nullptr && (size_t) h < cur->values.size() && cur->values[h]);
+                    cb->Show(live);
+                    cb->Bind(wxEVT_TOGGLEBUTTON, [this, h, heads](wxCommandEvent &e) {
+                        DynamicPrintConfig new_conf = *m_config;
+                        auto *opt = static_cast<ConfigOptionBools*>(new_conf.optptr("fos_mms_head_ace", true));
+                        if ((int) opt->values.size() < heads)
+                            opt->values.resize(heads, false);
+                        opt->values[h] = e.IsChecked();
+                        int ticked = 0;
+                        for (int k = 0; k < heads; ++k)
+                            if (opt->values[k])
+                                ++ticked;
+                        // FOS: in head mode each unit feeds exactly one toolhead, so the unit
+                        // count IS the tick count. Written here so the greyed field always
+                        // displays the truth rather than holding a second opinion that can
+                        // disagree with the ticks.
+                        static_cast<ConfigOptionInt*>(new_conf.optptr("fos_mms_unit_count", true))->value = ticked;
+                        load_config(new_conf);
+                        update_dirty();
+                        e.Skip();
+                    });
+                    row->Add(cb, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(h == 0 ? 0 : 16));
+                    auto *fos_num = new wxStaticText(parent, fos_id_base + 101 + h,
+                                                     wxString::Format("%d", h + 1));
+                    fos_num->SetFont(wxGetApp().normal_font());
+                    fos_num->Show(live);
+                    m_fos_head_ace_ids.push_back(fos_id_base + 101 + h);
+                    row->Add(fos_num, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(6));
+                }
+                return row;
+            };
+            optgroup->append_line(fos_head_line);
+        }
+        // FOS: toggle_options() normally only runs when a page is activated, so without this
+        // the conditional rows stayed in whatever state they had when the page was built and
+        // only corrected themselves after navigating away and back.
+        optgroup->m_on_change = [this](const t_config_option_key &opt_key, boost::any value) {
+            update_dirty();
+            on_value_change(opt_key, value);
+            if (opt_key == "fos_mms_topology" || opt_key == "mms_system") {
+                // Page is not a wxWindow. toggle_line() only records the wanted state on the
+                // Line; update_visibility() is what applies it, and the relayout has to go
+                // through the page's parent window. Same sequence the framework uses itself.
+                toggle_options();
+                if (m_active_page != nullptr) {
+                    m_active_page->update_visibility(m_mode, true); // for toggle_line
+                    if (m_active_page->parent() != nullptr)
+                        m_active_page->parent()->Layout();
+                }
+            }
+        };
+
         auto edit_custom_gcode_fn = [this](const t_config_option_key& opt_key) { edit_custom_gcode(opt_key); };
 
     const int gcode_field_height = 15; // 150
@@ -5809,41 +5920,6 @@ if (is_marlin_flavor)
                 optgroup->append_single_option_line("long_retractions_when_cut", "", extruder_idx);
                 optgroup->append_single_option_line("retraction_distances_when_cut", "", extruder_idx);
 
-                // FOS: multi-material supply system feeding this extruder. Sits at the
-                // bottom of the extruder page, below the toolchange retraction group.
-                optgroup = page->new_optgroup(L("Multi-material supply system for this extruder"), L"param_retraction_material_change");
-                optgroup->append_single_option_line("mms_system", "", extruder_idx);
-                optgroup->append_single_option_line("mms_host", "", extruder_idx);
-
-                // FOS: every extruder is fed from the same physical machine, so the
-                // supply-system address is one printer-wide value. An edit on any
-                // extruder page is mirrored to all of them. change_opt_value() has
-                // already committed this extruder's new value before we run, so read
-                // it back from the config rather than casting the boost::any.
-                optgroup->m_on_change = [this, extruder_idx](const t_config_option_key& opt_key, boost::any value)
-                {
-                    if (opt_key.find("mms_host") != std::string::npos && m_extruders_count > 1) {
-                        std::vector<std::string> hosts = static_cast<const ConfigOptionStrings*>(m_config->option("mms_host"))->values;
-                        if ((size_t) extruder_idx < hosts.size()) {
-                            const std::string new_host = hosts[extruder_idx];
-                            bool changed = false;
-                            for (size_t i = 0; i < hosts.size(); i++) {
-                                if (hosts[i] != new_host) {
-                                    hosts[i] = new_host;
-                                    changed = true;
-                                }
-                            }
-                            if (changed) {
-                                DynamicPrintConfig new_conf = *m_config;
-                                new_conf.set_key_value("mms_host", new ConfigOptionStrings(hosts));
-                                load_config(new_conf);
-                            }
-                        }
-                    }
-                    update_dirty();
-                    on_value_change(opt_key, value);
-                };
-
     #if 0
                 //optgroup = page->new_optgroup(L("Preview"), -1, true);
 
@@ -6000,6 +6076,45 @@ void TabPrinter::toggle_options()
         // SoftFever: hide non-BBL settings
         for (auto el : {"use_firmware_retraction", "use_relative_e_distances", "support_multi_bed_types", "pellet_modded_printer", "bed_mesh_max", "bed_mesh_min", "bed_mesh_probe_distance", "adaptive_bed_mesh_margin", "thumbnails"})
           toggle_line(el, !is_BBL_printer);
+
+        // FOS: multi-material supply. This lives on THIS page, so the toggles belong in this
+        // branch -- toggle_options() is organised by active page, and the block sat in the
+        // extruder-page branch for four debugging rounds, where these controls no longer are.
+        // Note a coEnum in a DynamicPrintConfig is a ConfigOptionEnumGeneric, not
+        // ConfigOptionEnum<T>, so it must be read through the base getInt().
+        {
+            const ConfigOption *fos_topo_opt = m_config->option("fos_mms_topology");
+            const int fos_tp = fos_topo_opt != nullptr ? fos_topo_opt->getInt() : (int) mmtNormal;
+            const ConfigOption *fos_sys_opt = m_config->option("mms_system");
+            const bool fos_has_mms = fos_sys_opt != nullptr
+                                     && fos_sys_opt->getInt() != (int) MultiMaterialSupply::mmsNone;
+
+            toggle_option("mms_host", fos_has_mms);
+            toggle_option("fos_mms_topology", fos_has_mms);
+
+            // The two mode-dependent rows are SHOWN or HIDDEN, not greyed: normal has neither,
+            // multi has only the unit count, head has only the toolhead row.
+            const bool fos_show_qty = fos_has_mms && fos_tp == (int) mmtMulti;
+            const bool fos_show_row = fos_has_mms && fos_tp == (int) mmtHead;
+            toggle_line("fos_mms_unit_count", fos_show_qty);
+
+            // ConfigOptionsGroup::Show() is sizer->ShowItems(), which re-shows EVERY item in
+            // the group including this row, and update_visibility() calls it after
+            // toggle_options() returns. So the row's visibility is applied after the chain
+            // settles rather than inline here.
+            CallAfter([this, fos_show_row]() {
+                // FindWindowById (static, global) rather than this->FindWindow: the row's
+                // controls are parented under the page view, which is NOT a descendant of the
+                // Tab, so the member form returns nullptr and the loop silently does nothing.
+                for (int fos_id : m_fos_head_ace_ids)
+                    if (wxWindow *w = wxWindow::FindWindowById(fos_id)) {
+                        w->Show(fos_show_row);
+                        w->Enable(fos_show_row);
+                    }
+                if (m_active_page != nullptr && m_active_page->parent() != nullptr)
+                    m_active_page->parent()->Layout();
+            });
+        }
     }
 
     if (m_active_page->title() == L("Multimaterial")) {
@@ -6091,9 +6206,6 @@ void TabPrinter::toggle_options()
 
         bool toolchange_retraction = m_config->opt_float("retract_length_toolchange", i) > 0;
         toggle_option("retract_restart_extra_toolchange", have_multiple_extruders && toolchange_retraction, i);
-
-        // FOS: the MMS address field only matters once a supply system is chosen
-        toggle_option("mms_host", m_config->opt_enum("mms_system", i) != MultiMaterialSupply::mmsNone, i);
 
         toggle_option("long_retractions_when_cut", !use_firmware_retraction && m_config->opt_int("enable_long_retraction_when_cut"),i);
         toggle_line("retraction_distances_when_cut#0", m_config->opt_bool("long_retractions_when_cut", i));

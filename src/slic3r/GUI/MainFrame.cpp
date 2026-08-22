@@ -1787,15 +1787,19 @@ wxBoxSizer* MainFrame::create_side_tools()
             // one entry. Nothing is added when every extruder is set to None,
             // which keeps the menu identical to stock for normal printers.
             {
-                const ConfigOptionEnumsGeneric *mms = wxGetApp().preset_bundle
-                    ? dynamic_cast<const ConfigOptionEnumsGeneric*>(
-                        wxGetApp().preset_bundle->printers.get_edited_preset().config.option("mms_system"))
+                // NOTE: coEnum in a DynamicPrintConfig is ConfigOptionEnumGeneric, so the
+                // templated cast would always be null. Read through the base getInt().
+                const ConfigOption *mms = wxGetApp().preset_bundle
+                    ? wxGetApp().preset_bundle->printers.get_edited_preset().config.option("mms_system")
                     : nullptr;
                 if (mms != nullptr) {
+                    // FOS: mms_system is machine level, so there is at most ONE entry. The
+                    // presence table is kept so a future machine with more than one system
+                    // needs no reshaping here.
                     std::vector<bool> present((size_t) MultiMaterialSupply::mmsCount, false);
-                    for (int v : mms->values)
-                        if (v > (int) MultiMaterialSupply::mmsNone && v < (int) MultiMaterialSupply::mmsCount)
-                            present[(size_t) v] = true;
+                    if (mms->getInt() > (int) MultiMaterialSupply::mmsNone
+                        && mms->getInt() < (int) MultiMaterialSupply::mmsCount)
+                        present[(size_t) mms->getInt()] = true;
                     for (int v = (int) MultiMaterialSupply::mmsNone + 1; v < (int) MultiMaterialSupply::mmsCount; v++) {
                         if (!present[(size_t) v])
                             continue;

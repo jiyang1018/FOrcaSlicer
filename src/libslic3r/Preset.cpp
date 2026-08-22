@@ -950,6 +950,9 @@ static std::vector<std::string> s_Preset_printer_options {
     "nozzle_type", "nozzle_hrc","auxiliary_fan", "nozzle_volume","upward_compatible_machine", "z_hop_types", "z_hop_when_prime", "travel_slope", "retract_lift_enforce","support_chamber_temp_control","support_air_filtration","printer_structure",
     "best_object_pos","head_wrap_detect_zone",
     "host_type", "print_host", "printhost_apikey", "bbl_use_printhost",
+    // FOS: supply topology, printer scope and single valued (mms_system / mms_host are
+    // per extruder and register through m_extruder_option_keys instead).
+    "fos_mms_topology", "fos_mms_unit_count", "mms_system", "mms_host",
     "print_host_webui",
     "printhost_cafile","printhost_port","printhost_authorization_type",
     "printhost_user", "printhost_password", "printhost_ssl_ignore_revoke", "thumbnails", "thumbnails_format",

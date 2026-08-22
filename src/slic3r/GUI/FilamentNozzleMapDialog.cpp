@@ -182,16 +182,29 @@ void FilamentNozzleMapCanvas::reload_from_config()
     // ----- nozzles, from the printer preset
     const DynamicPrintConfig &printer = bundle->printers.get_edited_preset().config;
     const auto *nd  = printer.option<ConfigOptionFloats>("nozzle_diameter");
-    const auto *mms = printer.option<ConfigOptionEnumsGeneric>("mms_system");
+    // NOTE: coEnum in a DynamicPrintConfig is ConfigOptionEnumGeneric, so read via getInt().
+    const ConfigOption *mms  = printer.option("mms_system");
+    const ConfigOption *topo = printer.option("fos_mms_topology");
+    const auto *qty  = printer.option<ConfigOptionInt>("fos_mms_unit_count");
+    const auto *hace = printer.option<ConfigOptionBools>("fos_mms_head_ace");
     const size_t nozzle_n = (nd != nullptr && !nd->values.empty()) ? nd->values.size() : 1;
 
     for (size_t i = 0; i < nozzle_n; ++i) {
         FosNozzleNode n;
         n.index      = int(i);
         n.diameter   = (nd != nullptr && i < nd->values.size()) ? nd->values[i] : 0.4;
-        n.mms_system = (mms != nullptr && i < mms->values.size()) ? mms->values[i] : 0;
+        n.mms_system = (mms != nullptr) ? mms->getInt() : 0;
         n.mms_name   = fos_mms_label(n.mms_system);
-        n.pin_count  = (n.mms_system != 0) ? FOS_MMS_SLOTS : 1;
+        // FOS: pins = how many alternative supplies feed this nozzle. A pin means a different
+        // thing per mode -- a UNIT in multi, a SLOT in head -- so the two never mix.
+        n.pin_count = 1;
+        if (n.mms_system != 0) {
+            const int tp = (topo != nullptr) ? topo->getInt() : (int) mmtNormal;
+            if (tp == (int) mmtMulti)
+                n.pin_count = std::max(1, qty != nullptr ? qty->value : 1);
+            else if (tp == (int) mmtHead)
+                n.pin_count = (hace != nullptr && i < hace->values.size() && hace->values[i]) ? FOS_MMS_SLOTS : 1;
+        }
         m_nozzles.push_back(n);
     }
 
