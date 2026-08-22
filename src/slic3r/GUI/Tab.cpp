@@ -5322,7 +5322,15 @@ void TabPrinter::build_fff()
             });
             optgroup->append_line(fos_mms_line);
         }
-        optgroup->append_single_option_line("mms_host");
+        {
+            // FOS: the LAN IP:port field stretches to the right edge like the G-code
+            // thumbnails field (full_width fields are sized responsively by
+            // OG_CustomCtrl, ~3 em short of the control edge), so a full IPv4:port -
+            // or an IPv6 address - always displays whole.
+            Option fos_host_opt = optgroup->get_option("mms_host");
+            fos_host_opt.opt.full_width = true;
+            optgroup->append_single_option_line(fos_host_opt);
+        }
         optgroup->append_single_option_line("fos_mms_topology");
         optgroup->append_single_option_line("fos_mms_unit_count");
         {
