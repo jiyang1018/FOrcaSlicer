@@ -1,5 +1,6 @@
 // #include "libslic3r/GCodeSender.hpp"
 //#include "slic3r/Utils/Serial.hpp"
+#include "slic3r/Utils/MultiACE.hpp"
 #include "Tab.hpp"
 #include "PresetHints.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -51,6 +52,8 @@
 // controls without holding pointers across a page rebuild. Checkbox h is BASE + 1 + h, its
 // number label BASE + 101 + h, the row label BASE itself.
 static const int FOS_MMS_HEAD_ID_BASE = wxID_HIGHEST + 3100;
+// FOS: the "Read from printer" topology-fetch row. Same id-not-pointer rule as above.
+static const int FOS_MMS_FETCH_BTN_ID = wxID_HIGHEST + 3250;
 
 // FOS: geometry for the toolhead-unit row. It is a full_width WIDGET line, so it is added
 // straight to the group sizer and gets none of the insets OG_CustomCtrl rows get -- those come
@@ -5266,7 +5269,46 @@ void TabPrinter::build_fff()
         // it belongs here rather than repeated on every extruder page. Only the toolhead row
         // at the bottom is per toolhead.
         optgroup = page->new_optgroup(L("Multi-material supply"), "param_accessory");
-        optgroup->append_single_option_line("mms_system");
+        // FOS: the topology-fetch button is an EXTRA widget on the Supply system line
+        // (line.append_widget), which OG_CustomCtrl::correct_widgets_position places only
+        // after h_pos has walked past the field and its undo dots. Do NOT use line.widget /
+        // create_line_with_widget here: get_pos() positions that at the label column and
+        // breaks before the field - it REPLACES the field (the ramming "Set" pattern), and
+        // painted this button over the dropdown. A standalone full-width row was tried
+        // first and collapsed to zero height on dialog-triggered relayouts.
+        {
+            Line fos_mms_line = optgroup->create_single_option_line("mms_system");
+            fos_mms_line.append_widget([this](wxWindow* parent) -> wxSizer* {
+                Button* btn = new Button(parent, _L("Read from printer"));
+                btn->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+                // FOS: ButtonType::Parameter FIXES the width at 120px (SetStyle calls both
+                // SetSize and SetMinSize) and the label ellipsises. Re-measure from the text
+                // with 10px side padding instead; keep the 26px style height.
+                btn->SetMinSize(parent->FromDIP(wxSize(-1, 26)));
+                btn->SetPaddingSize(parent->FromDIP(wxSize(10, 3)));
+                btn->SetSize(btn->GetMinSize());
+                btn->SetId(FOS_MMS_FETCH_BTN_ID);
+                btn->SetToolTip(_L("Ask the supply system for its mode, unit count and "
+                                   "unit-driven toolheads, and fill the fields below after "
+                                   "review. Uses the Printer LAN IP. Unavailable while any "
+                                   "head is set to manual."));
+                const ConfigOption *sys_opt = m_config->option("mms_system");
+                btn->Enable(sys_opt != nullptr
+                            && sys_opt->getInt() != (int) MultiMaterialSupply::mmsNone);
+                btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { fos_fetch_mms_topology(); });
+                auto sizer = new wxBoxSizer(wxHORIZONTAL);
+                // FOS: clearance from the line's undo dot. A bare sizer spacer does NOT
+                // work here: OG_CustomCtrl::correct_widgets_position repositions only the
+                // child WINDOWS of this sizer, so the spacer must be a real window.
+                auto *gap = new wxStaticText(parent, wxID_ANY, wxEmptyString);
+                gap->SetMinSize(wxSize(parent->FromDIP(10), 1));
+                gap->SetSize(wxSize(parent->FromDIP(10), 1));
+                sizer->Add(gap);
+                sizer->Add(btn);
+                return sizer;
+            });
+            optgroup->append_line(fos_mms_line);
+        }
         optgroup->append_single_option_line("mms_host");
         optgroup->append_single_option_line("fos_mms_topology");
         optgroup->append_single_option_line("fos_mms_unit_count");
@@ -6079,6 +6121,125 @@ void TabPrinter::clear_pages()
     m_reset_to_filament_color = nullptr;
 }
 
+// FOS: fetch mode / units / unit-driven heads from the supply system's preflight
+// livedata endpoint and, after showing the full picture, write them into the profile.
+// 409 means a head is set to manual - topology unavailable, manual entry stays
+// authoritative. The report's units_seen is a LOWER BOUND (units with no identified
+// spool are invisible to live_slots), which the dialog states outright: a silent
+// under-count would make the capacity guard over-block.
+void TabPrinter::fos_fetch_mms_topology()
+{
+    std::string host;
+    if (const auto *ho = dynamic_cast<const ConfigOptionString*>(m_config->option("mms_host")))
+        host = ho->value;
+
+    MultiACE::TopologyReport rep;
+    {
+        wxBusyCursor busy;
+        rep = MultiACE::fetch_topology(host);
+    }
+
+    if (rep.manual_hold) {
+        MessageDialog(wxGetApp().plater(),
+                      _L("The supply system reports at least one toolhead set to manual. The "
+                         "topology is unavailable until every head is back under supply "
+                         "control, so enter the mode and quantity here manually."),
+                      _L("Read from printer"), wxICON_INFORMATION | wxOK).ShowModal();
+        return;
+    }
+    if (!rep.ok) {
+        MessageDialog(wxGetApp().plater(),
+                      _L("Could not read the supply topology.") + "\n\n" +
+                          wxString::FromUTF8(rep.error.c_str()),
+                      _L("Read from printer"), wxICON_WARNING | wxOK).ShowModal();
+        return;
+    }
+
+    const auto *nd = m_preset_bundle->printers.get_edited_preset()
+                         .config.option<ConfigOptionFloats>("nozzle_diameter");
+    const int heads = (nd != nullptr && !nd->values.empty()) ? int(nd->values.size()) : 1;
+
+    // The full picture, every time - this dialog is the one place the user ever sees
+    // what the printer actually reported.
+    wxString msg;
+    msg += wxString::Format("%s: %s\n", _L("Mode"), wxString::FromUTF8(rep.mode.c_str()));
+    int ticked = 0;
+    if (rep.mode == "multi") {
+        msg += wxString::Format("%s: %d\n", _L("Supply units seen"), rep.units_seen);
+        msg += _L("A unit with no identified spool is not counted - correct the quantity "
+                  "afterwards if more are connected.") + "\n";
+    } else if (rep.mode == "head") {
+        wxString list;
+        for (int h = 0; h < heads; ++h)
+            if (size_t(h) < rep.ace_driven_heads.size() && rep.ace_driven_heads[h]) {
+                if (!list.empty()) list += ", ";
+                list += wxString::Format("%d", h + 1);
+                ++ticked;
+            }
+        msg += wxString::Format("%s: %s\n", _L("Toolheads with a unit"),
+                                list.empty() ? wxString(_L("none")) : list);
+    }
+    if (!rep.head_nozzles.empty()) {
+        wxString sup;
+        for (size_t h = 0; h < rep.head_nozzles.size(); ++h) {
+            if (!sup.empty()) sup += ", ";
+            sup += wxString::Format("%g", rep.head_nozzles[h]);
+        }
+        msg += wxString::Format("%s: %s mm\n", _L("Nozzles reported"), sup);
+        bool mismatch = nd == nullptr || nd->values.size() != rep.head_nozzles.size();
+        if (!mismatch && nd != nullptr)
+            for (size_t h = 0; h < rep.head_nozzles.size(); ++h)
+                if (std::abs(nd->values[h] - rep.head_nozzles[h]) > EPSILON) { mismatch = true; break; }
+        if (mismatch)
+            // Rendered by add_msg_content's wxHtmlWindow; is_marked_msg leaves the tags
+            // unescaped. Fixed colours on purpose - dark red on pale pink reads in both
+            // light and dark themes.
+            msg += wxString("<table width=\"100%\" bgcolor=\"#FCE4E4\"><tr><td><b><font color=\"#B01010\">") +
+                   _L("WARNING: this differs from the profile's nozzle diameters. Slicing "
+                      "follows the profile, so check which set is correct: fix the profile, "
+                      "or refit the printer's nozzles, before printing.") +
+                   "</font></b></td></tr></table>";
+    }
+    msg += "\n" + _L("Apply mode and quantity to this printer profile?");
+
+    // InfoDialog rather than MessageDialog: its is_marked_msg flag is the one route into
+    // add_msg_content that leaves the warning's markup unescaped.
+    InfoDialog dlg(wxGetApp().plater(), _L("The supply system reports"), msg,
+                   true /* is_marked_msg */, wxICON_INFORMATION | wxYES | wxNO);
+    if (dlg.ShowModal() != wxID_YES)
+        return;
+
+    DynamicPrintConfig new_conf = *m_config;
+    // NOTE: coEnum in a DynamicPrintConfig is ConfigOptionEnumGeneric, written through
+    // its int value - option<ConfigOptionEnum<T>>() would return nullptr here.
+    if (auto *topo = dynamic_cast<ConfigOptionEnumGeneric*>(new_conf.optptr("fos_mms_topology", true)))
+        topo->value = rep.mode == "multi" ? int(mmtMulti)
+                    : rep.mode == "head"  ? int(mmtHead)
+                                          : int(mmtNormal);
+    if (rep.mode == "multi") {
+        static_cast<ConfigOptionInt*>(new_conf.optptr("fos_mms_unit_count", true))->value = rep.units_seen;
+    } else if (rep.mode == "head") {
+        auto *hb = static_cast<ConfigOptionBools*>(new_conf.optptr("fos_mms_head_ace", true));
+        hb->values.assign(size_t(heads), 0);
+        for (int h = 0; h < heads; ++h)
+            if (size_t(h) < rep.ace_driven_heads.size() && rep.ace_driven_heads[h])
+                hb->values[size_t(h)] = 1;
+        // In head mode each unit feeds exactly one toolhead: the count IS the tick count,
+        // same rule the toolhead row's own handler writes.
+        static_cast<ConfigOptionInt*>(new_conf.optptr("fos_mms_unit_count", true))->value = ticked;
+    }
+    load_config(new_conf);
+    update_dirty();
+
+    // Same visibility chain the optgroup m_on_change runs for a mode change.
+    toggle_options();
+    if (m_active_page != nullptr) {
+        m_active_page->update_visibility(m_mode, true);
+        if (m_active_page->parent() != nullptr)
+            m_active_page->parent()->Layout();
+    }
+}
+
 void TabPrinter::toggle_options()
 {
     if (!m_active_page || m_presets->get_edited_preset().printer_technology() == ptSLA)
@@ -6130,7 +6291,7 @@ void TabPrinter::toggle_options()
             // the group including this row, and update_visibility() calls it after
             // toggle_options() returns. So the row's visibility is applied after the chain
             // settles rather than inline here.
-            CallAfter([this, fos_show_row]() {
+            CallAfter([this, fos_show_row, fos_has_mms]() {
                 // FindWindowById (static, global) rather than this->FindWindow: the row's
                 // controls are parented under the page view, which is NOT a descendant of the
                 // Tab, so the member form returns nullptr and the loop silently does nothing.
@@ -6156,6 +6317,12 @@ void TabPrinter::toggle_options()
                                              && (size_t) h < fos_hb->values.size()
                                              && fos_hb->values[h] != 0);
                 }
+
+                // FOS: the fetch button rides the always-visible Supply system line, so
+                // only its ENABLED state follows the selector - never Show/Hide, which is
+                // what let the old standalone row collapse.
+                if (wxWindow *w = wxWindow::FindWindowById(FOS_MMS_FETCH_BTN_ID))
+                    w->Enable(fos_has_mms);
 
                 if (m_active_page != nullptr && m_active_page->parent() != nullptr)
                     m_active_page->parent()->Layout();

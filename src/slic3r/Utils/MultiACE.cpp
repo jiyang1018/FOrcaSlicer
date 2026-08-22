@@ -13,6 +13,8 @@
 #include "slic3r/GUI/I18N.hpp"
 #include "slic3r/GUI/format.hpp"
 #include "Http.hpp"
+#include <set>
+#include "nlohmann/json.hpp"
 
 namespace fs = boost::filesystem;
 
@@ -119,6 +121,111 @@ bool MultiACE::upload(PrintHostUpload upload_data, ProgressFn progress_fn, Error
         .perform_sync();
 
     return res;
+}
+
+// FOS: topology fetch. See TopologyReport in the header for the contract.
+MultiACE::TopologyReport MultiACE::fetch_topology(std::string host)
+{
+    TopologyReport r;
+
+    // mms_host was per-extruder up to v2.3.2-fos.8.5.7-beta.2 and a stored vector value
+    // arrives verbatim as "a,a,a,a" - the same truncation fos_send_to_mms applies.
+    const size_t comma = host.find(',');
+    if (comma != std::string::npos)
+        host.erase(comma);
+    while (!host.empty() && (host.front() == ' ' || host.front() == '\t')) host.erase(host.begin());
+    while (!host.empty() && (host.back()  == ' ' || host.back()  == '\t')) host.pop_back();
+    if (host.empty()) {
+        r.error = "no printer LAN IP set";
+        return r;
+    }
+
+    std::string url;
+    if (host.rfind("http://", 0) == 0 || host.rfind("https://", 0) == 0)
+        url = host + (host.back() == '/' ? "" : "/") + livedata_path();
+    else
+        url = "http://" + host + "/" + livedata_path();
+
+    BOOST_LOG_TRIVIAL(info) << boost::format("MultiACE: fetching topology from %1%") % url;
+
+    std::string body;
+    long        status = 0;
+    bool        done   = false;
+    auto http = Http::get(std::move(url));
+    http.timeout_connect(3)
+        .timeout_max(6)
+        .on_complete([&](std::string b, unsigned s) { body = std::move(b); status = s; done = true; })
+        .on_error([&](std::string b, std::string e, unsigned s) { body = std::move(b); r.error = std::move(e); status = s; })
+        .perform_sync();
+
+    if (status == 409) {
+        // "preflight is disabled while a head is set to manual" - by design, not an error.
+        r.manual_hold = true;
+        return r;
+    }
+    if (!done) {
+        if (r.error.empty())
+            r.error = "no response";
+        if (status != 0)
+            r.error += " (HTTP " + std::to_string(status) + ")";
+        return r;
+    }
+
+    try {
+        const nlohmann::json j = nlohmann::json::parse(body);
+        const nlohmann::json &ctx = j.at("head_ctx");
+
+        r.mode = ctx.value("mode", "normal");
+        if (r.mode == "single")
+            r.mode = "multi";   // ace.py rewrites single to multi; mirror it
+        if (r.mode != "normal" && r.mode != "multi" && r.mode != "head") {
+            r.error = "unknown supply mode \"" + r.mode + "\"";
+            r.mode.clear();
+            return r;
+        }
+
+        // Which heads a unit drives. ace_heads is the list; the legacy single-ACE field
+        // ace_head is the same fallback head_maps() itself applies. head_ace is identity-
+        // padded outside head mode and deliberately never read here.
+        std::vector<int> ace_heads;
+        if (ctx.contains("ace_heads") && ctx["ace_heads"].is_array())
+            for (const auto &v : ctx["ace_heads"])
+                ace_heads.push_back(v.get<int>());
+        if (ace_heads.empty() && r.mode == "head" && ctx.contains("ace_head"))
+            ace_heads.push_back(ctx["ace_head"].get<int>());
+        int head_n = 4;
+        for (int h : ace_heads)
+            head_n = std::max(head_n, h + 1);
+        r.ace_driven_heads.assign(size_t(head_n), false);
+        for (int h : ace_heads)
+            if (h >= 0)
+                r.ace_driven_heads[size_t(h)] = true;
+
+        // Supply, head-indexed, read off Klipper's extruder objects. String keys.
+        if (ctx.contains("head_nozzles") && ctx["head_nozzles"].is_object())
+            for (const auto &el : ctx["head_nozzles"].items()) {
+                const int idx = std::atoi(el.key().c_str());
+                if (idx < 0 || idx > 15)
+                    continue;
+                if (int(r.head_nozzles.size()) <= idx)
+                    r.head_nozzles.resize(size_t(idx) + 1, 0.);
+                r.head_nozzles[size_t(idx)] = el.value().get<double>();
+            }
+
+        // Units seen. live_slots drops empty and non-identified slots, so this is a
+        // LOWER BOUND on the connected count - the caller's dialog says so.
+        std::set<int> units;
+        if (j.contains("live_slots") && j["live_slots"].is_array())
+            for (const auto &s : j["live_slots"])
+                if (s.contains("ace") && s["ace"].is_number())
+                    units.insert(s["ace"].get<int>());
+        r.units_seen = int(units.size());
+
+        r.ok = true;
+    } catch (const std::exception &e) {
+        r.error = std::string("unexpected reply: ") + e.what();
+    }
+    return r;
 }
 
 } // namespace Slic3r

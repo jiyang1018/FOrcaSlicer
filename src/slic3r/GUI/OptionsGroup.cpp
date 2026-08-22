@@ -458,7 +458,12 @@ void OptionsGroup::activate_line(Line& line)
 	// add extra sizers if any
 	for (auto extra_widget : line.get_extra_widgets())
     {
-        if (line.get_extra_widgets().size() == 1 && !staticbox)
+        // FOS: this special case reaches into `sizer`, which is nullptr under
+        // OG_CustomCtrl (see its initialisation above) - crashed on the first
+        // custom-ctrl line carrying a single extra widget. The custom ctrl has its
+        // own positioning for line.extra_widget_sizer
+        // (OG_CustomCtrl::correct_widgets_position), so fall through to that path.
+        if (line.get_extra_widgets().size() == 1 && !staticbox && !custom_ctrl)
         {
             // extra widget for non-staticbox option group (like for the frequently used parameters on the sidebar) should be wxALIGN_RIGHT
             const auto v_sizer = new wxBoxSizer(wxVERTICAL);

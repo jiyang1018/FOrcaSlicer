@@ -693,6 +693,9 @@ public:
 	// is rebuilt, and Enable() on a destroyed ::CheckBox re-renders its bitmap and crashes in
 	// wxBitmap::Create. FindWindow() on a dead id simply returns nullptr.
 	std::vector<int> m_fos_head_ace_ids;
+	// FOS: fetch mode / units / unit-driven heads from the supply system's livedata
+	// endpoint, show the full picture, and apply on confirmation.
+	void fos_fetch_mms_topology();
 	size_t		m_extruders_count_old = 0;
 	size_t		m_initial_extruders_count;
 	size_t		m_sys_extruders_count;
