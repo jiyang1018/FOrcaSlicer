@@ -1,6 +1,7 @@
 // #include "libslic3r/GCodeSender.hpp"
 //#include "slic3r/Utils/Serial.hpp"
 #include "slic3r/Utils/MultiACE.hpp"
+#include "Widgets/CustomNotebook.hpp"
 #include "Tab.hpp"
 #include "PresetHints.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -2599,7 +2600,9 @@ void TabPrint::build()
             Line nb_line { wxEmptyString, wxEmptyString };
             nb_line.full_width = 1;
             nb_line.widget = [this](wxWindow* parent) -> wxSizer* {
-                auto* nozzle_notebook = new wxNotebook(parent, wxID_ANY);
+                // FOS R1: CustomNotebook, never raw wxNotebook - see the header for the
+                // repaint-storm and dark-mode reasons.
+                auto* nozzle_notebook = new CustomNotebook(parent, wxID_ANY);
                 const auto* nd_opt = m_preset_bundle->printers.get_edited_preset()
                     .config.option<ConfigOptionFloats>("nozzle_diameter");
                 int nozzle_count = nd_opt ? (int)nd_opt->values.size() : 1;
@@ -2693,6 +2696,9 @@ void TabPrint::build()
                     tab_panel->SetSizer(slot_vsizer);
                     nozzle_notebook->AddPage(tab_panel, wxString::Format(_L("Nozzle %d"), n + 1));
                 }
+                // FOS R1: same tab padding as the Speed notebook (Tab.cpp SetPadding
+                // there) so the two strips render identically.
+                nozzle_notebook->SetPadding(wxSize(FromDIP(6), FromDIP(3)));
                 nozzle_notebook->SetMinSize(wxSize(FromDIP(69), -1));
                 auto* wrap = new wxBoxSizer(wxVERTICAL);
                 wrap->Add(nozzle_notebook, 1, wxEXPAND);
@@ -2908,7 +2914,8 @@ void TabPrint::build()
             Line speed_nb_line { wxEmptyString, wxEmptyString };
             speed_nb_line.full_width = 1;
             speed_nb_line.widget = [this](wxWindow* parent) -> wxSizer* {
-            auto* speed_notebook = new wxNotebook(parent, wxID_ANY);
+            // FOS R1: CustomNotebook, never raw wxNotebook - see the header.
+            auto* speed_notebook = new CustomNotebook(parent, wxID_ANY);
             // FOS: set uniform tab width based on widest label "Nozzle 2"
             //{
             //    wxClientDC dc(speed_notebook);
