@@ -290,6 +290,38 @@ PresetsConfigSubstitutions PresetBundle::load_presets(AppConfig &config, Forward
 
     this->load_selections(config, preferred_selection);
 
+    // FOS 8.6: seed the DEFAULT filament -> nozzle map now that the printer preset is
+    // actually selected. The sizing block in set_num_filaments() applies the same identity
+    // rule (filament i -> nozzle i while nozzles last, -1 past that, matching the mapping
+    // window's Reset), but it runs from update_multi_material_filament_presets() ABOVE
+    // load_selections, when nozzle_diameter is still the 1-nozzle default - so every
+    // filament past the first was seeded -1, and nothing re-ran the fill afterwards because
+    // the filament count no longer changes. Symptom: a fresh launch showed only fl1 -> nz1
+    // in the mapping window and one filament on nozzle 1 in the nozzle panel.
+    // Only entries that are still UNASSIGNED are filled, so this can never overwrite a map
+    // that came from a project file or from the user.
+    {
+        size_t fos_nozzle_n = 1;
+        if (const auto *nd = printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter"))
+            fos_nozzle_n = std::max<size_t>(1, nd->values.size());
+        // The map is NEVER sized during startup: set_num_filaments() owns that, and it is
+        // only reached from Plater on a user action or a project load. So at launch it is
+        // still its one-entry default {0} while filament_presets already holds the real
+        // count, and the mapping window reads past the end and shows everything past
+        // filament 1 unassigned. Size it here the same way set_num_filaments() does, then
+        // apply the identity rule to entries that are still unassigned.
+        const size_t fos_n = filament_presets.size();
+        auto *fos_noz  = project_config.option<ConfigOptionInts>("fos_filament_nozzle", true);
+        auto *fos_slot = project_config.option<ConfigOptionInts>("fos_filament_mms_slot", true);
+        if (fos_noz != nullptr && fos_slot != nullptr && fos_n > 0) {
+            fos_noz->values.resize(fos_n, -1);
+            fos_slot->values.resize(fos_n, 0);
+            for (size_t i = 0; i < fos_n; ++i)
+                if (fos_noz->values[i] < 0 && i < fos_nozzle_n)
+                    fos_noz->values[i] = (int) i;
+        }
+    }
+
     set_calibrate_printer("");
 
     //BBS: add config related logs
