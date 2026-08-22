@@ -1131,6 +1131,11 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
                       "whichever filament happens to be loaded. Select a filament for Wipe tower.")};
     }
 
+    // FOS: the explicit used-filament set built by the unassigned-but-used guard below,
+    // published at function scope so the capacity tier of the map-vs-nozzle guard can count
+    // demand without re-walking the model. Empty when that guard did not run (no map).
+    std::vector<unsigned int> fos_used_explicit;
+
     // FOS: unassigned-but-used hard block (s27 decision 2). fos_effective_nozzle() resolves a
     // filament with no map entry as identity while nozzles last and NOZZLE 0 past that
     // (PresetBundle.cpp:2260), so a used-but-unassigned filament beyond the nozzle count
@@ -1243,6 +1248,9 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
                                                         &by_support, &by_tower, &by_custom, &by_inherit })
                 append(used, *v);
             sort_remove_duplicates(used);
+            // FOS: publish for the capacity tier. Print::extruders() must not be used there
+            // for the same reason it is not used here.
+            fos_used_explicit = used;
 
             auto uses = [](const std::vector<unsigned int> &v, unsigned int f) {
                 return std::find(v.begin(), v.end(), f) != v.end();
@@ -1319,6 +1327,65 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
                 return {Slic3r::format(L("These filaments were sliced for a nozzle diameter that no nozzle on this "
                                          "printer carries, so no supply system can place them:\n\n%1%\n\nMap each "
                                          "of them to a nozzle that is actually fitted."), bad)};
+
+            // FOS: capacity tier. The check above asserts each demanded diameter EXISTS on
+            // some head. With the supply topology declared, the bound tightens to a COUNT:
+            //
+            //     filaments demanding diameter D <= (heads carrying D) x (spools per head)
+            //
+            //   multi  - units wired in parallel, slot k of every unit feeds head k, so each
+            //            head reaches one spool per unit: spools per head = unit count.
+            //   head   - a unit-driven head reaches its unit's 4 slots; a feeder head holds 1.
+            //   normal - no unit; topology-derived checks stay inert (PrintConfig.hpp:362),
+            //            as does multi with the unit count unknown (0).
+            //
+            // Demand is counted over the EXPLICIT used set built by the unassigned-but-used
+            // guard, never Print::extruders(): its unset-means-filament-1 coercion would
+            // inflate a diameter's count and refuse a print that fits (fos8-s30).
+            const MultiMaterialTopology fos_topo  = m_config.fos_mms_topology.value;
+            const int                   fos_units = m_config.fos_mms_unit_count.value;
+            const bool fos_capacity_known = (fos_topo == mmtMulti && fos_units > 0) || fos_topo == mmtHead;
+            if (fos_capacity_known && !fos_used_explicit.empty()) {
+                const std::vector<unsigned char> &head_ace = m_config.fos_mms_head_ace.values;
+                auto spools_per_head = [&](size_t h) -> int {
+                    if (fos_topo == mmtMulti)
+                        return fos_units;
+                    return (h < head_ace.size() && head_ace[h]) ? 4 : 1;
+                };
+                std::vector<double> dias;
+                std::vector<int>    demand, capacity;
+                auto dia_index = [&](double d) -> size_t {
+                    for (size_t i = 0; i < dias.size(); ++i)
+                        if (std::abs(dias[i] - d) <= EPSILON)
+                            return i;
+                    dias.push_back(d);
+                    demand.push_back(0);
+                    capacity.push_back(0);
+                    return dias.size() - 1;
+                };
+                for (unsigned int f : fos_used_explicit)
+                    if (size_t(f) < mapped.size())
+                        ++demand[dia_index(mapped[f])];
+                for (size_t h = 0; h < phys.size(); ++h)
+                    capacity[dia_index(phys[h])] += spools_per_head(h);
+                std::string over;
+                for (size_t i = 0; i < dias.size(); ++i)
+                    if (demand[i] > capacity[i]) {
+                        if (!over.empty())
+                            over += "\n";
+                        over += Slic3r::format(L("%1% filaments are sliced for a %2% mm nozzle, but this "
+                                                 "supply layout can only load %3% of that diameter."),
+                                               demand[i], dias[i], capacity[i]);
+                    }
+                if (!over.empty())
+                    return {Slic3r::format(L("More filaments demand a nozzle diameter than the supply "
+                                             "system can load at once:\n\n%1%\n\nWhat one diameter can "
+                                             "hold is the number of toolheads carrying it times the "
+                                             "spool positions each head can reach. Map some of these "
+                                             "filaments to another nozzle diameter, remove them from "
+                                             "the print, or correct the supply mode and unit count "
+                                             "under Machine > Accessory."), over)};
+            }
         } else if (!phys.empty()) {
             std::string bad;
             for (unsigned int f : extruders) {

@@ -2647,6 +2647,12 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool fos_remap_by_filament) con
             // / coStrings / coEnums all travel together. This covers nozzle_diameter and
             // extruder_offset too, so they need no special case.
             for (const std::string &key : print_config_def.extruder_option_keys()) {
+                // FOS: fos_mms_head_ace describes WIRING - which toolhead has a supply unit -
+                // not a filament property. The capacity tier in Print::validate() indexes it
+                // by HEAD against fos_physical_nozzle_diameter, so it must stay head-indexed;
+                // re-indexing it by filament scrambles the wiring under any non-identity map.
+                if (key == "fos_mms_head_ace")
+                    continue;
                 ConfigOption *opt = out.optptr(key);
                 if (opt == nullptr || !opt->is_vector())
                     continue;
