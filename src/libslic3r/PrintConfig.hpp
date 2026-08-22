@@ -1008,6 +1008,11 @@ PRINT_CONFIG_CLASS_DEFINE(
     // the step its scalar routes to. Do NOT rename without updating that strip.
     // Values are RESOLVED mm (percent widths already ratioed against that slot's nozzle).
     ((ConfigOptionFloats,              fos_nozzle_support_line_width))
+    // FOS 8.6: per-slot authored first layer line width, resolved mm. OBJECT scope so the
+    // feature flow (PrintRegion::flow gets the object), the support first-layer flow and
+    // brim/skirt (front object) all reach it, with the generic fos_nozzle_ prefix-strip
+    // invalidation applying as for the other arrays.
+    ((ConfigOptionFloats,              fos_nozzle_initial_layer_line_width))
     ((ConfigOptionFloats,              fos_nozzle_support_speed))
     ((ConfigOptionFloats,              fos_nozzle_support_interface_speed))
 )

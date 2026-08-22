@@ -221,7 +221,14 @@ ConfigOptionFloatOrPercent fos_width_for_nozzle(const ConfigOptionFloatOrPercent
     ConfigOptionFloatOrPercent out = config_width;
     if (!print_config.has_mixed_nozzle_sizes.value || out.percent || out.value <= 0)
         return out;
-    const float ref_nozzle = float(print_config.nozzle_diameter.get_at(0));
+    // FOS 8.6: the ratio base is PHYSICAL nozzle 1 - the slot the scalar widths are
+    // authored against. nozzle_diameter is FILAMENT-indexed by the time it reaches Print
+    // (stage 1b re-index), so get_at(0) means "filament 1's nozzle" and goes wrong under a
+    // non-identity map. The physical snapshot always exists on 8.6 configs; the old read
+    // stays as the fallback for configs that predate it.
+    const float ref_nozzle = float(print_config.fos_physical_nozzle_diameter.values.empty()
+                                       ? print_config.nozzle_diameter.get_at(0)
+                                       : print_config.fos_physical_nozzle_diameter.values.front());
     if (ref_nozzle > 0.f)
         out.value = (out.value / ref_nozzle) * nozzle_diameter;
     return out;
@@ -271,7 +278,15 @@ Flow support_material_1st_layer_flow(const PrintObject *object, float layer_heig
     // support_line_width IS resolved, so it is used raw. line_width is the last-resort fallback and
     // is unresolved, so it also keeps the ratio.
     ConfigOptionFloatOrPercent width;
-    if (print_config.initial_layer_line_width.value > 0)
+    // FOS 8.6: prefer the support filament's slot-authored first layer width (see
+    // PrintRegion::flow); the ratio-scaled scalar stays as the legacy fallback, and
+    // support_filament == 0 (mounted tool) lands there via the negative index.
+    const std::vector<double> &fos_l1_arr = object->config().fos_nozzle_initial_layer_line_width.values;
+    const int fos_l1_idx = object->config().support_filament.value - 1;
+    if (fos_l1_idx >= 0 && fos_l1_idx < (int) fos_l1_arr.size() && fos_l1_arr[fos_l1_idx] > 0) {
+        width.value   = fos_l1_arr[fos_l1_idx];
+        width.percent = false;
+    } else if (print_config.initial_layer_line_width.value > 0)
         width = fos_width_for_nozzle(print_config.initial_layer_line_width, print_config, nozzle_diameter);
     else if (object->config().support_line_width.value > 0)
         width = object->config().support_line_width;

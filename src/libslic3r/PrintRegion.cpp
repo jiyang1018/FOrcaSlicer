@@ -25,9 +25,32 @@ Flow PrintRegion::flow(const PrintObject &object, FlowRole role, double layer_he
 {
     const PrintConfig          &print_config = object.print()->config();
     ConfigOptionFloatOrPercent config_width;
+    // FOS 8.6: layer 1 takes each slot's OWN authored first layer width. Every slot PRP
+    // authors initial_layer_line_width on its Quality tab; fos_resolve_nozzle_arrays()
+    // resolves them to absolute mm per slot and the stage 1b re-index makes the array
+    // filament-indexed, so here it is read with the printing filament. An IN-RANGE 0 means
+    // that slot authored "0 = use the per-feature widths" and suppresses the global scalar
+    // as well. Only a config with no array at all (pre-8.6 project, no GUI pass) falls back
+    // to the print-scope scalar, ratio-scaled to the printing nozzle further down.
+    bool fos_l1_array   = false;  // the array covers this filament - it governs layer 1
+    bool fos_l1_stamped = false;
+    if (first_layer) {
+        const std::vector<double> &fos_arr = object.config().fos_nozzle_initial_layer_line_width.values;
+        const int fos_idx = int(this->extruder(role)) - 1;
+        if (fos_idx >= 0 && fos_idx < (int) fos_arr.size()) {
+            fos_l1_array = true;
+            if (fos_arr[fos_idx] > 0) {
+                config_width.value   = fos_arr[fos_idx];
+                config_width.percent = false;
+                fos_l1_stamped = true;
+            }
+        }
+    }
     // Get extrusion width from configuration.
     // (might be an absolute value, or a percent value, or zero for auto)
-    if (first_layer && print_config.initial_layer_line_width.value > 0) {
+    if (fos_l1_stamped) {
+        // width taken from the slot PRP above
+    } else if (first_layer && !fos_l1_array && print_config.initial_layer_line_width.value > 0) {
         config_width = print_config.initial_layer_line_width;
     } else if (role == frExternalPerimeter) {
         config_width = m_config.outer_wall_line_width;
@@ -48,6 +71,15 @@ Flow PrintRegion::flow(const PrintObject &object, FlowRole role, double layer_he
 
     auto nozzle_diameter = float(print_config.nozzle_diameter.get_at(this->extruder(role) - 1));
 
+    // FOS 8.6: LEGACY fallback only - a config whose fos_nozzle_initial_layer_line_width
+    // array is absent (pre-8.6 project, no GUI pass) still carries the print-scope scalar,
+    // authored against physical nozzle 1; ratio-scale it to the printing filament's nozzle
+    // (proven live before the fix: 0.25 mm through the 0.8 head on a 2468). When the array
+    // covered this filament the width is already the slot's own authored value and this
+    // must not run on top of it.
+    if (first_layer && !fos_l1_array && print_config.initial_layer_line_width.value > 0)
+        config_width = fos_width_for_nozzle(config_width, print_config, nozzle_diameter);
+
     // FOS 8.5: the 8.4 mixed-nozzle width ratio was REMOVED here. Per-nozzle widths are now
     // authored per slot and resolved to absolute mm at config materialization
     // (fos_stamp_per_nozzle_region), so config_width already carries the correct width for the
@@ -60,7 +92,7 @@ Flow PrintRegion::flow(const PrintObject &object, FlowRole role, double layer_he
     // this with a nozzle ratio; 8.5 removed it (color-patch width regression; correct at fos.8.1).
     // Re-resolve width from the per-nozzle array indexed by the ACTUAL printing extruder so a
     // painted loop gets its nozzle authored width. Feature regions: extruder(role) == the stamped
-    // filament, so this is a no-op. First layer keeps the global initial_layer_line_width by design.
+    // filament, so this is a no-op. First layer takes the ratio-scale above instead of this block.
     if (print_config.has_mixed_nozzle_sizes.value && !(first_layer && print_config.initial_layer_line_width.value > 0)) {
         const int fos_idx = int(this->extruder(role)) - 1;
         const ConfigOptionFloats *fos_arr =

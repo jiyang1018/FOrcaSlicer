@@ -2051,11 +2051,26 @@ Flow Print::brim_flow() const
        extruders and take the one with, say, the smallest index.
        The same logic should be applied to the code that selects the extruder during G-code
        generation as well. */
+    // FOS 8.6: prefer the wall filament's slot-authored first layer width (see
+    // PrintRegion::flow); the ratio-scaled print scalar is the fallback for configs
+    // without the array.
+    const float fos_brim_nozzle = (float)m_config.nozzle_diameter.get_at(m_print_regions.front()->config().wall_filament-1);
+    {
+        // (m_objects.front() is already dereferenced by the width fallback chain above,
+        // so brim_flow never runs with no objects.)
+        const std::vector<double> &fos_arr = m_objects.front()->config().fos_nozzle_initial_layer_line_width.values;
+        const int fos_idx = m_print_regions.front()->config().wall_filament.value - 1;
+        if (fos_idx >= 0 && fos_idx < (int) fos_arr.size() && fos_arr[fos_idx] > 0) {
+            width.value   = fos_arr[fos_idx];
+            width.percent = false;
+        } else
+            width = fos_width_for_nozzle(width, m_config, fos_brim_nozzle);
+    }
     return Flow::new_from_config_width(
         frPerimeter,
         // Flow::new_from_config_width takes care of the percent to value substitution
 		width,
-        (float)m_config.nozzle_diameter.get_at(m_print_regions.front()->config().wall_filament-1),
+        fos_brim_nozzle,
 		(float)this->skirt_first_layer_height());
 }
 
@@ -2070,11 +2085,24 @@ Flow Print::skirt_flow() const
        extruders and take the one with, say, the smallest index;
        The same logic should be applied to the code that selects the extruder during G-code
        generation as well. */
+    // FOS 8.6: prefer the support filament's slot-authored first layer width (see
+    // PrintRegion::flow); the ratio-scaled print scalar is the fallback for configs
+    // without the array.
+    const float fos_skirt_nozzle = (float)m_config.nozzle_diameter.get_at(m_objects.front()->config().support_filament-1);
+    {
+        const std::vector<double> &fos_arr = m_objects.front()->config().fos_nozzle_initial_layer_line_width.values;
+        const int fos_idx = m_objects.front()->config().support_filament.value - 1;
+        if (fos_idx >= 0 && fos_idx < (int) fos_arr.size() && fos_arr[fos_idx] > 0) {
+            width.value   = fos_arr[fos_idx];
+            width.percent = false;
+        } else
+            width = fos_width_for_nozzle(width, m_config, fos_skirt_nozzle);
+    }
     return Flow::new_from_config_width(
         frPerimeter,
         // Flow::new_from_config_width takes care of the percent to value substitution
 		width,
-		(float)m_config.nozzle_diameter.get_at(m_objects.front()->config().support_filament-1),
+		fos_skirt_nozzle,
 		(float)this->skirt_first_layer_height());
 }
 
@@ -3339,7 +3367,9 @@ std::tuple<float, float> Print::object_skirt_offset(double margin_height) const
     
     float max_nozzle_diameter = *std::max_element(m_config.nozzle_diameter.values.begin(), m_config.nozzle_diameter.values.end());
     float max_layer_height    = *std::max_element(config().max_layer_height.values.begin(), config().max_layer_height.values.end());
-    float line_width = m_config.initial_layer_line_width.get_abs_value(max_nozzle_diameter);
+    // FOS 8.6: clearance estimate - scale the authored-for-nozzle-1 scalar to the widest
+    // nozzle so the margin covers the widest first-layer line the plate can produce.
+    float line_width = (float)fos_abs_width_for_nozzle(m_config.initial_layer_line_width, m_config, max_nozzle_diameter);
     float object_skirt_witdh  = skirt_flow().width() + (config().skirt_loops - 1) * skirt_flow().spacing();
     float object_skirt_offset = 0;
 

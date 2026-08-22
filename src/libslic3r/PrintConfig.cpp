@@ -4134,6 +4134,7 @@ void PrintConfigDef::init_fff_params()
         fos_add_nozzle_array("fos_nozzle_support_line_width",               "FOS per-nozzle support line width");
         fos_add_nozzle_array("fos_nozzle_support_speed",                    "FOS per-nozzle support speed");
         fos_add_nozzle_array("fos_nozzle_support_interface_speed",          "FOS per-nozzle support interface speed");
+        fos_add_nozzle_array("fos_nozzle_initial_layer_line_width",         "FOS per-nozzle first layer line width");
         // print scope (tower - cannot flatten; see PrintConfig.hpp)
         fos_add_nozzle_array("fos_nozzle_tower_line_widths",                "FOS per-nozzle prime tower line width");
     }

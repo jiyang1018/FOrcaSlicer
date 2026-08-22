@@ -3691,6 +3691,11 @@ void TabPrint::fos_resolve_nozzle_arrays()
         write_width("fos_nozzle_sparse_infill_line_width",         "sparse_infill_line_width");
         write_width("fos_nozzle_internal_solid_infill_line_width", "internal_solid_infill_line_width");
         write_width("fos_nozzle_support_line_width",               "support_line_width");
+        // FOS 8.6: first layer width, per slot, straight from each PRP's Quality tab. No
+        // line_width fallback ON PURPOSE: 0 keeps upstream's "0 = use the per-feature
+        // widths on layer 1" meaning, per slot, and the engine honours an in-range 0 as
+        // authored-off rather than falling back to the global scalar.
+        write_width("fos_nozzle_initial_layer_line_width",         "initial_layer_line_width", false);
         // region + object speeds (plain floats)
         write_speed("fos_nozzle_outer_wall_speed",            "outer_wall_speed");
         write_speed("fos_nozzle_inner_wall_speed",            "inner_wall_speed");
@@ -3720,6 +3725,7 @@ void TabPrint::fos_resolve_nozzle_arrays()
             "fos_nozzle_outer_wall_line_width", "fos_nozzle_inner_wall_line_width",
             "fos_nozzle_top_surface_line_width", "fos_nozzle_sparse_infill_line_width",
             "fos_nozzle_internal_solid_infill_line_width", "fos_nozzle_support_line_width",
+            "fos_nozzle_initial_layer_line_width",
             "fos_nozzle_outer_wall_speed", "fos_nozzle_inner_wall_speed",
             "fos_nozzle_sparse_infill_speed", "fos_nozzle_internal_solid_infill_speed",
             "fos_nozzle_top_surface_speed", "fos_nozzle_gap_infill_speed",
