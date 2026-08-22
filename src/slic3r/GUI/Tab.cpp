@@ -46,6 +46,21 @@
 
 #include "Widgets/Label.hpp"
 #include "Widgets/CheckBox.hpp"
+
+// FOS: window ids for the per-toolhead supply-unit row. Fixed so toggle_options() can find the
+// controls without holding pointers across a page rebuild. Checkbox h is BASE + 1 + h, its
+// number label BASE + 101 + h, the row label BASE itself.
+static const int FOS_MMS_HEAD_ID_BASE = wxID_HIGHEST + 3100;
+
+// FOS: geometry for the toolhead-unit row. It is a full_width WIDGET line, so it is added
+// straight to the group sizer and gets none of the insets OG_CustomCtrl rows get -- those come
+// from the static box and cannot be computed from here. These two reproduce it by measurement:
+//   INDENT  left edge of the row's label, to match the option labels above it
+//   LABEL_W width of the label column, so the first checkbox lands on the input-field column.
+//           The framework's own value is label_width (20) em units; adjust if the fields move.
+// Both are DIP, so they scale. Nudge these if the row ever drifts out of line.
+static const int FOS_MMS_ROW_INDENT  = 24;
+static const int FOS_MMS_ROW_LABEL_W = 198;
 #include "Widgets/TabCtrl.hpp"
 #include "MarkdownTip.hpp"
 #include "Search.hpp"
@@ -5256,16 +5271,21 @@ void TabPrinter::build_fff()
         optgroup->append_single_option_line("fos_mms_topology");
         optgroup->append_single_option_line("fos_mms_unit_count");
         {
-            Line fos_head_line { L("Toolheads with a unit"),
-                                 L("Tick each toolhead that has a supply unit wired to it. Head mode "
-                                   "only. Each unit feeds exactly one toolhead, so the quantity above "
-                                   "follows the number ticked.") };
+            // FOS: label deliberately EMPTY. activate_line gives a widget line a 15px border
+            // when its label is non-empty, while option lines get 5 (OptionsGroup.cpp:296), so
+            // a labelled widget row sits 15px in from where every other row starts. With an
+            // empty label the border is 0 and the row reproduces the real geometry itself.
+            Line fos_head_line { wxEmptyString, wxEmptyString };
             // FOS: a widget-only Line MUST set full_width. OptionsGroup::activate_line only
             // takes the widget branch when it is set (OptionsGroup.cpp:263); without it the
             // function falls through to option_set.front() on a line that has no options and
             // dereferences an empty vector. Crashed on opening Printer Settings.
             fos_head_line.full_width = 1;
             fos_head_line.widget = [this](wxWindow *parent) -> wxSizer* {
+                // FOS: outer vertical sizer purely to drop the row 6px, so it sits on the same
+                // rhythm as the option rows above rather than crowding the one before it.
+                auto *outer = new wxBoxSizer(wxVERTICAL);
+                outer->AddSpacer(FromDIP(6));
                 auto *row = new wxBoxSizer(wxHORIZONTAL);
                 const auto *nd = m_preset_bundle->printers.get_edited_preset()
                                      .config.option<ConfigOptionFloats>("nozzle_diameter");
@@ -5289,17 +5309,23 @@ void TabPrinter::build_fff()
                 // it the label column's width so the boxes line up with the fields above.
                 // FOS: fixed ids so toggle_options() can find these again without holding
                 // pointers across a page rebuild.
-                const int fos_id_base = wxID_HIGHEST + 3100;
+                const int fos_id_base = FOS_MMS_HEAD_ID_BASE;
                 m_fos_head_ace_ids.clear();
                 auto *fos_lbl = new wxStaticText(parent, fos_id_base, _L("Toolheads with a unit"));
                 m_fos_head_ace_ids.push_back(fos_id_base);
-                fos_lbl->SetFont(wxGetApp().normal_font());
-                // Width of the label column, so the first checkbox starts where the input
-                // fields above it do. SetMinSize is the effective size here, so too small a
-                // value clips the text rather than wrapping it.
-                fos_lbl->SetMinSize(wxSize(FromDIP(205), -1));
+                // FOS: Body_14 and the default label colour are what OG_CustomCtrl draws every
+                // option label with (OG_CustomCtrl.cpp:54, :152 and :949-951), so the row
+                // matches the fields above it in both.
+                fos_lbl->SetFont(Label::Body_14);
+                fos_lbl->SetForegroundColour(wxGetApp().get_label_clr_default());
+                fos_lbl->SetToolTip(_L("Tick each toolhead that has a supply unit wired to it. "
+                                       "Head mode only. Each unit feeds exactly one toolhead, so "
+                                       "the quantity follows the number ticked."));
+                // SetMinSize is the effective size on this path, so too small a value clips
+                // the text instead of wrapping it.
+                fos_lbl->SetMinSize(wxSize(FromDIP(FOS_MMS_ROW_LABEL_W), -1));
                 fos_lbl->Show(live);
-                row->Add(fos_lbl, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(15));
+                row->Add(fos_lbl, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(FOS_MMS_ROW_INDENT));
 
                 for (int h = 0; h < heads; ++h) {
                     auto *cb = new ::CheckBox(parent, fos_id_base + 1 + h);
@@ -5328,12 +5354,14 @@ void TabPrinter::build_fff()
                     row->Add(cb, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(h == 0 ? 0 : 16));
                     auto *fos_num = new wxStaticText(parent, fos_id_base + 101 + h,
                                                      wxString::Format("%d", h + 1));
-                    fos_num->SetFont(wxGetApp().normal_font());
+                    fos_num->SetFont(Label::Body_14);
+                    fos_num->SetForegroundColour(wxGetApp().get_label_clr_default());
                     fos_num->Show(live);
                     m_fos_head_ace_ids.push_back(fos_id_base + 101 + h);
                     row->Add(fos_num, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(6));
                 }
-                return row;
+                outer->Add(row, 0, wxEXPAND);
+                return outer;
             };
             optgroup->append_line(fos_head_line);
         }
@@ -6111,6 +6139,24 @@ void TabPrinter::toggle_options()
                         w->Show(fos_show_row);
                         w->Enable(fos_show_row);
                     }
+
+                // FOS: re-read the boxes from the config every time the row is shown. The row
+                // is BUILT once, on first page activation, and afterwards only shown or hidden
+                // -- so without this the widgets keep whatever internal state they were built
+                // with while the config says something else, and the first click writes back
+                // the value the box was already displaying. That is the "click twice to make
+                // it take" symptom.
+                if (fos_show_row) {
+                    const auto *fos_hb = dynamic_cast<const ConfigOptionBools*>(
+                        m_config->option("fos_mms_head_ace"));
+                    for (int h = 0; h < 16; ++h)
+                        if (auto *fos_cb = dynamic_cast<::CheckBox*>(
+                                wxWindow::FindWindowById(FOS_MMS_HEAD_ID_BASE + 1 + h)))
+                            fos_cb->SetValue(fos_hb != nullptr
+                                             && (size_t) h < fos_hb->values.size()
+                                             && fos_hb->values[h] != 0);
+                }
+
                 if (m_active_page != nullptr && m_active_page->parent() != nullptr)
                     m_active_page->parent()->Layout();
             });

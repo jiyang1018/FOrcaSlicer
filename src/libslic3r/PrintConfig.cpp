@@ -4712,10 +4712,13 @@ def = this->add("outer_wall_layer_height_max", coFloat);
 
     // FOS: LAN address of the supply system serving this extruder.
     def = this->add("mms_host", coString);
-    def->label = L("Printer LAN IP");
-    def->tooltip = L("LAN IP address or hostname of the printer running the supply system, "
-                     "for example 192.168.1.50. Used as the target when sending sliced G-code "
-                     "to that system.");
+    def->label = L("Printer LAN IP:port");
+    def->tooltip = L("Address of the printer running the supply system, as IP:port -- for "
+                     "example 192.168.1.50:7126. Used as the target when sending sliced G-code "
+                     "to that system. A hostname works in place of the IP. Leaving the port off "
+                     "falls back to HTTP port 80, which is only correct if the supply system's "
+                     "web service is served there; the simulator and most direct installs are "
+                     "not.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionString(""));
 
