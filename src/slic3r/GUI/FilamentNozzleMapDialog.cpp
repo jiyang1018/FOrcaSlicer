@@ -196,14 +196,31 @@ void FilamentNozzleMapCanvas::reload_from_config()
         n.mms_system = (mms != nullptr) ? mms->getInt() : 0;
         n.mms_name   = fos_mms_label(n.mms_system);
         // FOS: pins = how many alternative supplies feed this nozzle. A pin means a different
-        // thing per mode -- a UNIT in multi, a SLOT in head -- so the two never mix.
+        // thing per mode -- a UNIT in multi, a SLOT in head -- and the labels now SAY which:
+        // the mode rides the supply name and every pin reads U<unit> S<slot>. The mode words
+        // are multiACE's own vocabulary and are deliberately not translated.
         n.pin_count = 1;
         if (n.mms_system != 0) {
             const int tp = (topo != nullptr) ? topo->getInt() : (int) mmtNormal;
-            if (tp == (int) mmtMulti)
-                n.pin_count = std::max(1, qty != nullptr ? qty->value : 1);
-            else if (tp == (int) mmtHead)
-                n.pin_count = (hace != nullptr && i < hace->values.size() && hace->values[i]) ? FOS_MMS_SLOTS : 1;
+            if (tp == (int) mmtMulti) {
+                n.pin_count  = std::max(1, qty != nullptr ? qty->value : 1);
+                n.label_kind = 1;
+                n.mms_name  += " (multi)";
+            } else if (tp == (int) mmtHead) {
+                const bool fos_driven = hace != nullptr && i < hace->values.size() && hace->values[i];
+                n.pin_count = fos_driven ? FOS_MMS_SLOTS : 1;
+                if (fos_driven) {
+                    n.label_kind = 2;
+                    int ord = 0;
+                    for (size_t k = 0; k <= i && k < hace->values.size(); ++k)
+                        if (hace->values[k])
+                            ++ord;
+                    n.unit_ord = ord;
+                }
+                n.mms_name += " (head)";
+            } else {
+                n.mms_name += " (normal)";
+            }
         }
         m_nozzles.push_back(n);
     }
@@ -248,15 +265,22 @@ void FilamentNozzleMapCanvas::reload_from_config()
             m_slot_of[i]   = 0;
             continue;
         }
-        if (slot < 0 || slot >= m_nozzles[nozzle].pin_count)
+        if (slot < 0)
             slot = 0;
-        // A slot already taken by an earlier filament loses the newcomer rather than
-        // silently double-booking. A stale 3mf can carry a map from a different printer.
-        if (filament_on(nozzle, slot) != -1) {
-            int free_slot = first_free_slot(nozzle);
-            if (free_slot < 0) { m_nozzle_of[i] = -1; m_slot_of[i] = 0; continue; }
-            slot = free_slot;
+        // FOS: NEVER evict. The old load clamped an out-of-range slot and dropped the
+        // filament to unassigned when no pin was free - and OK then PERSISTED that
+        // eviction, so "reduce the unit count, open the map, OK" silently unmapped
+        // filaments and the next slice was refused (found fos8-s31). A stored
+        // assignment beyond the current pin count is now KEPT and rendered as a red
+        // over-capacity pin below the real ones; a double-booked valid pin moves to a
+        // free pin when one exists and to an over-capacity row when none does.
+        if (slot < m_nozzles[nozzle].pin_count && filament_on(nozzle, slot) != -1) {
+            const int free_slot = first_free_slot(nozzle);
+            slot = free_slot >= 0 ? free_slot : m_nozzles[nozzle].pin_count;
         }
+        if (slot >= m_nozzles[nozzle].pin_count)
+            while (filament_on(nozzle, slot) != -1)
+                ++slot;
         m_nozzle_of[i] = nozzle;
         m_slot_of[i]   = slot;
     }
@@ -373,12 +397,28 @@ wxRect FilamentNozzleMapCanvas::filament_rect(const FosFilamentNode &f) const
     return wxRect(tl.x, tl.y, int(m_node_w * m_zoom), int(m_filament_h * m_zoom));
 }
 
+// FOS: U<unit> S<slot> pin label. In multi mode the unit varies per pin and the slot
+// is the head index (slot k of every unit feeds head k); in head mode the unit is
+// fixed per head and the slot varies per pin. Empty for direct feeds, feeder heads
+// and normal mode.
+static wxString fos_pin_label(const FosNozzleNode &n, int slot)
+{
+    if (n.label_kind == 1)
+        return wxString::Format("U%d S%d", slot + 1, n.index + 1);
+    if (n.label_kind == 2)
+        return wxString::Format("U%d S%d", n.unit_ord, slot + 1);
+    return wxString();
+}
+
 // Pins sit on the right edge on a FIXED four-slot grid, whether or not an MMS is attached.
 // A directly-fed nozzle therefore puts its single pin exactly where slot 1 of an MMS nozzle
 // would be, so wires stay at a constant height when a supply system is switched on or off.
 wxPoint FilamentNozzleMapCanvas::nozzle_pin_pos(const FosNozzleNode &n, int slot) const
 {
-    const int    idx      = std::max(0, std::min(slot, std::max(1, n.pin_count) - 1));
+    // FOS: no clamp at pin_count - an over-capacity slot (>= pin_count, only ever
+    // produced by retaining a stale map) renders BELOW the real pins on the same
+    // grid pitch, capped for sanity. Interactive paths bounds-check before here.
+    const int    idx      = std::max(0, std::min(slot, FOS_MMS_SLOTS * 2));
     const double body_top = n.y + m_header_h;
     const double body_h   = m_nozzle_h - m_header_h;
     const double y        = body_top + body_h * (double(idx) + 0.5) / double(FOS_MMS_SLOTS);
@@ -786,16 +826,37 @@ void FilamentNozzleMapCanvas::draw_nozzle(wxDC &dc, const FosNozzleNode &n)
                                        (dark ? wxColour(0x60, 0x60, 0x60) : wxColour(0xEE, 0xEE, 0xEE))));
         dc.DrawCircle(c, pr);
 
-        // FOS: number the MMS slots 1..4 top to bottom, so a wire can be read straight off
-        // against the physical bay order. A directly fed nozzle has one pin and needs no label.
-        if (n.pin_count > 1) {
+        // FOS: label each pin U<unit> S<slot>, so the wiring reads straight off the node
+        // - a pin is a UNIT in multi mode and a SLOT in head mode, and the label says
+        // which instead of a bare number. Direct feeds and feeder heads stay bare.
+        const wxString lbl = fos_pin_label(n, s);
+        if (!lbl.empty()) {
             dc.SetFont(scaled_font(::Label::Body_10));
             dc.SetTextForeground(dark ? wxColour(0xB0, 0xB0, 0xB0) : wxColour(0x66, 0x66, 0x66));
-            const wxString lbl = wxString::Format("%d", s + 1);
             const wxSize   ts  = dc.GetTextExtent(lbl);
             const int      gap = std::max(1, int(std::lround(FromDIP(3) * m_zoom)));
             dc.DrawText(lbl, c.x - pr - gap - ts.x, c.y - ts.y / 2);
         }
+    }
+
+    // FOS: over-capacity attachments. A stored map can hold more filaments on this
+    // nozzle than the current topology has pins (units unplugged, tick removed, a
+    // stale 3mf). They are KEPT - the load no longer evicts them - and drawn in red
+    // below the real pins, so what the capacity guard will refuse is visible here
+    // first and can be re-wired by hand. The matching wire draws red in draw().
+    for (size_t fi = 0; fi < m_nozzle_of.size(); ++fi) {
+        if (m_nozzle_of[fi] != n.index || m_slot_of[fi] < n.pin_count)
+            continue;
+        const wxPoint c = nozzle_pin_pos(n, m_slot_of[fi]);
+        dc.SetPen(wxPen(wxColour(0xC6, 0x28, 0x28), 2));
+        dc.SetBrush(wxBrush(wxColour(0xF4, 0x9A, 0x9A)));
+        dc.DrawCircle(c, pr);
+        dc.SetFont(scaled_font(::Label::Body_10).Bold());
+        dc.SetTextForeground(wxColour(0xC6, 0x28, 0x28));
+        const wxString oc_lbl = _L("N/A");
+        const wxSize   oc_ts  = dc.GetTextExtent(oc_lbl);
+        const int      oc_gap = std::max(1, int(std::lround(FromDIP(3) * m_zoom)));
+        dc.DrawText(oc_lbl, c.x - pr - oc_gap - oc_ts.x, c.y - oc_ts.y / 2);
     }
 }
 
@@ -890,7 +951,12 @@ void FilamentNozzleMapCanvas::render(wxDC &dc)
             continue;
         const wxPoint a = nozzle_pin_pos(m_nozzles[nozzle], m_slot_of[i]);
         const wxPoint b = filament_pin_pos(m_filaments[i]);
-        draw_wire(dc, a, b, m_filaments[i].colour, false);
+        // FOS: an over-capacity attachment (kept from a stale map) draws red, so the
+        // refusal the capacity guard will issue is visible before slicing.
+        if (m_slot_of[i] >= m_nozzles[nozzle].pin_count)
+            draw_wire(dc, a, b, wxColour(0xC6, 0x28, 0x28), false);
+        else
+            draw_wire(dc, a, b, m_filaments[i].colour, false);
     }
 
     // the wire currently being dragged

@@ -47,6 +47,13 @@ struct FosNozzleNode
     int      mms_system = 0;   // MultiMaterialSupply value from the printer preset
     wxString mms_name;         // empty when mms_system is None
     int      pin_count  = 1;   // 1, or FOS_MMS_SLOTS
+    // FOS: pin label semantics (closes the s30 open item: a pin means a UNIT in
+    // multi mode and a SLOT in head mode, and the nodes did not say which).
+    // label_kind 0 = unlabeled (direct feed / feeder head), 1 = multi
+    // (U<pin> S<head>), 2 = head (U<unit_ord> S<pin>). unit_ord is the 1-based
+    // ordinal of this head's unit among the ticked heads, head mode only.
+    int      label_kind = 0;
+    int      unit_ord   = 0;
     double   x = 0.0, y = 0.0; // model space, top-left corner
 };
 
