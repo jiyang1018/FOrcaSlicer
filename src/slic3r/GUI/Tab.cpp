@@ -1724,6 +1724,15 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
         return;
     }
 
+    // FOS 8.6: ticking Translucent on a filament decides whether the preview's translucency
+    // switch is shown at all. TRAP: a VECTOR option arrives here with its index appended -
+    // "fos_filament_transparent#0" - which is why this function strips the suffix into
+    // opt_key_without_idx further down. A bare == against the key name never matches, and
+    // the switch then only refreshed on a preset SELECTION, via Sidebar::update_presets.
+    if (opt_key.substr(0, opt_key.find('#')) == "fos_filament_transparent"
+        && wxGetApp().mainframe != nullptr)
+        wxGetApp().mainframe->fos_update_translucency_btn();
+
     if (opt_key == "compatible_prints")
         this->compatible_widget_reload(m_compatible_prints);
     if (opt_key == "compatible_printers")
@@ -4644,6 +4653,9 @@ void TabFilament::build()
         optgroup->append_single_option_line("default_filament_colour");
         // FOS 8.5 stage 1a: translucency flag, read by the filament swatch renderer.
         optgroup->append_single_option_line("fos_filament_transparent");
+        // FOS 8.6: only meaningful while the filament is marked translucent - greyed out
+        // otherwise by TabFilament::toggle_options().
+        optgroup->append_single_option_line("fos_filament_translucency");
         optgroup->append_single_option_line("filament_diameter");
 
         optgroup->append_single_option_line("filament_density");
@@ -4996,6 +5008,9 @@ void TabFilament::toggle_options()
     }
     if (m_active_page->title() == L("Filament"))
     {
+        // FOS 8.6: the translucency percentage follows the Translucent flag.
+        toggle_option("fos_filament_translucency", m_config->opt_bool("fos_filament_transparent", 0));
+
         bool pa = m_config->opt_bool("enable_pressure_advance", 0);
         toggle_option("pressure_advance", pa);
 

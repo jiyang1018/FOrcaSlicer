@@ -24,6 +24,7 @@
 #include "CalibrationPanel.hpp"
 #include "UnsavedChangesDialog.hpp"
 #include "Widgets/SideButton.hpp"
+#include "Widgets/SwitchButton.hpp"
 #include "Widgets/SideMenuPopup.hpp"
 
 #include <boost/property_tree/ptree_fwd.hpp>
@@ -202,6 +203,11 @@ protected:
 public:
     MainFrame();
     ~MainFrame() = default;
+
+    // FOS 8.6: show the preview translucency switch only while some filament in the current
+    // set is marked Translucent. Called from Sidebar::update_presets and Tab::on_value_change,
+    // so it has to be PUBLIC - create_side_tools() next door is private. Safe at any time.
+    void fos_update_translucency_btn();
 
     //BBS GUI refactor
     enum TabPosition
@@ -400,6 +406,9 @@ public:
     // Button* m_publish_btn{ nullptr };
     SideButton* m_slice_btn{ nullptr };
     SideButton* m_slice_option_btn{ nullptr };
+    // FOS 8.6: preview translucency toggle, left of the slice buttons. Session state only -
+    // it starts off at every launch by design.
+    SwitchButton* m_fos_translucency_btn{ nullptr };
     SideButton* m_print_btn{ nullptr };
     SideButton* m_print_option_btn{ nullptr };
     mutable bool          m_slice_enable{ true };

@@ -1253,6 +1253,11 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBools,               filament_soluble))
     ((ConfigOptionBools,               filament_is_support))
     ((ConfigOptionBools,               fos_filament_transparent))
+    // FOS 8.6: preview translucency percentage. MUST be declared here as well as defined in
+    // PrintConfigDef - an option that exists in the def but in no static config class is
+    // half-registered: presets carry it, FullPrintConfig has no slot for it, and the
+    // apply/copy paths disagree about what the config contains.
+    ((ConfigOptionInts,                fos_filament_translucency))
     ((ConfigOptionFloats,              filament_cost))
     ((ConfigOptionStrings,             default_filament_colour))
     // FOS: carried by 21 Snapmaker filament profiles from bundle 02.02.55.02.

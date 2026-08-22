@@ -2439,6 +2439,22 @@ void PrintConfigDef::init_fff_params()
 
     // FOS 8.5 stage 1a: per-filament translucency flag. Drives the 50% checkered swatch in
     // the filament pool and the node mapping window. Cosmetic only - no slicing effect.
+    // FOS 8.6: how see-through this filament is drawn in the preview. A plain bounded int
+    // rather than GUIType::slider on purpose: SliderCtrl::BUILD reads its default through
+    // get_default_value<ConfigOptionInt>(), a SCALAR, while every filament option has to be
+    // a vector - it would dereference nullptr. Nothing in the codebase uses that GUI type.
+    def = this->add("fos_filament_translucency", coInts);
+    def->label = L("Translucency");
+    def->tooltip = L("How see-through this filament is drawn in the sliced preview: 1 is "
+                     "nearly invisible, 99 is nearly solid. Only has an effect when the "
+                     "filament is marked Translucent and the preview's Translucency toggle "
+                     "is on. Does not affect slicing.");
+    def->sidetext = "%";
+    def->min = 1;
+    def->max = 99;
+    def->mode = comSimple;
+    def->set_default_value(new ConfigOptionInts { 45 });
+
     def = this->add("fos_filament_transparent", coBools);
     def->label = L("Translucent");
     def->tooltip = L("Mark this filament as translucent or transparent. Its colour swatch is then "

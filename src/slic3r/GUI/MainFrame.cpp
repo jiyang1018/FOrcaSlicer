@@ -66,6 +66,7 @@
 #include "NetworkTestDialog.hpp"
 #include "ConfigWizard.hpp"
 #include "Widgets/WebView.hpp"
+#include "Widgets/SwitchButton.hpp"
 #include "DailyTips.hpp"
 
 #ifdef _WIN32
@@ -1039,6 +1040,16 @@ void MainFrame::init_tabpanel() {
     wxBoxSizer *side_tools = create_side_tools();
     m_tabpanel = new Notebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, side_tools,
                               wxNB_TOP | wxTAB_TRAVERSAL | wxNB_NOPAGETHEME);
+
+    // FOS 8.6: ButtonsListCtrl REPARENTS every side-tools widget into the tab bar, and a
+    // SwitchButton bakes its parent's background into the bitmap it paints (opaque on MSW),
+    // so the one built against MainFrame kept grey corners around its rounded track once it
+    // moved. Rescale() re-reads GetParentBackgroundColor(GetParent()), so re-running it
+    // after the reparent redraws the track on the bar's actual colour.
+    if (m_fos_translucency_btn != nullptr) {
+        m_fos_translucency_btn->Rescale();
+        fos_update_translucency_btn();
+    }
     m_tabpanel->SetBackgroundColour(*wxWHITE);
 
 #ifndef __WXOSX__ // Don't call SetFont under OSX to avoid name cutting in ObjectList
@@ -1622,6 +1633,44 @@ bool MainFrame::can_reslice() const
     return (m_plater != nullptr) && !m_plater->model().objects.empty();
 }
 
+// FOS 8.6: the translucency switch is only meaningful when at least one filament in the
+// current set is marked Translucent, so it is hidden otherwise rather than sitting there
+// doing nothing. Called on filament preset changes (Sidebar::update_presets) and when the
+// Translucent box itself is ticked (Tab::on_value_change). Turning translucency back off
+// when the last translucent filament goes away keeps the viewer and the switch in step.
+void MainFrame::fos_update_translucency_btn()
+{
+    if (m_fos_translucency_btn == nullptr)
+        return;
+    bool any = false;
+    if (const PresetBundle *pb = wxGetApp().preset_bundle) {
+        for (const std::string &name : pb->filament_presets) {
+            const Preset *p = pb->filaments.find_preset(name);
+            if (p == nullptr)
+                continue;
+            const auto *tr = p->config.option<ConfigOptionBools>("fos_filament_transparent");
+            if (tr != nullptr && !tr->values.empty() && tr->values.front()) {
+                any = true;
+                break;
+            }
+        }
+    }
+    if (!any && m_fos_translucency_btn->GetValue()) {
+        m_fos_translucency_btn->SetValue(false);
+        if (m_plater != nullptr)
+            if (GLCanvas3D *canvas = m_plater->get_preview_canvas3D()) {
+                canvas->get_gcode_viewer().fos_set_translucency(false);
+                canvas->set_as_dirty();
+                canvas->request_extra_frame();
+            }
+    }
+    if (m_fos_translucency_btn->IsShown() != any) {
+        m_fos_translucency_btn->Show(any);
+        if (m_fos_translucency_btn->GetParent() != nullptr)
+            m_fos_translucency_btn->GetParent()->Layout();
+    }
+}
+
 wxBoxSizer* MainFrame::create_side_tools()
 {
     enable_multi_machine = wxGetApp().is_enable_multi_machine();
@@ -1643,6 +1692,38 @@ wxBoxSizer* MainFrame::create_side_tools()
     m_print_option_btn->Enable();
     // sizer->Add(m_publish_btn, 0, wxLEFT | wxALIGN_CENTER_VERTICAL, FromDIP(1));
     // sizer->Add(FromDIP(15), 0, 0, 0, 0);
+    // FOS 8.6: translucency toggle for the sliced preview. Filaments marked Translucent are
+    // drawn see-through at their own percentage only while this is on; off (the default at
+    // every launch) the preview renders exactly as stock, with no extra render pass.
+    // Segmented switch, the "Global | Objects" form (ParamsPanel), which matches the slice
+    // buttons' weight. TWO TRAPS here:
+    //  1. SetMaxSize() MUST come before SetLabels(). Rescale() compares the track width
+    //     against GetMaxWidth(), which is wxDefaultCoord (-1) until a max size is set, so
+    //     the test always passes, the track width is set to -1 and the control paints
+    //     nothing at all - an invisible button.
+    //  2. labels[0] draws on the LEFT and is highlighted when the value is FALSE; labels[1]
+    //     draws right and is highlighted when TRUE. The SetLabels(lbl_on, lbl_off) parameter
+    //     names are backwards with respect to that - "Global | Objects" reads Global-active
+    //     precisely because its value is false. So: Solid first, Translucent second.
+    m_fos_translucency_btn = new SwitchButton(this);
+    m_fos_translucency_btn->SetMaxSize({ em_unit() * 20, -1 });
+    m_fos_translucency_btn->SetLabels(_L("Solid"), _L("Translucent"));
+    m_fos_translucency_btn->SetValue(false);
+    m_fos_translucency_btn->SetToolTip(_L("Draw filaments marked Translucent as see-through "
+                                          "in the sliced preview, each at its own "
+                                          "translucency percentage."));
+    m_fos_translucency_btn->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent &e) {
+        if (m_plater != nullptr) {
+            if (GLCanvas3D *canvas = m_plater->get_preview_canvas3D()) {
+                canvas->get_gcode_viewer().fos_set_translucency(e.IsChecked());
+                canvas->set_as_dirty();
+                canvas->request_extra_frame();
+            }
+        }
+        e.Skip();
+    });
+    sizer->Add(m_fos_translucency_btn, 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, FromDIP(15));
+
     sizer->Add(m_slice_option_btn, 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, FromDIP(2));
     sizer->Add(m_slice_btn       , 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, FromDIP(15));
     sizer->Add(m_print_option_btn, 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, FromDIP(2));

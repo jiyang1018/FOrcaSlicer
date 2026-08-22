@@ -773,6 +773,9 @@ private:
     std::vector<EMoveType> options_items;
 
     bool m_legend_enabled{ true };
+    // FOS 8.6: see fos_set_translucency().
+    bool m_fos_translucency_on{ false };
+    void fos_apply_tool_alpha();
     float m_legend_height;
     PrintEstimatedStatistics m_print_statistics;
     PrintEstimatedStatistics::ETimeMode m_time_estimate_mode{ PrintEstimatedStatistics::ETimeMode::Normal };
@@ -806,6 +809,13 @@ public:
     // recalculate ranges in dependence of what is visible and sets tool/print colors
     void refresh(const GCodeProcessorResult& gcode_result, const std::vector<std::string>& str_tool_colors);
     void refresh_render_paths();
+
+    // FOS 8.6: preview translucency. Off by default every launch; the toolbar toggle drives
+    // it. When off every tool colour is fully opaque and rendering is byte-identical to
+    // stock. When on, a filament marked Translucent is drawn at its own
+    // fos_filament_translucency percentage.
+    void fos_set_translucency(bool on);
+    bool fos_translucency() const { return m_fos_translucency_on; }
     void update_shells_color_by_extruder(const DynamicPrintConfig* config);
     void set_shell_transparency(float alpha = 0.15f);
 

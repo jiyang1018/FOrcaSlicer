@@ -2225,6 +2225,11 @@ void Sidebar::update_presets(Preset::Type preset_type)
     // Synchronize config.ini with the current selections.
     wxGetApp().preset_bundle->export_selections(*wxGetApp().app_config);
 
+    // FOS 8.6: the set of filaments just changed, so the preview translucency switch may
+    // need to appear or disappear.
+    if (preset_type == Preset::TYPE_FILAMENT && wxGetApp().mainframe != nullptr)
+        wxGetApp().mainframe->fos_update_translucency_btn();
+
     BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(": exit.");
 
 }
@@ -8472,6 +8477,14 @@ sidebar->update_dynamic_filament_list();
 
     // BBS: log modify of filament selection
     Slic3r::put_other_changes();
+
+    // FOS 8.6: a different filament preset may bring in (or take away) a Translucent
+    // filament, so the preview's translucency switch may need to appear or disappear.
+    // Hooked HERE rather than only in Sidebar::update_presets: picking a preset from the
+    // sidebar dropdown does not route through that, which is why the switch previously
+    // only caught up when the printer preset was changed.
+    if (preset_type == Preset::TYPE_FILAMENT && wxGetApp().mainframe != nullptr)
+        wxGetApp().mainframe->fos_update_translucency_btn();
 
     // update slice state and set bedtype default for 3rd-party printer
     auto plate_list = partplate_list.get_plate_list();

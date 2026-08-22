@@ -751,6 +751,10 @@ const std::vector<ColorRGBA> GCodeViewer::Range_Colors{ {
 const ColorRGBA GCodeViewer::Wipe_Color    = ColorRGBA::YELLOW();
 const ColorRGBA GCodeViewer::Neutral_Color = ColorRGBA::DARK_GRAY();
 
+// FOS 8.6: opacity used for a filament marked Translucent. Low enough to read as
+// see-through against the paths behind it, high enough to keep its hue identifiable.
+static constexpr float FOS_TRANSLUCENT_ALPHA = 0.45f;
+
 GCodeViewer::GCodeViewer()
 {
     m_moves_slider  = new IMSlider(0, 0, 0, 100, wxSL_HORIZONTAL);
@@ -1118,6 +1122,8 @@ void GCodeViewer::refresh(const GCodeProcessorResult& gcode_result, const std::v
     for (int i = 0; i < m_tools.m_tool_colors.size(); i++) {
         m_tools.m_tool_colors[i] = adjust_color_for_rendering(m_tools.m_tool_colors[i]);
     }
+
+    fos_apply_tool_alpha();
     ColorRGBA default_color;
     decode_color("#FF8000", default_color);
 	// ensure there are enough colors defined
@@ -1177,6 +1183,44 @@ m_extrusions.ranges.layer_duration_log.update_from(curr.layer_duration);
     // update buffers' render paths
     refresh_render_paths();
     log_memory_used("Refreshed G-code extrusion paths, ");
+}
+
+// FOS 8.6: set each tool colour's ALPHA from its filament preset. Only the alpha is
+// touched, so it can be re-applied at any time without rebuilding colours. The two-pass
+// blending that makes a translucent path actually see-through lives in render_toolpaths().
+// The flags are filament PRESET options, so they are read from the bundle rather than from
+// the G-code: a standalone .gcode opened in the viewer has no bundle to match and stays
+// opaque, which is the right answer.
+void GCodeViewer::fos_apply_tool_alpha()
+{
+    const PresetBundle *fos_pb = wxGetApp().preset_bundle;
+    for (size_t i = 0; i < m_tools.m_tool_colors.size(); ++i) {
+        float alpha = 1.0f;
+        if (m_fos_translucency_on && fos_pb != nullptr && i < fos_pb->filament_presets.size()) {
+            if (const Preset *p = fos_pb->filaments.find_preset(fos_pb->filament_presets[i])) {
+                const auto *tr = p->config.option<ConfigOptionBools>("fos_filament_transparent");
+                if (tr != nullptr && !tr->values.empty() && tr->values.front()) {
+                    int pct = 45;
+                    if (const auto *v = p->config.option<ConfigOptionInts>("fos_filament_translucency"))
+                        if (!v->values.empty())
+                            pct = v->values.front();
+                    alpha = std::min(99, std::max(1, pct)) / 100.0f;
+                }
+            }
+        }
+        m_tools.m_tool_colors[i].a(alpha);
+    }
+}
+
+void GCodeViewer::fos_set_translucency(bool on)
+{
+    if (m_fos_translucency_on == on)
+        return;
+    m_fos_translucency_on = on;
+    fos_apply_tool_alpha();
+    // Render paths cache the colour they were built with, so they have to be rebuilt for
+    // the new alpha to reach the shader.
+    refresh_render_paths(false, false);
 }
 
 void GCodeViewer::refresh_render_paths()
@@ -3762,9 +3806,12 @@ void GCodeViewer::render_toolpaths()
 #if ENABLE_GCODE_VIEWER_STATISTICS
         this
 #endif // ENABLE_GCODE_VIEWER_STATISTICS
-    ](std::vector<RenderPath>::iterator it_path, std::vector<RenderPath>::iterator it_end, GLShaderProgram& shader, int uniform_color) {
+    ](std::vector<RenderPath>::iterator it_path, std::vector<RenderPath>::iterator it_end, GLShaderProgram& shader, int uniform_color, bool fos_translucent_pass) {
         for (auto it = it_path; it != it_end && it_path->ibuffer_id == it->ibuffer_id; ++it) {
             const RenderPath& path = *it;
+            // FOS 8.6: opacity pass filter - see the two-pass loop below.
+            if ((path.color.a() < 1.0f) != fos_translucent_pass)
+                continue;
             // Some OpenGL drivers crash on empty glMultiDrawElements, see GH #7415.
             assert(! path.sizes.empty());
             assert(! path.offsets.empty());
@@ -3780,9 +3827,12 @@ void GCodeViewer::render_toolpaths()
 #if ENABLE_GCODE_VIEWER_STATISTICS
         this
 #endif // ENABLE_GCODE_VIEWER_STATISTICS
-    ](std::vector<RenderPath>::iterator it_path, std::vector<RenderPath>::iterator it_end, GLShaderProgram& shader, int uniform_color) {
+    ](std::vector<RenderPath>::iterator it_path, std::vector<RenderPath>::iterator it_end, GLShaderProgram& shader, int uniform_color, bool fos_translucent_pass) {
         for (auto it = it_path; it != it_end && it_path->ibuffer_id == it->ibuffer_id; ++it) {
             const RenderPath& path = *it;
+            // FOS 8.6: opacity pass filter - see the two-pass loop below.
+            if ((path.color.a() < 1.0f) != fos_translucent_pass)
+                continue;
             // Some OpenGL drivers crash on empty glMultiDrawElements, see GH #7415.
             assert(! path.sizes.empty());
             assert(! path.offsets.empty());
@@ -3887,9 +3937,35 @@ void GCodeViewer::render_toolpaths()
     const unsigned char begin_id = buffer_id(EMoveType::Retract);
     const unsigned char end_id   = buffer_id(EMoveType::Count);
 
+    // FOS 8.6: translucent filaments. Toolpaths are batched by extrusion role and index
+    // buffer, never by opacity, so a single blended pass would let a translucent bead write
+    // depth and z-reject the opaque geometry behind it - blended against the background
+    // instead of against what it actually covers. So: opaque first exactly as before, then
+    // the translucent paths with depth WRITES off and blending on, which is the same shape
+    // as render_shells(). The second pass is skipped entirely unless a tool colour is
+    // actually translucent AND the view colours by tool, so the normal preview is
+    // byte-identical and costs nothing extra.
+    const bool fos_tool_view = (m_view_type == EViewType::Tool || m_view_type == EViewType::ColorPrint);
+    const bool fos_two_pass  = fos_tool_view
+        && std::any_of(m_tools.m_tool_colors.begin(), m_tools.m_tool_colors.end(),
+                       [](const ColorRGBA &c) { return c.a() < 1.0f; });
+
+    for (int fos_pass = 0; fos_pass < (fos_two_pass ? 2 : 1); ++fos_pass) {
+    const bool fos_translucent_pass = (fos_pass == 1);
+    if (fos_translucent_pass) {
+        glsafe(::glEnable(GL_BLEND));
+        glsafe(::glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+        glsafe(::glDepthMask(GL_FALSE));
+    }
+
     for (unsigned char i = begin_id; i < end_id; ++i) {
         TBuffer& buffer = m_buffers[i];
         if (!buffer.visible || !buffer.has_data())
+            continue;
+        // Options (retract/seam markers and friends) are always opaque - draw them once.
+        if (fos_translucent_pass
+            && buffer.render_primitive_type != TBuffer::ERenderPrimitiveType::Line
+            && buffer.render_primitive_type != TBuffer::ERenderPrimitiveType::Triangle)
             continue;
 
         GLShaderProgram* shader = wxGetApp().get_shader(buffer.shader.c_str());
@@ -3948,11 +4024,11 @@ void GCodeViewer::render_toolpaths()
                 {
                 case TBuffer::ERenderPrimitiveType::Line: {
                     glsafe(::glLineWidth(static_cast<GLfloat>(line_width(zoom))));
-                    render_as_lines(it_path, buffer.render_paths.end(), *shader, uniform_color);
+                    render_as_lines(it_path, buffer.render_paths.end(), *shader, uniform_color, fos_translucent_pass);
                     break;
                 }
                 case TBuffer::ERenderPrimitiveType::Triangle: {
-                    render_as_triangles(it_path, buffer.render_paths.end(), *shader, uniform_color);
+                    render_as_triangles(it_path, buffer.render_paths.end(), *shader, uniform_color, fos_translucent_pass);
                     break;
                 }
                 default: { break; }
@@ -3970,6 +4046,12 @@ void GCodeViewer::render_toolpaths()
 
         shader->stop_using();
     }
+
+    if (fos_translucent_pass) {
+        glsafe(::glDepthMask(GL_TRUE));
+        glsafe(::glDisable(GL_BLEND));
+    }
+    } // FOS 8.6: end of the opaque / translucent pass loop
 
 #if ENABLE_GCODE_VIEWER_STATISTICS
     auto render_sequential_range_cap = [this, &camera]
