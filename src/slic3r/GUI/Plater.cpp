@@ -1533,9 +1533,9 @@ Sidebar::Sidebar(Plater *parent)
     bSizer39->Add(ams_btn, 0, wxALIGN_CENTER | wxLEFT, FromDIP(SidebarProps::IconSpacing()));
     //bSizer39->Add(FromDIP(10), 0, 0, 0, 0 );
 
-    // FOS 8.5 stage 1a: filament <-> nozzle mapping. Placeholder icon reuses the filament
-    // glyph until a dedicated one is drawn.
-    ScalableButton* map_btn = new ScalableButton(p->m_panel_filament_title, wxID_ANY, "add_filament");
+    // FOS 8.5 stage 1a: filament <-> nozzle mapping. FOS 8.6: dedicated icon
+    // (resources/images/nozzle_filament_mapping.svg).
+    ScalableButton* map_btn = new ScalableButton(p->m_panel_filament_title, wxID_ANY, "nozzle_filament_mapping");
     map_btn->SetToolTip(_L("Map filaments to nozzles"));
     map_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &e) {
         FilamentNozzleMapDialog dlg(wxGetApp().mainframe);
