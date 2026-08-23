@@ -1,18 +1,18 @@
 {
   "code": 200,
   "data": {
-    "version": "8.5.7-beta.2",
-    "release_type": "beta",
+    "version": "8.6.0",
+    "release_type": "stable",
     "platform_type": "win",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.5.7-beta.2\n\n预设修复：四个 FOrcaSlicer 选项（色块启用、色块圈数、外墙接缝位置、内墙最大层高）已定义但未注册到预设类型，因此无法保存，并在加载时被从每个预设中移除。现已修复，这些选项可正常保存。\n\n新增：更新提醒。启动时以及通过“帮助 > 检查更新”可检查新版本，更新对话框中可切换 beta 通道。",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.0\n\n8.6 正式版。取代 8.5.7-beta.1 与 beta.2，并包含两者的全部内容。\n\n新增：耗材到喷嘴的映射。任意耗材可接到任意喷嘴，每种耗材按其实际打印喷嘴切片（含首层线宽）。硬件无法装载的组合会拒绝切片并说明原因。\n\n新增：多材料供料系统支持，首先支持 multiACE。在 打印机设置 > 机器 > 附件 中设置模式、单元数与工具头，可从打印机读取，并可直接发送到 multiACE。\n\n新增：切片预览中的半透明耗材显示；耗材颜色选择窗口新增 HEX 输入框。\n\n修复：一个持续重绘循环占满一个 CPU 核心并导致 8.5.6 打开 3mf 极慢；耗材数多于喷嘴数的工程重新打开后打印机配置损坏；四个设置在每次加载预设时被丢弃。\n\n从 8.5.7-beta.2 升级且已配置供料系统的用户：请重新输入一次打印机局域网 IP。",
       "default": {
-        "file_size": 105208476,
-        "file_md5": "8b683f125c2cd1c8e8811f8215d4fb5f",
-        "file_sha256": "00f5dfb943c2e873512271bed4cb7cc713007cd8b4747a51312c89dd2fe35b3a",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.5.7-beta.2/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.5.7-beta.2.exe",
+        "file_size": 105273233,
+        "file_md5": "6192f5372337dab20573a4924904836f",
+        "file_sha256": "30b9afe704452c11970373a59912bc0df32bd6cc20f39d13aaf341fd62146fb1",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.0/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.0.exe",
         "reserved_1": "",
         "reserved_2": ""
       }
