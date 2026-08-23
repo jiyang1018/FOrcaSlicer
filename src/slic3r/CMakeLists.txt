@@ -441,6 +441,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/Widgets/CheckBox.cpp
     GUI/Widgets/CheckBox.hpp
     GUI/Widgets/CustomNotebook.hpp
+    GUI/FosColourDialog.cpp
+    GUI/FosColourDialog.hpp
     GUI/Widgets/ComboBox.cpp
     GUI/Widgets/ComboBox.hpp
     GUI/Widgets/DialogButtons.cpp

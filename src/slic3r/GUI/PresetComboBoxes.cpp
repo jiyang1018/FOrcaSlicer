@@ -43,6 +43,7 @@
 #include "BitmapCache.hpp"
 #include "SavePresetDialog.hpp"
 #include "MsgDialog.hpp"
+#include "FosColourDialog.hpp"
 #include "ParamsDialog.hpp"
 
 // A workaround for a set of issues related to text fitting into gtk widgets:
@@ -765,7 +766,8 @@ PlaterPresetComboBox::PlaterPresetComboBox(wxWindow *parent, Preset::Type preset
             for (int i = 0; i < colors.size(); i++) {
                  m_clrData.SetCustomColour(i, string_to_wxColor(colors[i]));
             }
-            wxColourDialog dialog(this, &m_clrData);
+            // FOS 8.6: native chooser with a HEX field added inside it - see FosColourDialog.hpp.
+            FosColourDialog dialog(this, &m_clrData);
             dialog.SetTitle(_L("Please choose the filament color"));
             if ( dialog.ShowModal() == wxID_OK )
             {
@@ -957,7 +959,9 @@ void PlaterPresetComboBox::change_extruder_color()
     data->SetChooseFull(1);
     data->SetColour(clr);
 
-    wxColourDialog dialog(this, data);
+    // FOS 8.6: native chooser with a HEX field added inside it - see FosColourDialog.hpp.
+    FosColourDialog dialog(this, data);
+    dialog.SetTitle(_L("Please choose the filament color"));
     dialog.CenterOnParent();
     if (dialog.ShowModal() == wxID_OK)
     {
