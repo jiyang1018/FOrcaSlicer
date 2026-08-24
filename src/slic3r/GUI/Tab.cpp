@@ -5296,7 +5296,7 @@ void TabPrinter::build_fff()
         // different supply systems at once, and the wiring is a property of the machine, so
         // it belongs here rather than repeated on every extruder page. Only the toolhead row
         // at the bottom is per toolhead.
-        optgroup = page->new_optgroup(L("Multi-material supply"), "param_accessory");
+        optgroup = page->new_optgroup(L("Multi-material supply"), "multi_material_supply");
         // FOS: the topology-fetch button is an EXTRA widget on the Supply system line
         // (line.append_widget), which OG_CustomCtrl::correct_widgets_position places only
         // after h_pos has walked past the field and its undo dots. Do NOT use line.widget /
