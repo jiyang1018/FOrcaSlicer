@@ -9,9 +9,9 @@
     "full": {
       "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.0\n\n8.6 正式版。取代 8.5.7-beta.1 与 beta.2，并包含两者的全部内容。\n\n新增：耗材到喷嘴的映射。任意耗材可接到任意喷嘴，每种耗材按其实际打印喷嘴切片（含首层线宽）。硬件无法装载的组合会拒绝切片并说明原因。\n\n新增：多材料供料系统支持，首先支持 multiACE。在 打印机设置 > 机器 > 附件 中设置模式、单元数与工具头，可从打印机读取，并可直接发送到 multiACE。\n\n新增：切片预览中的半透明耗材显示；耗材颜色选择窗口新增 HEX 输入框。\n\n修复：一个持续重绘循环占满一个 CPU 核心并导致 8.5.6 打开 3mf 极慢；耗材数多于喷嘴数的工程重新打开后打印机配置损坏；四个设置在每次加载预设时被丢弃。\n\n从 8.5.7-beta.2 升级且已配置供料系统的用户：请重新输入一次打印机局域网 IP。",
       "default": {
-        "file_size": 105279604,
-        "file_md5": "bfff4b94051e590b4e865db89e09a2ea",
-        "file_sha256": "b68b9a6b8ffbfe515dad0d304831f1c86a7186665f3f79bd7330e43bbdad43ca",
+        "file_size": 105278518,
+        "file_md5": "a591185912281b1f364e851a905fff86",
+        "file_sha256": "7ab3f269d01e283d88648f75ee9ddd285be4ff2a62f8b3349f46d72bdcadfe5c",
         "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.0/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.0.exe",
         "reserved_1": "",
         "reserved_2": ""
