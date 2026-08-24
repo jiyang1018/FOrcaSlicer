@@ -216,8 +216,12 @@ void FilamentNozzleMapCanvas::reload_from_config()
                         if (hace->values[k])
                             ++ord;
                     n.unit_ord = ord;
+                    n.mms_name += " (head)";
+                } else {
+                    // FOS 8.6: a head with no unit ticked is fed straight from its own spool.
+                    // No multiACE reaches it, so it must not carry the supply system's name.
+                    n.mms_name = _L("Direct feed");
                 }
-                n.mms_name += " (head)";
             } else {
                 n.mms_name += " (normal)";
             }
