@@ -1,34 +1,34 @@
 {
   "code": 200,
   "data": {
-    "version": "8.5.7-beta.2",
-    "release_type": "beta",
+    "version": "8.6.0",
+    "release_type": "stable",
     "platform_type": "mac",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.5.7-beta.2\n\nPreset fix: four FOrcaSlicer options (color patch enabled, color patch loops, outer wall seam position, inner wall max layer height) were defined but never registered to a preset type, so they could not be saved and were stripped from every preset on load. Two code paths compensated by injecting them into the wrong preset types, producing hundreds of 'incorrect keys' errors per launch and quietly dropping settings. These options now persist correctly.\n\nNew: update notification. FOrcaSlicer now checks for new releases at startup and from Help > Check for Update, with a beta channel toggle in the update dialog.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.0\n\nThe 8.6 release. Supersedes 8.5.7-beta.1 and beta.2 and includes everything from both.\n\nNew: filament to nozzle mapping - any filament can be wired to any nozzle, and each one is sliced for the nozzle it will actually print through, including the first layer line width. Slicing now refuses combinations the hardware cannot load, and names the reason.\n\nNew: multi-material supply support, starting with multiACE - mode, units and toolheads under Printer settings > Machine > Accessory, Read from printer, and Send to multiACE.\n\nNew: translucent filaments in the sliced preview, and a HEX field in the filament colour picker.\n\nFixed: a permanent repaint loop that burned a CPU core and made 3mf loading crawl on 8.5.6; projects with more filaments than nozzles corrupting the printer on reopen; four settings silently discarded on every preset load.\n\nUpgrading from 8.5.7-beta.2 with a supply system configured: re-enter the printer LAN IP once.",
       "default": {
-        "file_size": 213212863,
-        "file_md5": "da4bfcf890a7b0d003bdfa176161ce2f",
-        "file_sha256": "81cf5b3255e3fa0e3c4e1293b64330a1b7435cf6ec4d38dd8163f7559347f986",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.5.7-beta.2/FOrcaSlicer-2.3.2-fos.8.5.7-beta.2-macos-universal.dmg",
+        "file_size": 205424718,
+        "file_md5": "fbdec897ed94776dab9d717244ca425d",
+        "file_sha256": "31409068e578001fa531dfbdd321dd2e216d9bcbe9f7c9a69a09981df0ea8f5f",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.0/FOrcaSlicer-2.3.2-fos.8.6.0-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "arm": {
-        "file_size": 213212863,
-        "file_md5": "da4bfcf890a7b0d003bdfa176161ce2f",
-        "file_sha256": "81cf5b3255e3fa0e3c4e1293b64330a1b7435cf6ec4d38dd8163f7559347f986",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.5.7-beta.2/FOrcaSlicer-2.3.2-fos.8.5.7-beta.2-macos-universal.dmg",
+        "file_size": 205424718,
+        "file_md5": "fbdec897ed94776dab9d717244ca425d",
+        "file_sha256": "31409068e578001fa531dfbdd321dd2e216d9bcbe9f7c9a69a09981df0ea8f5f",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.0/FOrcaSlicer-2.3.2-fos.8.6.0-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "intel": {
-        "file_size": 213212863,
-        "file_md5": "da4bfcf890a7b0d003bdfa176161ce2f",
-        "file_sha256": "81cf5b3255e3fa0e3c4e1293b64330a1b7435cf6ec4d38dd8163f7559347f986",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.5.7-beta.2/FOrcaSlicer-2.3.2-fos.8.5.7-beta.2-macos-universal.dmg",
+        "file_size": 205424718,
+        "file_md5": "fbdec897ed94776dab9d717244ca425d",
+        "file_sha256": "31409068e578001fa531dfbdd321dd2e216d9bcbe9f7c9a69a09981df0ea8f5f",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.0/FOrcaSlicer-2.3.2-fos.8.6.0-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       }
