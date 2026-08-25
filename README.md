@@ -55,6 +55,16 @@ The Snapmaker U1 has 4 independent heads that can carry different nozzle diamete
 
 *Turn on **Mixed**, give each nozzle its own process preset, then set line width and speed per nozzle in the Quality and Speed tabs. Layer height stays global, below the nozzle tabs.*
 
+### Multi-material supply (multiACE)
+
+More filaments than heads: FOrcaSlicer can be told that a multi-material supply system feeds the printer, and slices for it. Support starts with **multiACE**, the open-source multi-material unit for the U1 by decay71 — see **[decay71/multiACE](https://github.com/decay71/multiACE)**.
+
+- **Declared under Printer settings > Machine > Accessory** — supply system, printer LAN IP, mode (`normal` / `multi` / `head`, using multiACE's own vocabulary), and unit count or unit-driven toolheads. Mode decides how many filaments each nozzle can reach, which is a slicing input, so it is set before slicing rather than at send time.
+- **Read from printer** asks the machine for its current wiring and fitted nozzles, shows the full picture, and fills the fields in only after you confirm. It never overwrites nozzle diameters.
+- **Send to multiACE** appears under the print dropdown and uploads the sliced file straight to the machine.
+- **Slicing refuses combinations the hardware cannot load** — if more filaments demand a nozzle diameter than the declared wiring can hold at once, the print is stopped with the counts spelled out, instead of failing at the printer.
+- Exported G-code carries the machine's physical nozzle diameters in the header, so the supply system can match what the file demands against what is actually fitted.
+
 ### Color Patch pipeline
 
 When you paint a surface, only its outer shell prints in the painted filament; the interior stays base material. The point isn't color — it's that **the shell and the core can be different materials**, held together by geometry. That unlocks two things stock's paint mode can't do.
