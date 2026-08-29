@@ -3,7 +3,7 @@
 set -e
 set -o pipefail
 
-while getopts ":dpa:snt:xbc:1h" opt; do
+while getopts ":dpa:snt:xbc:1hT" opt; do
   case "${opt}" in
     d )
         export BUILD_TARGET="deps"
@@ -37,6 +37,9 @@ while getopts ":dpa:snt:xbc:1h" opt; do
     1 )
         export CMAKE_BUILD_PARALLEL_LEVEL=1
         ;;
+    T )
+        export SHOW_BUILD_TIME="1"
+        ;;
     h ) echo "Usage: ./build_release_macos.sh [-d]"
         echo "   -d: Build deps only"
         echo "   -a: Set ARCHITECTURE (arm64 or x86_64 or universal)"
@@ -47,6 +50,7 @@ while getopts ":dpa:snt:xbc:1h" opt; do
         echo "   -b: Build without reconfiguring CMake"
         echo "   -c: Set CMake build configuration, default is Release"
         echo "   -1: Use single job for building"
+        echo "   -T: Report elapsed build time per stage, plus a summary at the end"
         exit 0
         ;;
     * )
@@ -85,12 +89,59 @@ if [ -z "$OSX_DEPLOYMENT_TARGET" ]; then
   export OSX_DEPLOYMENT_TARGET="12.0"
 fi
 
+# FOS: opt-in build timing, enabled with -T only. Without -T none of this
+# prints and stdout is byte-identical to before, so CI log parsing is safe.
+# Stages are recorded in order, so -a universal yields one line per chip.
+FOS_TIMER_LABELS=()
+FOS_TIMER_SECONDS=()
+FOS_RUN_START=$SECONDS
+FOS_STAGE_START=$SECONDS
+
+fos_fmt_hms() {
+    local t=$1
+    printf "%02dh %02dm %02ds" $((t / 3600)) $(((t % 3600) / 60)) $((t % 60))
+}
+
+fos_timer_start() {
+    FOS_STAGE_START=$SECONDS
+}
+
+fos_timer_end() {
+    if [ "1." != "$SHOW_BUILD_TIME". ]; then
+        return 0
+    fi
+    local label="$1"
+    local elapsed=$((SECONDS - FOS_STAGE_START))
+    FOS_TIMER_LABELS+=("$label")
+    FOS_TIMER_SECONDS+=("$elapsed")
+    echo "[time] $label: $(fos_fmt_hms $elapsed)"
+}
+
+fos_timer_summary() {
+    if [ "1." != "$SHOW_BUILD_TIME". ]; then
+        return 0
+    fi
+    local total=$((SECONDS - FOS_RUN_START))
+    local i=0
+    echo
+    echo "==================== build time ===================="
+    while [ $i -lt ${#FOS_TIMER_LABELS[@]} ]; do
+        printf "  %-30s %s\n" "${FOS_TIMER_LABELS[$i]}" "$(fos_fmt_hms ${FOS_TIMER_SECONDS[$i]})"
+        i=$((i + 1))
+    done
+    printf "  %-30s %s\n" "TOTAL (wall clock)" "$(fos_fmt_hms $total)"
+    echo "===================================================="
+}
+
 echo "Build params:"
 echo " - ARCH: $ARCH"
 echo " - BUILD_CONFIG: $BUILD_CONFIG"
 echo " - BUILD_TARGET: $BUILD_TARGET"
 echo " - CMAKE_GENERATOR: $SLICER_CMAKE_GENERATOR for Slicer, $DEPS_CMAKE_GENERATOR for deps"
 echo " - OSX_DEPLOYMENT_TARGET: $OSX_DEPLOYMENT_TARGET"
+if [ "1." == "$SHOW_BUILD_TIME". ]; then
+echo " - BUILD TIMING: on"
+fi
 echo
 
 # if which -s brew; then
@@ -125,6 +176,7 @@ function build_deps() {
             DEPS_BUILD_DIR="$DEPS_DIR/build/$_ARCH"
             DEPS="$DEPS_BUILD_DIR/OrcaSlicer_dep"
 
+            fos_timer_start
             echo "Building deps..."
             (
                 set -x
@@ -141,6 +193,7 @@ function build_deps() {
                 fi
                 cmake --build . --config "$BUILD_CONFIG" --target deps
             )
+            fos_timer_end "deps ($_ARCH)"
         fi
     done
 }
@@ -164,6 +217,7 @@ function build_slicer() {
             DEPS_BUILD_DIR="$DEPS_DIR/build/$_ARCH"
             DEPS="$DEPS_BUILD_DIR/OrcaSlicer_dep"
 
+            fos_timer_start
             echo "Building slicer for $_ARCH..."
             (
                 set -x
@@ -314,11 +368,14 @@ function build_slicer() {
 
         # zip -FSr Snapmaker_Orca${ver}_Mac_${_ARCH}.zip OrcaSlicer.app
 
+    fos_timer_end "slicer ($_ARCH)"
+
     fi
     done
 }
 
 function build_universal() {
+    fos_timer_start
     echo "Building universal binary..."
 
     PROJECT_BUILD_DIR="$PROJECT_DIR/build/$ARCH"
@@ -428,6 +485,7 @@ function build_universal() {
     
     echo "Universal dSYM files generated in ${DSYM_DIR}"
     ls -la "${DSYM_DIR}" 2>/dev/null || echo "No dSYM files generated"
+    fos_timer_end "universal lipo"
 }
 
 case "${BUILD_TARGET}" in
@@ -454,3 +512,5 @@ fi
 if [ "1." == "$PACK_DEPS". ]; then
     pack_deps
 fi
+
+fos_timer_summary
