@@ -84,7 +84,7 @@ jobs:
       # on a clean tree it matches nothing and the hash is unchanged.
       - name: Compute dep cache key
         id: depkey
-        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
+        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', 'deps/**/*.patch', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache dependency install prefix
         id: deps-cache
@@ -157,7 +157,7 @@ jobs:
       # on a clean tree it matches nothing and the hash is unchanged.
       - name: Compute dep cache key
         id: depkey
-        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
+        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', 'deps/**/*.patch', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore x86_64 dependency prefix
         uses: actions/cache/restore@v4

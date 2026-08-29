@@ -49,7 +49,7 @@ jobs:
       # of *.cmake files under deps/**, which would change hashFiles() mid-job.
       - name: Compute dep cache key
         id: depkey
-        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
+        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', 'deps/**/*.patch', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
 
       # Same key AND same path as build_macos.yml, so the two workflows share
       # one cache entry. Do not change one without the other.
