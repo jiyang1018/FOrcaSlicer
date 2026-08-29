@@ -36,7 +36,10 @@ public:
 
     int GetLastError() const { return m_error; }
 
-    static constexpr wxMediaState MEDIASTATE_BUFFERING = (wxMediaState) 6;
+    // FOS: clang 17+ rejects casting an out-of-range value to wxMediaState in a
+    // constant expression (valid range is [0,3]). This is an extended state, not a
+    // real wxMediaState, so hold it as int.
+    static constexpr int MEDIASTATE_BUFFERING = 6;
 
 protected:
     void DoSetSize(int x, int y, int width, int height, int sizeFlags) override;

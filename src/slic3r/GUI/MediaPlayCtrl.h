@@ -67,13 +67,15 @@ private:
     static bool get_stream_url(std::string *url = nullptr);
 
 private:
-    static const wxMediaState MEDIASTATE_IDLE = (wxMediaState) 3;
-    static const wxMediaState MEDIASTATE_INITIALIZING = (wxMediaState) 4;
-    static const wxMediaState MEDIASTATE_LOADING = (wxMediaState) 5;
-    static const wxMediaState MEDIASTATE_BUFFERING = (wxMediaState) 6;
+    // FOS: extended states beyond wxMediaState's valid range [0,3]. clang 17+
+    // rejects the enum cast in a constant expression, so these are plain ints.
+    static const int MEDIASTATE_IDLE = 3;
+    static const int MEDIASTATE_INITIALIZING = 4;
+    static const int MEDIASTATE_LOADING = 5;
+    static const int MEDIASTATE_BUFFERING = 6;
 
     wxMediaCtrl2 * m_media_ctrl;
-    wxMediaState m_last_state = MEDIASTATE_IDLE;
+    int m_last_state = MEDIASTATE_IDLE;
     std::string m_machine;
     int m_lan_proto = 0;
     std::string m_lan_ip;
