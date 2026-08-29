@@ -7,7 +7,7 @@ name: Build macOS release
 # Snapmaker stripped upstream Orca's build
 # workflows, so this is authored against THIS tree's build_release_macos.sh
 # rather than adapted from upstream's CI (their script differs: deployment
-# target 12.0 not 11.3, install prefix Snapmaker_Orca not OrcaSlicer).
+# target 12.0 not 11.3, staging dir FOrcaSlicer not OrcaSlicer).
 
 on:
   workflow_dispatch:
@@ -199,7 +199,7 @@ jobs:
 
       - name: Verify universal binary
         run: |
-          APP="build/universal/Snapmaker_Orca/FOrcaSlicer.app"
+          APP="build/universal/FOrcaSlicer/FOrcaSlicer.app"
           test -d "$APP" || { echo "::error::app bundle missing at $APP"; exit 1; }
           lipo -archs "$APP/Contents/MacOS/FOrcaSlicer"
           lipo -archs "$APP/Contents/MacOS/FOrcaSlicer" | grep -q x86_64
@@ -211,7 +211,7 @@ jobs:
       # every Mach-O so that failure shows up here, not on the test machine.
       - name: Audit bundle architectures
         run: |
-          APP="build/universal/Snapmaker_Orca/FOrcaSlicer.app"
+          APP="build/universal/FOrcaSlicer/FOrcaSlicer.app"
           : > /tmp/fos_archs.txt
           find "$APP" -type f | while IFS= read -r f; do
             file -b "$f" | grep -q 'Mach-O' || continue
@@ -246,7 +246,7 @@ jobs:
         run: |
           STAGE="$(mktemp -d)/FOrcaSlicer"
           mkdir -p "$STAGE"
-          cp -R "build/universal/Snapmaker_Orca/FOrcaSlicer.app" "$STAGE/"
+          cp -R "build/universal/FOrcaSlicer/FOrcaSlicer.app" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
           # strip inherited quarantine from the runner before imaging
           xattr -cr "$STAGE/FOrcaSlicer.app" || true
@@ -269,6 +269,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FOrcaSlicer-${{ steps.ver.outputs.ver }}-macos-dSYM-${{ steps.ver.outputs.tag }}
-          path: build/universal/Snapmaker_Orca/dSYM
+          path: build/universal/FOrcaSlicer/dSYM
           if-no-files-found: warn
           retention-days: 14

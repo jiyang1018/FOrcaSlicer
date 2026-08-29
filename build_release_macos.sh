@@ -176,7 +176,7 @@ function build_slicer() {
                     -DORCA_TOOLS=ON \
                     ${ORCA_UPDATER_SIG_KEY:+-DORCA_UPDATER_SIG_KEY="$ORCA_UPDATER_SIG_KEY"} \
                     -DCMAKE_PREFIX_PATH="$DEPS/usr/local" \
-                    -DCMAKE_INSTALL_PREFIX="$PWD/Snapmaker_Orca" \
+                    -DCMAKE_INSTALL_PREFIX="$PWD/FOrcaSlicer" \
                     -DCMAKE_BUILD_TYPE="$BUILD_CONFIG" \
                     -DCMAKE_MACOSX_RPATH=ON \
                     -DCMAKE_INSTALL_RPATH="${DEPS}/usr/local" \
@@ -200,8 +200,8 @@ function build_slicer() {
     echo "Fix macOS app package..."
     (
         cd "$PROJECT_BUILD_DIR"
-        mkdir -p Snapmaker_Orca
-        cd Snapmaker_Orca
+        mkdir -p FOrcaSlicer
+        cd FOrcaSlicer
         # remove previously built app
         rm -rf "./FOrcaSlicer.app"
         # determine source app path (handle both space and underscore names)
@@ -326,25 +326,25 @@ function build_universal() {
     # Create universal binary
     echo "Creating universal binary..."
     # PROJECT_BUILD_DIR="$PROJECT_DIR/build_Universal"
-    mkdir -p "$PROJECT_BUILD_DIR/Snapmaker_Orca"
-    UNIVERSAL_APP="$PROJECT_BUILD_DIR/Snapmaker_Orca/FOrcaSlicer.app"
+    mkdir -p "$PROJECT_BUILD_DIR/FOrcaSlicer"
+    UNIVERSAL_APP="$PROJECT_BUILD_DIR/FOrcaSlicer/FOrcaSlicer.app"
     rm -rf "$UNIVERSAL_APP"
-    cp -R "$PROJECT_DIR/build/arm64/Snapmaker_Orca/FOrcaSlicer.app" "$UNIVERSAL_APP"
+    cp -R "$PROJECT_DIR/build/arm64/FOrcaSlicer/FOrcaSlicer.app" "$UNIVERSAL_APP"
     
     # Get the binary path inside the .app bundle
     BINARY_PATH="Contents/MacOS/FOrcaSlicer"
     
     # Create universal binary using lipo
     lipo -create \
-        "$PROJECT_DIR/build/x86_64/Snapmaker_Orca/FOrcaSlicer.app/$BINARY_PATH" \
-        "$PROJECT_DIR/build/arm64/Snapmaker_Orca/FOrcaSlicer.app/$BINARY_PATH" \
+        "$PROJECT_DIR/build/x86_64/FOrcaSlicer/FOrcaSlicer.app/$BINARY_PATH" \
+        "$PROJECT_DIR/build/arm64/FOrcaSlicer/FOrcaSlicer.app/$BINARY_PATH" \
         -output "$UNIVERSAL_APP/$BINARY_PATH"
         
     echo "Universal binary created at $UNIVERSAL_APP"
     
     # Create universal crashpad_handler if both architectures have it
-    CRASHPAD_ARM64="${PROJECT_DIR}/build/arm64/Snapmaker_Orca/FOrcaSlicer.app/Contents/MacOS/crashpad_handler"
-    CRASHPAD_X86="${PROJECT_DIR}/build/x86_64/Snapmaker_Orca/FOrcaSlicer.app/Contents/MacOS/crashpad_handler"
+    CRASHPAD_ARM64="${PROJECT_DIR}/build/arm64/FOrcaSlicer/FOrcaSlicer.app/Contents/MacOS/crashpad_handler"
+    CRASHPAD_X86="${PROJECT_DIR}/build/x86_64/FOrcaSlicer/FOrcaSlicer.app/Contents/MacOS/crashpad_handler"
     CRASHPAD_UNIVERSAL="${UNIVERSAL_APP}/Contents/MacOS/crashpad_handler"
     if [ -f "${CRASHPAD_ARM64}" ] && [ -f "${CRASHPAD_X86}" ]; then
         echo "Creating universal crashpad_handler..."
@@ -356,8 +356,8 @@ function build_universal() {
     fi
     
     # Create universal libsentry.dylib if both architectures have it
-    LIBSENTRY_ARM64="${PROJECT_DIR}/build/arm64/Snapmaker_Orca/FOrcaSlicer.app/Contents/Frameworks/libsentry.dylib"
-    LIBSENTRY_X86="${PROJECT_DIR}/build/x86_64/Snapmaker_Orca/FOrcaSlicer.app/Contents/Frameworks/libsentry.dylib"
+    LIBSENTRY_ARM64="${PROJECT_DIR}/build/arm64/FOrcaSlicer/FOrcaSlicer.app/Contents/Frameworks/libsentry.dylib"
+    LIBSENTRY_X86="${PROJECT_DIR}/build/x86_64/FOrcaSlicer/FOrcaSlicer.app/Contents/Frameworks/libsentry.dylib"
     LIBSENTRY_UNIVERSAL="${UNIVERSAL_APP}/Contents/Frameworks/libsentry.dylib"
     if [ -f "${LIBSENTRY_ARM64}" ] && [ -f "${LIBSENTRY_X86}" ]; then
         echo "Creating universal libsentry.dylib..."
@@ -370,7 +370,7 @@ function build_universal() {
         codesign --force --sign - "${LIBSENTRY_UNIVERSAL}" 2>/dev/null || true
     fi
     
-    # Update rpath in universal Snapmaker_Orca
+    # Update rpath in universal FOrcaSlicer
     if [ -f "${LIBSENTRY_UNIVERSAL}" ]; then
         echo "Updating libsentry.dylib rpath in universal FOrcaSlicer..."
         install_name_tool -change "@rpath/libsentry.dylib" "@executable_path/../Frameworks/libsentry.dylib" "${UNIVERSAL_APP}/${BINARY_PATH}" 2>/dev/null || true
@@ -378,20 +378,20 @@ function build_universal() {
     fi
     
     # Create universal binary for profile validator if it exists
-    if [ -f "$PROJECT_DIR/build/arm64/Snapmaker_Orca/Snapmaker_Orca_profile_validator.app/Contents/MacOS/Snapmaker_Orca_profile_validator" ] && \
-       [ -f "$PROJECT_DIR/build/x86_64/Snapmaker_Orca/Snapmaker_Orca_profile_validator.app/Contents/MacOS/Snapmaker_Orca_profile_validator" ]; then
+    if [ -f "$PROJECT_DIR/build/arm64/FOrcaSlicer/Snapmaker_Orca_profile_validator.app/Contents/MacOS/Snapmaker_Orca_profile_validator" ] && \
+       [ -f "$PROJECT_DIR/build/x86_64/FOrcaSlicer/Snapmaker_Orca_profile_validator.app/Contents/MacOS/Snapmaker_Orca_profile_validator" ]; then
         echo "Creating universal binary for Snapmaker_Orca_profile_validator..."
-        UNIVERSAL_VALIDATOR_APP="$PROJECT_BUILD_DIR/Snapmaker_Orca/Snapmaker_Orca_profile_validator.app"
+        UNIVERSAL_VALIDATOR_APP="$PROJECT_BUILD_DIR/FOrcaSlicer/Snapmaker_Orca_profile_validator.app"
         rm -rf "$UNIVERSAL_VALIDATOR_APP"
-        cp -R "$PROJECT_DIR/build/arm64/Snapmaker_Orca/Snapmaker_Orca_profile_validator.app" "$UNIVERSAL_VALIDATOR_APP"
+        cp -R "$PROJECT_DIR/build/arm64/FOrcaSlicer/Snapmaker_Orca_profile_validator.app" "$UNIVERSAL_VALIDATOR_APP"
         
         # Get the binary path inside the profile validator .app bundle
         VALIDATOR_BINARY_PATH="Contents/MacOS/Snapmaker_Orca_profile_validator"
         
         # Create universal binary using lipo
         lipo -create \
-            "$PROJECT_DIR/build/x86_64/Snapmaker_Orca/Snapmaker_Orca_profile_validator.app/$VALIDATOR_BINARY_PATH" \
-            "$PROJECT_DIR/build/arm64/Snapmaker_Orca/Snapmaker_Orca_profile_validator.app/$VALIDATOR_BINARY_PATH" \
+            "$PROJECT_DIR/build/x86_64/FOrcaSlicer/Snapmaker_Orca_profile_validator.app/$VALIDATOR_BINARY_PATH" \
+            "$PROJECT_DIR/build/arm64/FOrcaSlicer/Snapmaker_Orca_profile_validator.app/$VALIDATOR_BINARY_PATH" \
             -output "$UNIVERSAL_VALIDATOR_APP/$VALIDATOR_BINARY_PATH"
             
         echo "Universal binary for Snapmaker_Orca_profile_validator created at $UNIVERSAL_VALIDATOR_APP"
@@ -399,7 +399,7 @@ function build_universal() {
     
     # Generate dSYM for universal binary - always generate for debugging and Sentry crash reporting
     echo "Generating dSYM for universal binary..."
-    DSYM_DIR="$PROJECT_BUILD_DIR/Snapmaker_Orca/dSYM"
+    DSYM_DIR="$PROJECT_BUILD_DIR/FOrcaSlicer/dSYM"
     mkdir -p "${DSYM_DIR}"
     
     # Generate dSYM for universal main app

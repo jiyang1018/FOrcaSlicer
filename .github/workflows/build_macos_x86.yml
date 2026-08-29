@@ -94,7 +94,7 @@ jobs:
 
       - name: Verify binary + localization catalogs
         run: |
-          APP="build/x86_64/Snapmaker_Orca/FOrcaSlicer.app"
+          APP="build/x86_64/FOrcaSlicer/FOrcaSlicer.app"
           test -d "$APP" || { echo "::error::app bundle missing at $APP"; exit 1; }
           lipo -archs "$APP/Contents/MacOS/FOrcaSlicer"
           lipo -archs "$APP/Contents/MacOS/FOrcaSlicer" | grep -q x86_64
@@ -117,7 +117,7 @@ jobs:
         run: |
           STAGE="$(mktemp -d)/FOrcaSlicer"
           mkdir -p "$STAGE"
-          cp -R "build/x86_64/Snapmaker_Orca/FOrcaSlicer.app" "$STAGE/"
+          cp -R "build/x86_64/FOrcaSlicer/FOrcaSlicer.app" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
           xattr -cr "$STAGE/FOrcaSlicer.app" || true
           hdiutil create -volname "FOrcaSlicer" -srcfolder "$STAGE" \
