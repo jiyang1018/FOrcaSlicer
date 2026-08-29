@@ -149,7 +149,8 @@ Output: `build\src\Release\FOrcaSlicer.exe`
 
 ### macOS (64-bit)
 
-Requires: Xcode and Git, plus:
+Requires Git, and either full Xcode or just the Command Line Tools
+(`xcode-select --install`). Then:
 
 ```bash
 brew install gettext libtool automake autoconf texinfo ninja
@@ -163,21 +164,159 @@ fails immediately. Use 3.31.x instead:
 curl -fsSL -o /tmp/cmake.tar.gz https://cmake.org/files/v3.31/cmake-3.31.6-macos-universal.tar.gz
 tar -xzf /tmp/cmake.tar.gz -C /tmp
 export PATH="/tmp/cmake-3.31.6-macos-universal/CMake.app/Contents/bin:$PATH"
+cmake --version
 ```
 
-Build dependencies once, then the slicer (`-a` takes `arm64`, `x86_64` or `universal`;
-deployment target defaults to 12.0):
+`cmake --version` must report 3.31.6 before you continue.
+
+Homebrew's gettext is keg-only, and the slicer build runs `scripts/run_gettext.sh` as its
+final step under `set -e`. If `msgfmt` is missing you lose a finished compile at the very
+end, so put it on PATH first:
+
+```bash
+which msgfmt || export PATH="$(brew --prefix gettext)/bin:$PATH"
+```
+
+**Always pass `-x`.** It selects the Ninja Multi-Config generator. Without it the script
+defaults to the Xcode generator, which shells out to `xcodebuild` and therefore needs a full
+`Xcode.app`; with only the Command Line Tools installed, configure fails with
+`No CMAKE_C_COMPILER could be found` even though the toolchain is fine. Ninja works either
+way. Add `-b` to skip reconfiguring on a rebuild, and drop `-b` again after editing any
+`CMakeLists.txt`.
+
+Deployment target defaults to 12.0. Each architecture has its own dependency tree, so
+`-d` for one arch does not help the other.
+
+These steps are verified on both Apple silicon and Intel Macs. The three paths below were
+run end to end on Apple silicon (Mac mini M4, Command Line Tools only); the Intel host path
+uses the same script and was verified on an Intel MacBook Pro.
+
+Pick the one that matches the result you want, and open just that section.
+
+| What you want | Open |
+|---|---|
+| The app running on your own Apple silicon Mac | Apple silicon only |
+| To test or ship an Intel build | Intel only |
+| One DMG that runs on every Mac, for a release | Universal |
+
+<details>
+<summary><b>Apple silicon only (arm64)</b> -- native on M-series Macs, will not run on Intel</summary>
+
+Use this only if you want a build for Apple silicon. It is the shortest route: one
+dependency tree, one slicer build.
 
 ```bash
 ./build_release_macos.sh -d -a arm64
-./build_release_macos.sh -s -a arm64
+./build_release_macos.sh -s -a arm64 -x
 ```
 
-Output: `build/<arch>/Snapmaker_Orca/FOrcaSlicer.app`
+Output: `build/arm64/FOrcaSlicer/FOrcaSlicer.app`
+
+Package it as a DMG:
+
+```bash
+mkdir -p dist
+FOS_VER=$(sed -n 's/.*FOS_VERSION "\(.*\)".*/\1/p' src/common_func/common_func.hpp)
+STAGE="$(mktemp -d)/FOrcaSlicer"
+mkdir -p "$STAGE"
+cp -R build/arm64/FOrcaSlicer/FOrcaSlicer.app "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+xattr -cr "$STAGE/FOrcaSlicer.app" || true
+hdiutil create -volname "FOrcaSlicer $FOS_VER" -srcfolder "$STAGE" -ov -format UDZO -imagekey zlib-level=9 dist/FOrcaSlicer-$FOS_VER-macos-arm64.dmg
+```
+
+</details>
+
+<details>
+<summary><b>Intel only (x86_64)</b> -- runs on Intel Macs, and on Apple silicon under Rosetta</summary>
+
+Use this only if you want an Intel build. It cross-compiles correctly from an Apple silicon
+Mac, so no Intel hardware is needed to produce one. It does need its own dependency tree,
+independent of any arm64 build you already have.
+
+To *launch* the result on Apple silicon you need Rosetta
+(`softwareupdate --install-rosetta`), and macOS will warn that Intel app support is ending.
+
+```bash
+./build_release_macos.sh -d -a x86_64
+./build_release_macos.sh -s -a x86_64 -x
+```
+
+Output: `build/x86_64/FOrcaSlicer/FOrcaSlicer.app`
+
+Package it as a DMG:
+
+```bash
+mkdir -p dist
+FOS_VER=$(sed -n 's/.*FOS_VERSION "\(.*\)".*/\1/p' src/common_func/common_func.hpp)
+STAGE="$(mktemp -d)/FOrcaSlicer"
+mkdir -p "$STAGE"
+cp -R build/x86_64/FOrcaSlicer/FOrcaSlicer.app "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+xattr -cr "$STAGE/FOrcaSlicer.app" || true
+hdiutil create -volname "FOrcaSlicer $FOS_VER" -srcfolder "$STAGE" -ov -format UDZO -imagekey zlib-level=9 dist/FOrcaSlicer-$FOS_VER-macos-x86_64.dmg
+```
+
+</details>
+
+<details>
+<summary><b>Universal (both architectures)</b> -- one DMG for every Mac, what a release ships</summary>
+
+Use this only if you want a single build that runs everywhere. It requires **both** sections
+above to have been completed first, since it just lipos the two finished bundles together --
+it compiles nothing itself and takes a few minutes.
+
+Budget for that prerequisite: two full dependency trees, several hours from a cold start.
+
+```bash
+./build_release_macos.sh -s -a universal -x -b
+```
+
+Output: `build/universal/FOrcaSlicer/FOrcaSlicer.app`
+
+Package it as a DMG:
+
+```bash
+mkdir -p dist
+FOS_VER=$(sed -n 's/.*FOS_VERSION "\(.*\)".*/\1/p' src/common_func/common_func.hpp)
+STAGE="$(mktemp -d)/FOrcaSlicer"
+mkdir -p "$STAGE"
+cp -R build/universal/FOrcaSlicer/FOrcaSlicer.app "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+xattr -cr "$STAGE/FOrcaSlicer.app" || true
+hdiutil create -volname "FOrcaSlicer $FOS_VER" -srcfolder "$STAGE" -ov -format UDZO -imagekey zlib-level=9 dist/FOrcaSlicer-$FOS_VER-macos-universal.dmg
+```
+
+</details>
+
+#### Notes on the DMG
+
+`ln -s /Applications` gives the usual drag-to-install window, and `xattr -cr` clears
+quarantine before imaging so testers do not need `xattr -dr` after a command-line transfer.
+Never package a `.app` with plain `zip` -- it mangles bundle symlinks and resource forks and
+the app will not launch on another machine. Use `hdiutil` as above, or
+`ditto -c -k --sequesterRsrc --keepParent` if you want a zip instead.
+
+Check what you built before shipping it:
+
+```bash
+lipo -archs build/universal/FOrcaSlicer/FOrcaSlicer.app/Contents/MacOS/FOrcaSlicer
+```
+
+Expect `arm64`, `x86_64`, or `x86_64 arm64` for the universal build.
+
+Debug symbols are written to `build/<arch>/FOrcaSlicer/dSYM/`. They are deliberately not
+part of the DMG, but each one matches exactly one build by UUID -- archive the dSYM
+alongside any build you distribute, or crash reports from that release cannot be
+symbolicated.
 
 A universal DMG is also produced by the **Build macOS release** GitHub Actions workflow.
 
 ### Linux (Ubuntu)
+
+> **Not verified.** Unlike the Windows and macOS builds, the Linux path is inherited from
+> upstream and has not been tested by this fork. Treat the commands below as a starting
+> point rather than a known-good recipe, and please report what you hit.
 
 ```bash
 ./build_linux.sh -u      # first time: install system dependencies
