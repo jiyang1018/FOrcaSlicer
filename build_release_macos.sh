@@ -3,6 +3,18 @@
 set -e
 set -o pipefail
 
+# FOS: accept --time as a friendlier alias for -T. getopts has no long
+# options, so rewrite the argument list before parsing. -t (lowercase) is the
+# deployment target and -T vs -t is an easy mistake to make.
+_fos_args=()
+for _fos_a in "$@"; do
+    case "$_fos_a" in
+        --time) _fos_args+=("-T") ;;
+        *)      _fos_args+=("$_fos_a") ;;
+    esac
+done
+set -- "${_fos_args[@]}"
+
 while getopts ":dpa:snt:xbc:1hT" opt; do
   case "${opt}" in
     d )
@@ -50,7 +62,7 @@ while getopts ":dpa:snt:xbc:1hT" opt; do
         echo "   -b: Build without reconfiguring CMake"
         echo "   -c: Set CMake build configuration, default is Release"
         echo "   -1: Use single job for building"
-        echo "   -T: Report elapsed build time per stage, plus a summary at the end"
+        echo "   -T, --time: Report elapsed build time per stage, plus a summary at the end"
         exit 0
         ;;
     * )
@@ -88,6 +100,19 @@ fi
 if [ -z "$OSX_DEPLOYMENT_TARGET" ]; then
   export OSX_DEPLOYMENT_TARGET="12.0"
 fi
+
+# FOS: -t takes a macOS version. Typing -t when you meant -T silently eats the
+# NEXT argument as its value (so "-t -x" loses -x and sets the target to "-x"),
+# which fails much later with a confusing CMake error. Catch it here instead.
+case "$OSX_DEPLOYMENT_TARGET" in
+    [0-9]*) ;;
+    *)
+        echo "FATAL: -t expects a macOS version such as 12.0, got '$OSX_DEPLOYMENT_TARGET'."
+        echo "       The build-timing flag is -T (capital) or --time."
+        echo "       -t (lowercase) sets the deployment target and consumes the next argument."
+        exit 1
+        ;;
+esac
 
 # FOS: opt-in build timing, enabled with -T only. Without -T none of this
 # prints and stdout is byte-identical to before, so CI log parsing is safe.
