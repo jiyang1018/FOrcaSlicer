@@ -148,7 +148,7 @@ build_release_vs2022.bat slicer
 
 ### macOS（64 位）
 
-需要：Xcode 与 Git，以及：
+需要 Git，以及完整版 Xcode 或仅安装命令行工具（`xcode-select --install`）。然后：
 
 ```bash
 brew install gettext libtool automake autoconf texinfo ninja
@@ -162,16 +162,165 @@ brew install gettext libtool automake autoconf texinfo ninja
 curl -fsSL -o /tmp/cmake.tar.gz https://cmake.org/files/v3.31/cmake-3.31.6-macos-universal.tar.gz
 tar -xzf /tmp/cmake.tar.gz -C /tmp
 export PATH="/tmp/cmake-3.31.6-macos-universal/CMake.app/Contents/bin:$PATH"
+cmake --version
 ```
 
-先编译依赖，再编译切片器（`-a` 可为 `arm64`、`x86_64` 或 `universal`；部署目标默认为 12.0）：
+继续之前，`cmake --version` 必须显示 3.31.6。
+
+Homebrew 的 gettext 属于 keg-only，而切片器编译的最后一步会执行 `scripts/run_gettext.sh`
+（在 `set -e` 下运行）。若缺少 `msgfmt`，已经完成的编译会在最后一步前功尽弃，因此请先将其
+加入 PATH：
+
+```bash
+which msgfmt || export PATH="$(brew --prefix gettext)/bin:$PATH"
+```
+
+**务必加上 `-x`。** 该选项选择 Ninja Multi-Config 生成器。若不加，脚本默认使用 Xcode
+生成器，它需要调用 `xcodebuild`，因而必须安装完整版 `Xcode.app`；仅安装命令行工具时，
+配置阶段会以 `No CMAKE_C_COMPILER could be found` 失败，即使工具链本身完全正常。Ninja
+在两种情况下都可用。重新编译时可加 `-b` 跳过重新配置；修改任何 `CMakeLists.txt` 后请
+去掉 `-b`。
+
+部署目标默认为 12.0。每种架构都有各自独立的依赖树，因此对某一架构执行 `-d` 对另一架构
+没有帮助。
+
+以下三种方式均已在 Apple 芯片（Mac mini M4，仅命令行工具）上完整验证。请按需求选择其中
+一种展开。
+
+| 你的需求 | 展开 |
+|---|---|
+| 在自己的 Apple 芯片 Mac 上运行 | 仅 Apple 芯片 |
+| 测试或分发 Intel 版本 | 仅 Intel |
+| 一个 DMG 覆盖所有 Mac（发布用） | 通用版 |
+
+#### 编译耗时参考
+
+以下为冷编译实测（已删除 `build/`、`deps/build/` 与下载缓存）：
+
+| 机器 | 单架构 | 通用版 |
+|---|---|---|
+| Mac mini M4（10 核） | 约 17-20 分钟 | 约 38 分钟 |
+| MacBook Pro 2019，i9-9880H（8 核） | 约 46 分钟（x86_64） | 未测试 |
+| GitHub Actions `macos-14` | - | 约 1 小时 50 分至 2 小时 15 分 |
+
+其中绝大部分时间用于编译依赖树，且只需编译一次。之后修改代码重新编译通常只需几分钟——
+加上 `-b` 可跳过重新配置。
+
+如需查看各阶段耗时，可在任意编译命令后加上 `--time`：
+
+```bash
+./build_release_macos.sh -s -a arm64 -x --time
+```
+
+不加时输出与以往完全一致。`-T` 是它的短选项，请注意是大写；小写的 `-t` 用于设置部署目标
+并会吞掉后面一个参数，因此脚本会在该处拒绝非版本号的取值，而不是稍后抛出令人费解的
+CMake 错误。
+
+<details>
+<summary><b>仅 Apple 芯片（arm64）</b> —— 在 M 系列 Mac 上原生运行，无法在 Intel 上运行</summary>
+
+仅当你只需要 Apple 芯片版本时使用。这是最短的路径：一棵依赖树，一次切片器编译。
 
 ```bash
 ./build_release_macos.sh -d -a arm64
-./build_release_macos.sh -s -a arm64
+./build_release_macos.sh -s -a arm64 -x
 ```
 
-输出：`build/<arch>/Snapmaker_Orca/FOrcaSlicer.app`
+输出：`build/arm64/FOrcaSlicer/FOrcaSlicer.app`
+
+打包为 DMG：
+
+```bash
+mkdir -p dist
+FOS_VER=$(sed -n 's/.*FOS_VERSION "\(.*\)".*/\1/p' src/common_func/common_func.hpp)
+STAGE="$(mktemp -d)/FOrcaSlicer"
+mkdir -p "$STAGE"
+cp -R build/arm64/FOrcaSlicer/FOrcaSlicer.app "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+xattr -cr "$STAGE/FOrcaSlicer.app" || true
+hdiutil create -volname "FOrcaSlicer $FOS_VER" -srcfolder "$STAGE" -ov -format UDZO -imagekey zlib-level=9 dist/FOrcaSlicer-$FOS_VER-macos-arm64.dmg
+```
+
+</details>
+
+<details>
+<summary><b>仅 Intel（x86_64）</b> —— 可在 Intel Mac 上运行，也可在 Apple 芯片上通过 Rosetta 运行</summary>
+
+仅当你需要 Intel 版本时使用。它可以在 Apple 芯片 Mac 上交叉编译，因此无需 Intel 硬件即可
+产出，但需要一棵独立的依赖树，与已有的 arm64 依赖树互不相通。
+
+若要在 Apple 芯片上*运行*编译结果，需要安装 Rosetta
+（`softwareupdate --install-rosetta`），并且 macOS 会提示 Intel 应用支持即将结束。
+
+```bash
+./build_release_macos.sh -d -a x86_64
+./build_release_macos.sh -s -a x86_64 -x
+```
+
+输出：`build/x86_64/FOrcaSlicer/FOrcaSlicer.app`
+
+打包为 DMG：
+
+```bash
+mkdir -p dist
+FOS_VER=$(sed -n 's/.*FOS_VERSION "\(.*\)".*/\1/p' src/common_func/common_func.hpp)
+STAGE="$(mktemp -d)/FOrcaSlicer"
+mkdir -p "$STAGE"
+cp -R build/x86_64/FOrcaSlicer/FOrcaSlicer.app "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+xattr -cr "$STAGE/FOrcaSlicer.app" || true
+hdiutil create -volname "FOrcaSlicer $FOS_VER" -srcfolder "$STAGE" -ov -format UDZO -imagekey zlib-level=9 dist/FOrcaSlicer-$FOS_VER-macos-x86_64.dmg
+```
+
+</details>
+
+<details>
+<summary><b>通用版（两种架构）</b> —— 一个 DMG 覆盖所有 Mac，即发布版本的形态</summary>
+
+仅当你需要一个到处都能运行的版本时使用。它要求**先完成**上面两个部分，因为这一步只是把两个
+已编译好的 app 用 lipo 合并起来——本身不编译任何代码，只需几分钟。
+
+请为前置条件预留时间：两棵完整的依赖树，从零开始需要数小时。
+
+```bash
+./build_release_macos.sh -s -a universal -x -b
+```
+
+输出：`build/universal/FOrcaSlicer/FOrcaSlicer.app`
+
+打包为 DMG：
+
+```bash
+mkdir -p dist
+FOS_VER=$(sed -n 's/.*FOS_VERSION "\(.*\)".*/\1/p' src/common_func/common_func.hpp)
+STAGE="$(mktemp -d)/FOrcaSlicer"
+mkdir -p "$STAGE"
+cp -R build/universal/FOrcaSlicer/FOrcaSlicer.app "$STAGE/"
+ln -s /Applications "$STAGE/Applications"
+xattr -cr "$STAGE/FOrcaSlicer.app" || true
+hdiutil create -volname "FOrcaSlicer $FOS_VER" -srcfolder "$STAGE" -ov -format UDZO -imagekey zlib-level=9 dist/FOrcaSlicer-$FOS_VER-macos-universal.dmg
+```
+
+</details>
+
+#### 关于 DMG
+
+`ln -s /Applications` 会生成常见的拖拽安装窗口；`xattr -cr` 在打包前清除隔离属性，这样
+测试者通过命令行传输后无需再执行 `xattr -dr`。**切勿**用普通的 `zip` 打包 `.app`——它会
+破坏 bundle 中的符号链接与资源分支，导致 app 在其它机器上无法启动。请使用上面的
+`hdiutil`，或用 `ditto -c -k --sequesterRsrc --keepParent` 生成 zip。
+
+分发前请确认编译结果：
+
+```bash
+lipo -archs build/universal/FOrcaSlicer/FOrcaSlicer.app/Contents/MacOS/FOrcaSlicer
+```
+
+预期输出为 `arm64`、`x86_64`，通用版则是 `x86_64 arm64`。
+
+调试符号会输出到 `build/<arch>/FOrcaSlicer/dSYM/`。它们刻意不包含在 DMG 中，但每一份都通过
+UUID 与某一次编译一一对应——分发任何版本时请一并归档对应的 dSYM，否则该版本的崩溃报告将
+无法符号化。
 
 **Build macOS release** GitHub Actions 工作流同样会产出通用版 DMG。
 
