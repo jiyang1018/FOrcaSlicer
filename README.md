@@ -199,6 +199,29 @@ Pick the one that matches the result you want, and open just that section.
 | To test or ship an Intel build | Intel only |
 | One DMG that runs on every Mac, for a release | Universal |
 
+#### How long it takes
+
+Cold builds, with `build/`, `deps/build/` and the download cache removed:
+
+| Machine | Single arch | Universal |
+|---|---|---|
+| Mac mini M4 (10-core) | ~17-20 min | ~38 min |
+| MacBook Pro 2019, i9-9880H (8-core) | ~46 min (x86_64) | not measured |
+| GitHub Actions `macos-14` | - | ~1h 50m to 2h 15m |
+
+Most of that is the dependency tree, and it is built once. Rebuilding after a code change
+takes minutes, not tens of minutes -- add `-b` to skip reconfiguring.
+
+Add `--time` to any build command to print elapsed time per stage plus a total:
+
+```bash
+./build_release_macos.sh -s -a arm64 -x --time
+```
+
+Without it the output is unchanged. `-T` is the short form -- note the capital. Lowercase
+`-t` sets the deployment target and consumes the next argument, so the script rejects a
+non-version value there rather than failing later with a confusing CMake error.
+
 <details>
 <summary><b>Apple silicon only (arm64)</b> -- native on M-series Macs, will not run on Intel</summary>
 
