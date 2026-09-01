@@ -15,7 +15,7 @@
     "filter_out_gap_fill": "1",
     "gap_fill_target": "topbottom",
     "internal_bridge_speed": "100%",
-    "layer_height": "0.25",
+    "layer_height": "0.18",
     "prime_tower_brim_width": "5",
     "prime_tower_width": "30",
     "prime_volume": "41",
