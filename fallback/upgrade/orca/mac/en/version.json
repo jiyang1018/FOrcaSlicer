@@ -1,33 +1,33 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.0",
+    "version": "8.6.1",
     "release_type": "stable",
     "platform_type": "mac",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.0\n\nThe 8.6 release. Supersedes 8.5.7-beta.1 and beta.2 and includes everything from both.\n\nNew: filament to nozzle mapping - any filament can be wired to any nozzle, and each one is sliced for the nozzle it will actually print through, including the first layer line width. Slicing now refuses combinations the hardware cannot load, and names the reason.\n\nNew: multi-material supply support, starting with multiACE - mode, units and toolheads under Printer settings > Machine > Accessory, Read from printer, and Send to multiACE.\n\nNew: translucent filaments in the sliced preview, and a HEX field in the filament colour picker.\n\nFixed: a permanent repaint loop that burned a CPU core and made 3mf loading crawl on 8.5.6; projects with more filaments than nozzles corrupting the printer on reopen; four settings silently discarded on every preset load.\n\nUpgrading from 8.5.7-beta.2 with a supply system configured: re-enter the printer LAN IP once.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.1\n\nA patch release. Everything in 8.6.0 applies unchanged; nothing was added.\n\nFixed: the 0.18 Standard preset for the U1 0.6 mm nozzle printed at a 0.25 mm layer height, 39% thicker than its name. Inherited from upstream.\n\nFixed: the installer shipped 27 profile files that had been deleted from the project - 19 process presets ending in ' copy.json' or '_old.json', and 7 filament profiles under old names. They showed up as duplicate entries on fresh installs as well as upgrades.\n\nBoth are corrected automatically on first launch, and the manual cleanup step in the 8.6.0 notes is no longer needed.\n\nIf you saved your own preset derived from the 0.18 one and it carries its own layer height, that value stays as you set it - open it once and check.",
       "default": {
-        "file_size": 205424718,
-        "file_md5": "fbdec897ed94776dab9d717244ca425d",
-        "file_sha256": "31409068e578001fa531dfbdd321dd2e216d9bcbe9f7c9a69a09981df0ea8f5f",
+        "file_size": 206889042,
+        "file_md5": "7eb53cf569366f833f5285ffbf3d8c2f",
+        "file_sha256": "3f181a261bed355e69e8c39d7cf28f163c48b9bed53559fd0018858fe1397da7",
         "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
       },
       "arm": {
-        "file_size": 205424718,
-        "file_md5": "fbdec897ed94776dab9d717244ca425d",
-        "file_sha256": "31409068e578001fa531dfbdd321dd2e216d9bcbe9f7c9a69a09981df0ea8f5f",
+        "file_size": 206889042,
+        "file_md5": "7eb53cf569366f833f5285ffbf3d8c2f",
+        "file_sha256": "3f181a261bed355e69e8c39d7cf28f163c48b9bed53559fd0018858fe1397da7",
         "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
       },
       "intel": {
-        "file_size": 205424718,
-        "file_md5": "fbdec897ed94776dab9d717244ca425d",
-        "file_sha256": "31409068e578001fa531dfbdd321dd2e216d9bcbe9f7c9a69a09981df0ea8f5f",
+        "file_size": 206889042,
+        "file_md5": "7eb53cf569366f833f5285ffbf3d8c2f",
+        "file_sha256": "3f181a261bed355e69e8c39d7cf28f163c48b9bed53559fd0018858fe1397da7",
         "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
