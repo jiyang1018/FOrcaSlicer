@@ -9,9 +9,9 @@
     "full": {
       "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.2\n\nA patch release. Everything in 8.6.1 applies unchanged; nothing was added.\n\nFixed: on a printer with mixed nozzle sizes, changing the diameter of any nozzle other than the one printing outer walls left the filament list filtered against the previous diameter. The next time that list was rebuilt - opening the filament-to-nozzle map and clicking OK is the usual way - it collapsed to the one preset already selected, and the filaments for the new diameter could not be picked at all.\n\nNothing you saved was changed or lost by this. If you worked around it by deleting your settings folder, that is no longer necessary.",
       "default": {
-        "file_size": 105266003,
-        "file_md5": "c09261b13250d20d1dfa7d9e9330018a",
-        "file_sha256": "27ea88b50d39dea7bc3c2b15b553eeeacba7fd0d4d43ac27f73b4217f8318835",
+        "file_size": 105267661,
+        "file_md5": "6026073343ab3d06431c4b6e5c580f17",
+        "file_sha256": "46cd5bb636610b2bfab20797a22c6f00cc85dcd948bbd2967f11688819350523",
         "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.2/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.2.exe",
         "reserved_1": "",
         "reserved_2": ""
