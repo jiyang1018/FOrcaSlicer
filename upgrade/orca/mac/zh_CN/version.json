@@ -1,34 +1,34 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.1",
+    "version": "8.6.2",
     "release_type": "stable",
     "platform_type": "mac",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.1\n\n修订版本。8.6.0 的全部内容保持不变，本版本没有新增功能。\n\n修复：U1 0.6 mm 喷嘴的 0.18 Standard 预设实际按 0.25 mm 层高打印，比名称高出 39%。该缺陷继承自上游。\n\n修复：安装包中夹带了 27 个早已从项目中删除的配置文件 —— 19 个以 ' copy.json' 或 '_old.json' 结尾的工艺预设，以及 7 个使用旧名称的耗材配置。它们在全新安装和升级后都会显示为重复条目。\n\n两处都会在首次启动时自动修正，8.6.0 说明中的手动清理步骤不再需要。\n\n如果您基于 0.18 预设保存过自己的预设，并且其中带有自己的层高数值，该数值会保持不变 —— 请打开确认一次。",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.2\n\n修订版本。8.6.1 的全部内容保持不变，本版本没有新增功能。\n\n修复：在混合喉嘴尺寸的打印机上，修改非外墙喉嘴的直径后，耗材列表仍按修改前的直径过滤。列表下次重建时（通常是打开耗材-喉嘴映射窗口并点击确定），会收缩到只剩当前已选中的一个预设，新直径对应的耗材完全无法选择。\n\n该问题不会修改或丢失您保存的任何内容。如果您曾通过删除配置文件夹来规避，现在不再需要这么做。",
       "default": {
-        "file_size": 206889042,
-        "file_md5": "7eb53cf569366f833f5285ffbf3d8c2f",
-        "file_sha256": "3f181a261bed355e69e8c39d7cf28f163c48b9bed53559fd0018858fe1397da7",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.1/FOrcaSlicer-2.3.2-fos.8.6.1-macos-universal.dmg",
+        "file_size": 209367096,
+        "file_md5": "b6b8ebd9b087c67de47ddb6c40a5f7f5",
+        "file_sha256": "c195e7f3872706ce4f566dffafbae1ca3c60c8cee86a3df7b2ae73505e206fde",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.2/FOrcaSlicer-2.3.2-fos.8.6.2-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "arm": {
-        "file_size": 206889042,
-        "file_md5": "7eb53cf569366f833f5285ffbf3d8c2f",
-        "file_sha256": "3f181a261bed355e69e8c39d7cf28f163c48b9bed53559fd0018858fe1397da7",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.1/FOrcaSlicer-2.3.2-fos.8.6.1-macos-universal.dmg",
+        "file_size": 209367096,
+        "file_md5": "b6b8ebd9b087c67de47ddb6c40a5f7f5",
+        "file_sha256": "c195e7f3872706ce4f566dffafbae1ca3c60c8cee86a3df7b2ae73505e206fde",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.2/FOrcaSlicer-2.3.2-fos.8.6.2-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "intel": {
-        "file_size": 206889042,
-        "file_md5": "7eb53cf569366f833f5285ffbf3d8c2f",
-        "file_sha256": "3f181a261bed355e69e8c39d7cf28f163c48b9bed53559fd0018858fe1397da7",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.1/FOrcaSlicer-2.3.2-fos.8.6.1-macos-universal.dmg",
+        "file_size": 209367096,
+        "file_md5": "b6b8ebd9b087c67de47ddb6c40a5f7f5",
+        "file_sha256": "c195e7f3872706ce4f566dffafbae1ca3c60c8cee86a3df7b2ae73505e206fde",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.2/FOrcaSlicer-2.3.2-fos.8.6.2-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       }

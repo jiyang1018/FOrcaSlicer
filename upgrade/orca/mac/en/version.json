@@ -1,34 +1,34 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.1",
+    "version": "8.6.2",
     "release_type": "stable",
     "platform_type": "mac",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.1\n\nA patch release. Everything in 8.6.0 applies unchanged; nothing was added.\n\nFixed: the 0.18 Standard preset for the U1 0.6 mm nozzle printed at a 0.25 mm layer height, 39% thicker than its name. Inherited from upstream.\n\nFixed: the installer shipped 27 profile files that had been deleted from the project - 19 process presets ending in ' copy.json' or '_old.json', and 7 filament profiles under old names. They showed up as duplicate entries on fresh installs as well as upgrades.\n\nBoth are corrected automatically on first launch, and the manual cleanup step in the 8.6.0 notes is no longer needed.\n\nIf you saved your own preset derived from the 0.18 one and it carries its own layer height, that value stays as you set it - open it once and check.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.2\n\nA patch release. Everything in 8.6.1 applies unchanged; nothing was added.\n\nFixed: on a printer with mixed nozzle sizes, changing the diameter of any nozzle other than the one printing outer walls left the filament list filtered against the previous diameter. The next time that list was rebuilt - opening the filament-to-nozzle map and clicking OK is the usual way - it collapsed to the one preset already selected, and the filaments for the new diameter could not be picked at all.\n\nNothing you saved was changed or lost by this. If you worked around it by deleting your settings folder, that is no longer necessary.",
       "default": {
-        "file_size": 206889042,
-        "file_md5": "7eb53cf569366f833f5285ffbf3d8c2f",
-        "file_sha256": "3f181a261bed355e69e8c39d7cf28f163c48b9bed53559fd0018858fe1397da7",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.1/FOrcaSlicer-2.3.2-fos.8.6.1-macos-universal.dmg",
+        "file_size": 209367096,
+        "file_md5": "b6b8ebd9b087c67de47ddb6c40a5f7f5",
+        "file_sha256": "c195e7f3872706ce4f566dffafbae1ca3c60c8cee86a3df7b2ae73505e206fde",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.2/FOrcaSlicer-2.3.2-fos.8.6.2-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "arm": {
-        "file_size": 206889042,
-        "file_md5": "7eb53cf569366f833f5285ffbf3d8c2f",
-        "file_sha256": "3f181a261bed355e69e8c39d7cf28f163c48b9bed53559fd0018858fe1397da7",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.1/FOrcaSlicer-2.3.2-fos.8.6.1-macos-universal.dmg",
+        "file_size": 209367096,
+        "file_md5": "b6b8ebd9b087c67de47ddb6c40a5f7f5",
+        "file_sha256": "c195e7f3872706ce4f566dffafbae1ca3c60c8cee86a3df7b2ae73505e206fde",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.2/FOrcaSlicer-2.3.2-fos.8.6.2-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "intel": {
-        "file_size": 206889042,
-        "file_md5": "7eb53cf569366f833f5285ffbf3d8c2f",
-        "file_sha256": "3f181a261bed355e69e8c39d7cf28f163c48b9bed53559fd0018858fe1397da7",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.1/FOrcaSlicer-2.3.2-fos.8.6.1-macos-universal.dmg",
+        "file_size": 209367096,
+        "file_md5": "b6b8ebd9b087c67de47ddb6c40a5f7f5",
+        "file_sha256": "c195e7f3872706ce4f566dffafbae1ca3c60c8cee86a3df7b2ae73505e206fde",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.2/FOrcaSlicer-2.3.2-fos.8.6.2-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       }
