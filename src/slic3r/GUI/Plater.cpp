@@ -3066,6 +3066,8 @@ void Sidebar::update_nozzle_settings_now(bool switch_machine)
                     if (nd2 && i < nd2->values.size())
                         nd2->values[i] = dval;
                     wxGetApp().get_tab(Preset::TYPE_PRINTER)->update();
+                    // FOS 8.6.2: inherits follows the OUTER WALL nozzle alone - it selects the
+                    // parent whose process presets apply, which is not a per-nozzle question.
                     if ((int)i == ow_ext_idx) {
                         auto& pp = wxGetApp().preset_bundle->printers.get_edited_preset();
                         if (!pp.is_system) {
@@ -3076,30 +3078,14 @@ void Sidebar::update_nozzle_settings_now(bool switch_machine)
                             const_cast<Preset&>(wxGetApp().preset_bundle->printers
                                 .get_selected_preset()).inherits() = new_inherits;
                         }
-                        wxGetApp().preset_bundle->update_compatible(PresetSelectCompatibleType::Always);
-                        wxGetApp().CallAfter([]() {
-                            if (wxGetApp().plater()) {
-                                wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_PRINT);
-                                wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_FILAMENT);
-                                if (auto* tab = wxGetApp().get_tab(Preset::TYPE_PRINT)) {
-                                    tab->update_tab_ui();
-                                    tab->load_current_preset();
-                                }
-                            }
-                        });
                     }
-                });
-                // If OW nozzle changed, update inherits and refresh PRP
-                if ((int)i == ow_ext_idx) {
-                    auto& pp = wxGetApp().preset_bundle->printers.get_edited_preset();
-                    if (!pp.is_system) {
-                        std::ostringstream ss;
-                        ss << std::fixed << std::setprecision(1) << dval;
-                        std::string new_inherits = "Snapmaker U1 (" + ss.str() + " nozzle)";
-                        pp.inherits() = new_inherits;
-                        const_cast<Preset&>(wxGetApp().preset_bundle->printers
-                            .get_selected_preset()).inherits() = new_inherits;
-                    }
+                    // FOS 8.6.2: recompute compatibility for EVERY nozzle, not only the outer
+                    // wall one. update_compatible_internal decides is_compatible by scanning
+                    // this array, so a nozzle changed without this call leaves that diameter's
+                    // filaments flagged incompatible from the PREVIOUS array, and the combo
+                    // drops them on its next rebuild - which the filament map dialog forces.
+                    // It must also run AFTER nd2 is written; the old synchronous copy that
+                    // followed this lambda ran before it and always read the stale array.
                     wxGetApp().preset_bundle->update_compatible(PresetSelectCompatibleType::Always);
                     wxGetApp().CallAfter([]() {
                         if (wxGetApp().plater()) {
@@ -3111,7 +3097,7 @@ void Sidebar::update_nozzle_settings_now(bool switch_machine)
                             }
                         }
                     });
-                }
+                });
             } else {
                 // Synced mode: switch to matching system preset (stock behavior)
                 if (is_snapmaker_u1) {
