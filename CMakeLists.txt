@@ -714,6 +714,14 @@ endforeach()
 # for any locale whose .mo is already newer than its .po; the target depends on the .mo outputs,
 # so building it is a no-op when no .po changed. The old TARGET/PRE_BUILD form ran msgfmt for
 # every locale on every invocation and ignored DEPENDS.
+# FOS 8.6.3: WINDOWS ONLY. The COMMAND below is tools/msgfmt.exe, a Windows binary, so on
+# macOS and Linux this rule dies with exit 126 "Permission denied" the moment it is really
+# built. That was invisible while the target sat outside ALL and therefore never ran.
+# macOS/Linux build their catalogues in scripts/run_gettext.sh instead (called from
+# build_release_macos.sh), which emits <lang>/${SLIC3R_APP_KEY}.mo from the same version.inc
+# key - so this is a deliberate platform split, not a missing feature. If this ever needs to
+# run on a POSIX host, find_program(msgfmt) rather than reaching for the bundled .exe.
+if(WIN32)
 file(GLOB BBL_L10N_PO_FILES "${BBL_L18N_DIR}/*/Snapmaker_Orca*.po")
 set(L10N_MO_FILES "")
 foreach(po_file ${BBL_L10N_PO_FILES})
@@ -732,6 +740,7 @@ endforeach()
 # FOS 8.6.3: ALL, or ALL_BUILD never runs msgfmt and the shipped .mo silently
 # freezes at whatever it was when someone last built this target by hand.
 add_custom_target(gettext_po_to_mo ALL DEPENDS ${L10N_MO_FILES})
+endif()
 
 find_package(NLopt 1.4 REQUIRED)
 
