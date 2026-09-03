@@ -2580,6 +2580,10 @@ DynamicPrintConfig PresetBundle::full_fff_config(bool fos_remap_by_filament) con
                 }
             }
         }
+        // FOS 8.6.3: a PTP may request per-nozzle authoring with uniform diameters. This
+        // must stay in lockstep with normalize_fdm_1() and GUI::has_mixed_nozzle_sizes().
+        if (const auto* desync = out.option<ConfigOptionBool>("fos_nozzle_desync"); desync && desync->value)
+            mixed = true;
         out.set_key_value("has_mixed_nozzle_sizes", new ConfigOptionBool(mixed));
         // Clamp outer_wall_loops to wall_loops when mixed nozzle is active
         if (mixed) {

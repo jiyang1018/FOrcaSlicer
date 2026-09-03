@@ -1714,8 +1714,14 @@ void TabPresetComboBox::update()
     std::map<wxString, wxString>                    preset_descriptions;
 
     wxString selected = "";
+    // FOS 8.6.3: a per-nozzle combo shows ITS OWN preset, never the globally selected one.
+    // The append loop below sets `selected = name` at i == idx_selected, and idx_selected is
+    // the GLOBAL selection - that overwrote the per-nozzle name computed here, so every
+    // nozzle row painted the global preset (dirty marker included) no matter what had been
+    // restored into it. Guarded at the three assignment sites with this flag.
+    const bool fos_per_nozzle = (m_nozzle_slot >= 0 && !m_per_nozzle_selected.empty());
     // FOS: for per-nozzle combos, use the per-nozzle selected preset name
-    if (m_nozzle_slot >= 0 && !m_per_nozzle_selected.empty()) {
+    if (fos_per_nozzle) {
         // Find the preset and use label() to match display name format
         const Preset* per_nozzle_preset = m_collection->find_preset(m_per_nozzle_selected, false);
         if (per_nozzle_preset)
@@ -1787,7 +1793,7 @@ void TabPresetComboBox::update()
         if (preset.is_default || preset.is_system) {
             //BBS: move system to the end
             system_presets.emplace(name, std::pair<wxBitmap *, bool>(bmp, is_enabled));
-            if (i == idx_selected)
+            if (i == idx_selected && !fos_per_nozzle) // FOS 8.6.3: see fos_per_nozzle above
                 selected = name;
             //int item_id = Append(get_preset_name(preset), *bmp);
             //if (!is_enabled)
@@ -1799,14 +1805,14 @@ void TabPresetComboBox::update()
         {
             //std::pair<wxBitmap*, bool> pair(bmp, is_enabled);
             project_embedded_presets.emplace(name, std::pair<wxBitmap *, bool>(bmp, is_enabled));
-            if (i == idx_selected)
+            if (i == idx_selected && !fos_per_nozzle) // FOS 8.6.3: see fos_per_nozzle above
                 selected = name;
         }
         else
         {
             std::pair<wxBitmap*, bool> pair(bmp, is_enabled);
             nonsys_presets.emplace(name, std::pair<wxBitmap *, bool>(bmp, is_enabled));
-            if (i == idx_selected)
+            if (i == idx_selected && !fos_per_nozzle) // FOS 8.6.3: see fos_per_nozzle above
                 selected = name;
         }
     }

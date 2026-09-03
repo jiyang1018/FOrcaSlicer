@@ -293,6 +293,14 @@ public:
     bool is_nozzle_verified() const;
     void show_nozzle_verify_dialog();
     void verify_nozzle_sizes();
+    // FOS: 'verified until restart'. This flag alone lifts NOTHING - it says that once the
+    // user actually clicks Verify, that verification should STICK for the rest of the run
+    // instead of re-arming on the next slice. Process lifetime only, never written to
+    // app_config, so a restart always brings the check back.
+    bool is_nozzle_verify_muted() const;
+    void set_nozzle_verify_muted(bool muted);
+    // FOS: void an existing verification (used on a printer-profile switch).
+    void reset_nozzle_verification();
 
     // SoftFever
     void calib_pa(const Calib_Params& params);

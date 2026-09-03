@@ -841,6 +841,50 @@ static wxString nozzle_type_key_to_label(const std::string& key)
     return wxString::FromUTF8(key);
 }
 
+// FOS 8.6.3: write the PTP's per-nozzle authoring flag and mark the printer preset dirty.
+// Printer scope (GCodeConfig + s_Preset_printer_options), so unlike the runtime bool it
+// replaced, this survives a printer switch and a restart. Everything that decides
+// per-nozzle behaviour reads it back through GUI::has_mixed_nozzle_sizes(),
+// PresetBundle::full_fff_config() or normalize_fdm_1() - never from the panel's own state.
+static void fos_set_nozzle_desync(bool on)
+{
+    auto *bundle = wxGetApp().preset_bundle;
+    if (bundle == nullptr) return;
+    auto &cfg = bundle->printers.get_edited_preset().config;
+    if (auto *opt = cfg.option<ConfigOptionBool>("fos_nozzle_desync", true))
+        opt->value = on;
+    if (auto *tab = wxGetApp().get_tab(Preset::TYPE_PRINTER)) {
+        tab->update_dirty();
+        tab->update();
+    }
+}
+
+// FOS 8.6.3: resolve the SYSTEM printer preset for this model and nozzle variant.
+// PresetBundle::get_similar_printer_preset() derives its target by substituting the
+// variant into the CURRENT preset's NAME. A custom mixed-nozzle profile carries no
+// variant token in its name, so the substitution no-ops, the lookup finds the profile
+// you are already on, and it returns that - a self-select. Selecting yourself turns the
+// unsaved-changes Save into an overwrite of the user's own profile with the synced
+// diameters, and Discard into a no-op that leaves the toggle lying. Match on
+// printer_model + printer_variant instead, and return null when there is no stock
+// profile for that diameter so the caller can stay put on purpose.
+static Preset *fos_system_preset_for_variant(const std::string &variant)
+{
+    auto *bundle = wxGetApp().preset_bundle;
+    if (bundle == nullptr) return nullptr;
+    const std::string model = bundle->printers.get_selected_preset().config.opt_string("printer_model");
+    if (model.empty()) return nullptr;
+    std::string found;
+    for (const Preset &preset : bundle->printers.get_presets()) {
+        if (!preset.is_system) continue;
+        if (preset.config.opt_string("printer_model")   != model)   continue;
+        if (preset.config.opt_string("printer_variant") != variant) continue;
+        found = preset.name; break;
+    }
+    if (found.empty()) return nullptr;
+    return bundle->printers.find_preset(found);
+}
+
 Sidebar::Sidebar(Plater *parent)
     : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(42 * wxGetApp().em_unit(), -1)), p(new priv(parent))
 {
@@ -1243,14 +1287,19 @@ Sidebar::Sidebar(Plater *parent)
         auto nozzle_icon = new ScalableButton(nozzle_title, wxID_ANY, "nozzle_diameter",
             wxEmptyString, wxDefaultSize, wxDefaultPosition, wxBU_EXACTFIT | wxNO_BORDER, true, 16);
         Label* nozzle_label = new Label(nozzle_title, Label::Body_14, _L("Nozzle Diameter"));
-        // Mixed toggle
-        Label* mixed_label = new Label(nozzle_title, Label::Body_13, _L("Mixed"));
+        // FOS 8.6.3: segmented Synced | Desynced switch, replacing the "Mixed" caption
+        // plus bare toggle. TWO TRAPS, both recorded at the translucency switch in
+        // MainFrame.cpp: SetMaxSize() MUST precede SetLabels() or Rescale() sets the track
+        // width to -1 and the control paints nothing; and labels[0] draws LEFT and is
+        // highlighted when the value is FALSE, so despite the parameter being named
+        // lbl_on it takes the OFF caption first. Synced first, Desynced second.
         p->m_fos_mixed_toggle = new SwitchButton(nozzle_title, wxID_ANY);
+        p->m_fos_mixed_toggle->SetMaxSize({ wxGetApp().em_unit() * 20, -1 });
+        p->m_fos_mixed_toggle->SetLabels(_L("Synced"), _L("Desynced"));
         nozzle_title_sizer->AddSpacer(FromDIP(10));
         nozzle_title_sizer->Add(nozzle_icon, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
         nozzle_title_sizer->Add(nozzle_label, 0, wxALIGN_CENTER_VERTICAL);
         nozzle_title_sizer->AddStretchSpacer();
-        nozzle_title_sizer->Add(mixed_label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
         nozzle_title_sizer->Add(p->m_fos_mixed_toggle, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(10));
         nozzle_title->SetSizer(nozzle_title_sizer);
         nozzle_title->SetMinSize({-1, FromDIP(30)});
@@ -1294,7 +1343,7 @@ Sidebar::Sidebar(Plater *parent)
         // FOS: Mixed toggle handler
         p->m_fos_mixed_toggle->Bind(wxEVT_TOGGLEBUTTON, [this](wxCommandEvent& e) {
             if (p->m_fos_mixed_toggle->GetValue()) {
-                // Turning on mixed mode — confirm
+                // Turning on mixed mode - confirm
                 MessageDialog dlg(wxGetApp().mainframe,
                     _L("Mixed nozzle size mode allows different diameters per head.\n\n"
                        "Please verify each nozzle diameter in software matches the physical nozzle installed. "
@@ -1305,9 +1354,13 @@ Sidebar::Sidebar(Plater *parent)
                     return;
                 }
                 p->m_fos_mixed_nozzle_mode = true;
+                fos_set_nozzle_desync(true);
                 update_nozzle_settings();
             } else {
-                // Turning off mixed mode — check if nozzles differ
+                // Turning off mixed mode - check if nozzles differ
+                // FOS 8.6.3: set when we hand off to a stock profile. In that case the
+                // CURRENT preset must be left completely untouched - see below.
+                bool fos_switching = false;
                 auto* nd = wxGetApp().preset_bundle->printers.get_edited_preset()
                     .config.option<ConfigOptionFloats>("nozzle_diameter");
                 if (nd && nd->values.size() > 1) {
@@ -1318,9 +1371,16 @@ Sidebar::Sidebar(Plater *parent)
                     if (has_mixed) {
                         std::ostringstream ss;
                         ss << std::fixed << std::setprecision(1) << first;
+                        // FOS 8.6.3: name the landing profile in the prompt so the switch is
+                        // never a surprise, and resolve it by model + variant rather than by
+                        // name substitution - see fos_system_preset_for_variant().
+                        Preset  *fos_target = fos_system_preset_for_variant(ss.str());
+                        wxString fos_where  = fos_target
+                            ? wxString::Format(_L("then switch to \"%s\""), from_u8(fos_target->name))
+                            : _L("and stay on this profile - there is no stock profile for that diameter");
                         MessageDialog dlg(wxGetApp().mainframe,
-                            wxString::Format(_L("This will sync all nozzles to Nozzle 1 diameter (%smm). Continue?"),
-                                wxString(ss.str())),
+                            wxString::Format(_L("This will sync all nozzles to Nozzle 1 diameter (%smm), %s. Continue?"),
+                                wxString(ss.str()), fos_where),
                             _L("Sync Nozzles"), wxICON_WARNING | wxYES_NO);
                         if (auto* btn = dynamic_cast<Button*>(dlg.FindWindowById(wxID_YES))) btn->SetLabel(_L("Sync"));
                         if (auto* btn = dynamic_cast<Button*>(dlg.FindWindowById(wxID_NO)))  btn->SetLabel(_L("Cancel"));
@@ -1328,22 +1388,54 @@ Sidebar::Sidebar(Plater *parent)
                             p->m_fos_mixed_toggle->SetValue(true);
                             return;
                         }
-                        // Sync all to nozzle 1
-                        for (size_t k = 0; k < nd->values.size(); k++)
-                            nd->values[k] = first;
-                        // Switch to matching system preset
-                        auto preset = wxGetApp().preset_bundle->get_similar_printer_preset({}, ss.str());
-                        if (preset) {
-                            preset->is_visible = true;
-                            std::string preset_name = preset->name;
+                        if (fos_target) {
+                            // FOS 8.6.3: DO NOT touch the current preset here. Writing the
+                            // synced diameters into it is how the old code expressed 'go to
+                            // the 0.2 profile', but it makes the user's own profile dirty
+                            // with the TARGET's values, so Save at the unsaved-changes prompt
+                            // faithfully overwrites their mixed profile with a synced one.
+                            // The stock profile already carries the right diameters and layer
+                            // clamp, so selecting it is the whole operation. Any prompt that
+                            // does appear is then about the user's own unrelated edits.
+                            fos_switching = true;
+                            fos_target->is_visible = true;
+                            std::string preset_name = fos_target->name;
                             wxGetApp().CallAfter([preset_name]() {
                                 wxGetApp().get_tab(Preset::TYPE_PRINTER)->select_preset(preset_name);
+                                // FOS 8.6.3: re-derive the toggle from whatever config ended
+                                // up loaded. select_preset() can be cancelled at the prompt,
+                                // and then nothing switched and the toggle must say Desynced.
+                                if (wxGetApp().plater())
+                                    wxGetApp().plater()->sidebar().update_nozzle_settings();
                             });
+                        } else {
+                            // No stock profile for this diameter: sync in place and leave the
+                            // preset dirty, which is what the prompt just promised.
+                            for (size_t k = 0; k < nd->values.size(); k++)
+                                nd->values[k] = first;
+                            // These diameters did NOT pass through the Size optgroup's
+                            // m_on_change, the only thing that re-fills the layer-height
+                            // clamp, so re-derive every row or the bounds keep the mixed
+                            // profile's per-nozzle values and get saved that way.
+                            auto &fos_cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+                            double fos_lo_v = 0.0, fos_hi_v = 0.0;
+                            fos_suggested_layer_limits(first, fos_lo_v, fos_hi_v);
+                            if (auto *fos_lo = fos_cfg.option<ConfigOptionFloats>("min_layer_height"))
+                                for (double &v : fos_lo->values) v = fos_lo_v;
+                            if (auto *fos_hi = fos_cfg.option<ConfigOptionFloats>("max_layer_height"))
+                                for (double &v : fos_hi->values) v = fos_hi_v;
                         }
                     }
                 }
-                p->m_fos_mixed_nozzle_mode = false;
-                update_nozzle_settings();
+                // FOS 8.6.3: only when we are STAYING on this preset. On the handoff path
+                // fos_set_nozzle_desync() would dirty the profile we are about to leave,
+                // which is exactly the write that made Save destructive. The target's own
+                // fos_nozzle_desync governs once it is loaded.
+                if (!fos_switching) {
+                    p->m_fos_mixed_nozzle_mode = false;
+                    fos_set_nozzle_desync(false);
+                    update_nozzle_settings();
+                }
             }
         });
 
@@ -2904,17 +2996,24 @@ void Sidebar::update_nozzle_settings_now(bool switch_machine)
     // below can leave the window frozen.
     wxWindowUpdateLocker freeze_guard(p->m_nozzle_container);
 
-    // FOS: auto-detect mixed mode only when switching PTP (not on manual toggle)
+    // FOS 8.6.3: seed from the SHARED uniformity test on a PTP switch, not from a private
+    // copy of it. GUI::has_mixed_nozzle_sizes() now returns (diameters differ) OR the PTP's
+    // fos_nozzle_desync, which is exactly what PresetBundle::full_fff_config() and
+    // normalize_fdm_1() feed the slicer - so the panel cannot drift from what gets sliced.
+    // FOS 8.6.3: re-derive on EVERY refresh, not only on a machine switch. This was a
+    // cached shadow of GUI::has_mixed_nozzle_sizes(), so any path that changed the
+    // diameters or the desync flag WITHOUT switching machine - saving the printer
+    // preset, discarding changes at the unsaved-changes prompt, editing a diameter in
+    // Printer Settings - left the toggle asserting a state the config no longer had.
+    p->m_fos_mixed_nozzle_mode = GUI::has_mixed_nozzle_sizes();
     if (switch_machine) {
-        auto* nd_check = dynamic_cast<const ConfigOptionFloats*>(
-            wxGetApp().preset_bundle->printers.get_edited_preset().config.option("nozzle_diameter"));
-        if (nd_check && nd_check->values.size() > 1) {
-            double first = nd_check->values[0];
-            bool has_mixed = false;
-            for (double d : nd_check->values)
-                if (std::abs(d - first) > 0.001) { has_mixed = true; break; }
-            p->m_fos_mixed_nozzle_mode = has_mixed;
-        }
+        // FOS 8.6.3: a verification claims the PHYSICAL nozzles match THIS profile, so
+        // switching profile voids it - re-arm even when 'Verified until restart' is ticked,
+        // since the new profile may call for a different set of nozzles entirely. The tick
+        // is cleared with it: the box reappears UNticked so the new profile gets a fresh
+        // decision rather than the previous one carried over.
+        if (wxGetApp().plater())
+            wxGetApp().plater()->reset_nozzle_verification();
     }
     // FOS: sync toggle state
     if (p->m_fos_mixed_toggle)
@@ -3883,6 +3982,8 @@ struct Plater::priv
     // Mixed nozzle verification state
     NozzleVerifyDialog*         m_nozzle_verify_dialog  { nullptr };
     bool                        m_nozzle_verified        { false };
+    // FOS: session-only mute for the mixed-nozzle verification (see Plater::set_nozzle_verify_muted).
+    bool                        m_nozzle_verify_muted    { false };
     std::string                 delayed_error_message;
 
     wxTimer                     background_process_timer;
@@ -8584,7 +8685,11 @@ void Plater::priv::on_slicing_completed(wxCommandEvent & evt)
                     break;
                 }
             }
-            if (has_mixed) {
+            // FOS: a STICKY verification (box ticked AND Verify already clicked) falls to
+            // the else branch, which clears the print gate - no notification, and the legend
+            // section stops drawing since it is keyed on nozzle_verify_required. The box on
+            // its own is not enough: without a real Verify click this still arms normally.
+            if (has_mixed && !(m_nozzle_verify_muted && m_nozzle_verified)) {
                 notification_manager->push_notification(
                     NotificationType::CustomNotification,
                     NotificationManager::NotificationLevel::WarningNotificationLevel,
@@ -14441,9 +14546,13 @@ void Plater::reslice()
         return;
     }
 
-    // FOS: reset nozzle verification on new slice
-    p->m_nozzle_verified = false;
-    if (wxGetApp().mainframe) wxGetApp().mainframe->set_nozzle_verified(false);
+    // FOS: reset nozzle verification on new slice - UNLESS the user asked for it to hold
+    // until restart and has already verified once. Re-slicing is what normally re-arms the
+    // check, so this is the one place the sticky flag has to be honoured.
+    if (!(p->m_nozzle_verify_muted && p->m_nozzle_verified)) {
+        p->m_nozzle_verified = false;
+        if (wxGetApp().mainframe) wxGetApp().mainframe->set_nozzle_verified(false);
+    }
     // In case SLA gizmo is in editing mode, refuse to continue
     // and notify user that he should leave it first.
     if (get_view3D_canvas3D()->get_gizmos_manager().is_in_editing_mode(true))
@@ -16986,6 +17095,21 @@ void Plater::verify_nozzle_sizes() {
         // FOS: verify without clearing nozzle_verify_required so button stays visible in [OK] state
         wxGetApp().mainframe->set_nozzle_verified_only(true);
     }
+}
+// FOS: ticking the box lifts NOTHING on its own - the gate is still gated until the user
+// clicks Verify. All it does is make THAT verification persist: the per-slice reset is
+// skipped and the section stops re-arming for the rest of the run.
+bool Plater::is_nozzle_verify_muted() const { return p->m_nozzle_verify_muted; }
+void Plater::set_nozzle_verify_muted(bool muted) { p->m_nozzle_verify_muted = muted; }
+void Plater::reset_nozzle_verification()
+{
+    p->m_nozzle_verified = false;
+    // FOS: clear the TICK too, so the box comes back unticked. A profile switch should ask
+    // for a fresh decision about a machine setup the user has not confirmed yet, rather
+    // than presenting the previous profile's answer already filled in.
+    p->m_nozzle_verify_muted = false;
+    if (wxGetApp().mainframe)
+        wxGetApp().mainframe->set_nozzle_verified(false);
 }
 SuppressBackgroundProcessingUpdate::SuppressBackgroundProcessingUpdate() :
     m_was_scheduled(wxGetApp().plater()->is_background_process_update_scheduled())

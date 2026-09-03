@@ -729,7 +729,9 @@ foreach(po_file ${BBL_L10N_PO_FILES})
     )
     list(APPEND L10N_MO_FILES ${mo_file})
 endforeach()
-add_custom_target(gettext_po_to_mo DEPENDS ${L10N_MO_FILES})
+# FOS 8.6.3: ALL, or ALL_BUILD never runs msgfmt and the shipped .mo silently
+# freezes at whatever it was when someone last built this target by hand.
+add_custom_target(gettext_po_to_mo ALL DEPENDS ${L10N_MO_FILES})
 
 find_package(NLopt 1.4 REQUIRED)
 

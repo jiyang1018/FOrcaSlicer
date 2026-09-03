@@ -1219,7 +1219,7 @@ wxWindow* PreferencesDialog::create_general_page()
 
     auto item_mouse_zoom_settings = create_item_checkbox(_L("Zoom to mouse position"), page, _L("Zoom in towards the mouse pointer's position in the 3D view, rather than the 2D window center."), 50, "zoom_to_mouse");
     auto item_use_free_camera_settings = create_item_checkbox(_L("Use free camera"), page, _L("If enabled, use free camera. If not enabled, use constrained camera."), 50, "use_free_camera");
-    // FOS: mouse button assignment — 3 rows, each with rotate/pan toggle
+    // FOS: mouse button assignment - 3 rows, each with rotate/pan toggle
 	auto item_mouse_btn_grid = new wxWindow(page, wxID_ANY, wxDefaultPosition, wxDefaultSize);
     item_mouse_btn_grid->SetBackgroundColour(*wxWHITE);
     auto* outer_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -1244,7 +1244,10 @@ wxWindow* PreferencesDialog::create_general_page()
     inner_sizer->Add(make_hdr(_L("Not assigned")), 0, wxALIGN_CENTER | wxEXPAND);
     delete hdr_ref; // only used for measurement
     const char* btn_keys[3]     = { "mouse_left_btn_fn", "mouse_middle_btn_fn", "mouse_right_btn_fn" };
-    const char* btn_labels[3]   = { "Left drag", "Middle drag", "Right drag" };
+    // FOS 8.6.3: L() marks these for xgettext. _L(btn_labels[i]) below takes a runtime
+    // const char*, which the extractor cannot see, so without L() the three row labels
+    // never reach the .pot/.po and always render in English.
+    const char* btn_labels[3]   = { L("Left drag"), L("Middle drag"), L("Right drag") };
     const char* btn_defaults[3] = { "rotate", "pan", "rotate" };
     wxRadioButton* rot_rbs[3];
     wxRadioButton* pan_rbs[3];

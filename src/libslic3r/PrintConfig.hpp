@@ -1310,6 +1310,12 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<MultiMaterialTopology>, fos_mms_topology))
     ((ConfigOptionInt,                 fos_mms_unit_count))
     ((ConfigOptionBools,               fos_mms_head_ace))
+    // FOS 8.6.3: author settings per nozzle regardless of whether the diameters agree.
+    // Printer scope, saved with the PTP. Replaces a runtime-only bool derived from 'do
+    // the diameters differ', which could not be switched on for a uniform machine and
+    // reset on every printer change. Named for the intent rather than the diameters
+    // because fos9 desyncs layer height across same-SIZE nozzles.
+    ((ConfigOptionBool,                fos_nozzle_desync))
     ((ConfigOptionFloats,              retraction_speed))
     ((ConfigOptionString,              machine_start_gcode))
     ((ConfigOptionStrings,             filament_start_gcode))

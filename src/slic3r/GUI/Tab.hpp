@@ -52,6 +52,11 @@ class ObjectBase;
 
 namespace GUI {
 
+// FOS 8.6.3: suggested layer-height clamp for a nozzle diameter (SOS printer-setting
+// bounds). Defined in Tab.cpp; Plater.cpp calls it when the sync path rewrites
+// nozzle_diameter without going through the Size optgroup's m_on_change.
+void fos_suggested_layer_limits(double nozzle_d, double &out_min, double &out_max);
+
 class TabPresetComboBox;
 class OG_CustomCtrl;
 

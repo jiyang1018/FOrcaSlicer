@@ -4711,6 +4711,17 @@ def = this->add("outer_wall_layer_height_max", coFloat);
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBools{ false });
 
+    // FOS 8.6.3: see PrintConfig.hpp. ORed into has_mixed_nozzle_sizes by
+    // PresetBundle::full_fff_config() and normalize_fdm_1(), so turning it on gives a
+    // uniform machine the same per-nozzle slicing a mixed one gets.
+    def = this->add("fos_nozzle_desync", coBool);
+    def->label = L("Desynced nozzles");
+    def->tooltip = L("Give each nozzle its own settings instead of sharing one set across "
+                     "all of them. Always on when the nozzle diameters differ; turn it on "
+                     "deliberately to desync nozzles that are the same size.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("mms_system", coEnum);
     def->label = L("Supply system");
     def->tooltip = L("Multi-material supply system feeding this extruder. None is stock "
@@ -7635,6 +7646,9 @@ void DynamicPrintConfig::normalize_fdm_1()
         bool mixed = false;
         for (double d : nozzle_diams->values)
             if (std::abs(d - first) > 0.001) { mixed = true; break; }
+        // FOS 8.6.3: a PTP may request per-nozzle authoring with uniform diameters.
+        if (auto *desync = this->opt<ConfigOptionBool>("fos_nozzle_desync", false); desync && desync->value)
+            mixed = true;
         this->opt<ConfigOptionBool>("has_mixed_nozzle_sizes", true)->value = mixed;
     }
     return;

@@ -952,7 +952,7 @@ static std::vector<std::string> s_Preset_printer_options {
     "host_type", "print_host", "printhost_apikey", "bbl_use_printhost",
     // FOS: supply topology, printer scope and single valued (mms_system / mms_host are
     // per extruder and register through m_extruder_option_keys instead).
-    "fos_mms_topology", "fos_mms_unit_count", "mms_system", "mms_host",
+    "fos_mms_topology", "fos_mms_unit_count", "fos_nozzle_desync", "mms_system", "mms_host",
     "print_host_webui",
     "printhost_cafile","printhost_port","printhost_authorization_type",
     "printhost_user", "printhost_password", "printhost_ssl_ignore_revoke", "thumbnails", "thumbnails_format",

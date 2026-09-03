@@ -5058,6 +5058,19 @@ void GCodeViewer::render_legend(float &legend_height, int canvas_width, int canv
                     ImGui::PopStyleColor(4);
                 }
                 ImGui::PopStyleVar(2);
+                // FOS: makes the NEXT Verify click stick for the rest of the run - ticking
+                // this on its own lifts nothing, the gate still waits for Verify. Once both
+                // have happened, re-slicing no longer re-arms the check and this section
+                // stops drawing. Not persisted; a restart always brings the check back.
+                // Sits on its own line BELOW the button, indented to the button's left edge
+                // by the same Dummy + SameLine pair the button uses - ImGui has no left
+                // margin, so the spacer is the indent.
+                ImGui::Dummy(ImVec2(0.0f, ImGui::GetFontSize() * 0.15f));
+                ImGui::Dummy({ window_padding, window_padding });
+                ImGui::SameLine();
+                bool mute_verify = wxGetApp().plater()->is_nozzle_verify_muted();
+                if (imgui.checkbox(_L("Verified until restart"), mute_verify))
+                    wxGetApp().plater()->set_nozzle_verify_muted(mute_verify);
                 ImGui::Dummy({ window_padding, window_padding });
             }
         }

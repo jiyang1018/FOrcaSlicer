@@ -7249,6 +7249,11 @@ bool has_mixed_nozzle_sizes()
     const auto *nd = bundle->printers.get_edited_preset().config.option<Slic3r::ConfigOptionFloats>("nozzle_diameter");
     if (nd == nullptr || nd->values.size() < 2) return false;
 
+    // FOS 8.6.3: a PTP may request per-nozzle authoring with uniform diameters. Kept in
+    // lockstep with PresetBundle::full_fff_config() and normalize_fdm_1().
+    const auto *desync = bundle->printers.get_edited_preset().config.option<Slic3r::ConfigOptionBool>("fos_nozzle_desync");
+    if (desync != nullptr && desync->value) return true;
+
     const double first = nd->values[0];
     for (size_t i = 1; i < nd->values.size(); ++i)
         if (std::abs(nd->values[i] - first) > 1e-4)

@@ -94,6 +94,26 @@ static std::string bed_type_to_rule_key(BedType bed_type)
     }
 }
 
+// FOS: the printer-setting layer height CLAMP for a nozzle diameter. These are the values
+// the Snapmaker U1 machine profiles ship - verified identical in sos - and NOT the wiki's
+// recommended band, which is narrower. The distinction matters: these two fields are the
+// hard clamp, and the same numbers are reachable by selecting the system preset by name,
+// so auto-fill has to agree with the profile exactly or the two disagree on one printer.
+//   0.2 -> 0.04 / 0.14   0.4 -> 0.08 / 0.32   0.6 -> 0.12 / 0.42   0.8 -> 0.16 / 0.56
+// Everything else falls back to 0.20x / 0.70x, the ratio the three non-stock rows share.
+// FOS 8.6.3: not static any more - Plater.cpp's nozzle sync path needs the same table.
+void fos_suggested_layer_limits(double nozzle_d, double &out_min, double &out_max)
+{
+    struct FosLayerRow { double d, lo, hi; };
+    static const FosLayerRow rows[] = {
+        { 0.2, 0.04, 0.14 }, { 0.4, 0.08, 0.32 }, { 0.6, 0.12, 0.42 }, { 0.8, 0.16, 0.56 },
+    };
+    for (const FosLayerRow &r : rows)
+        if (fabs(nozzle_d - r.d) < 1e-6) { out_min = r.lo; out_max = r.hi; return; }
+    out_min = 0.20 * nozzle_d;
+    out_max = 0.70 * nozzle_d;
+}
+
 static std::string nozzle_diameter_to_rule_key(double nozzle_diameter)
 {
     std::ostringstream ss;
@@ -5985,6 +6005,31 @@ if (is_marlin_flavor)
                         }
                     }
 
+                    // FOS: any diameter entered here re-fills this extruder's layer height
+                    // clamp, unconditionally. An override typed into the limit fields is
+                    // scoped to the nozzle it was typed for - choosing a different nozzle
+                    // re-derives both bounds rather than carrying the old pair across.
+                    if (opt_key.find("nozzle_diameter") != std::string::npos) {
+                        const auto *fos_nd  = static_cast<const ConfigOptionFloats*>(m_config->option("nozzle_diameter"));
+                        const auto *fos_lo  = static_cast<const ConfigOptionFloats*>(m_config->option("min_layer_height"));
+                        const auto *fos_hi  = static_cast<const ConfigOptionFloats*>(m_config->option("max_layer_height"));
+                        const size_t fos_ix = (size_t) extruder_idx;
+                        if (fos_nd && fos_lo && fos_hi &&
+                            fos_ix < fos_nd->values.size() &&
+                            fos_ix < fos_lo->values.size() &&
+                            fos_ix < fos_hi->values.size()) {
+                            double sug_lo = 0.0, sug_hi = 0.0;
+                            fos_suggested_layer_limits(fos_nd->values[fos_ix], sug_lo, sug_hi);
+                            std::vector<double> mins = fos_lo->values;
+                            std::vector<double> maxs = fos_hi->values;
+                            mins[fos_ix] = sug_lo;
+                            maxs[fos_ix] = sug_hi;
+                            DynamicPrintConfig fos_conf = *m_config;
+                            fos_conf.set_key_value("min_layer_height", new ConfigOptionFloats(mins));
+                            fos_conf.set_key_value("max_layer_height", new ConfigOptionFloats(maxs));
+                            load_config(fos_conf);
+                        }
+                    }
                     update_dirty();
                     update();
                     if (opt_key.find("nozzle_diameter") != std::string::npos)
@@ -5994,6 +6039,47 @@ if (is_marlin_flavor)
                 optgroup = page->new_optgroup(L("Layer height limits"), L"param_layer_height");
                 optgroup->append_single_option_line("min_layer_height", "", extruder_idx);
                 optgroup->append_single_option_line("max_layer_height", "", extruder_idx);
+                // FOS: NARROWING the clamp is the user's business and passes silently.
+                // WIDENING it past what this nozzle diameter suggests asks once; on confirm
+                // the typed value stands, on cancel the field returns to the suggested bound.
+                // Replaces Page::new_optgroup's default handler, so it must end with the same
+                // update_dirty() + on_value_change() the default did.
+                optgroup->m_on_change = [this, extruder_idx](const t_config_option_key &opt_key, boost::any value)
+                {
+                    const bool is_min = opt_key.find("min_layer_height") != std::string::npos;
+                    const bool is_max = opt_key.find("max_layer_height") != std::string::npos;
+                    if (is_min || is_max) {
+                        const auto  *fos_nd = static_cast<const ConfigOptionFloats*>(m_config->option("nozzle_diameter"));
+                        const size_t fos_ix = (size_t) extruder_idx;
+                        if (fos_nd && fos_ix < fos_nd->values.size()) {
+                            const double d = fos_nd->values[fos_ix];
+                            double sug_lo = 0.0, sug_hi = 0.0;
+                            fos_suggested_layer_limits(d, sug_lo, sug_hi);
+                            double v = 0.0;
+                            try { v = boost::any_cast<double>(value); } catch (...) { v = is_min ? sug_lo : sug_hi; }
+                            if ((is_min && v < sug_lo - 1e-6) || (is_max && v > sug_hi + 1e-6)) {
+                                const wxString msg = wxString::Format(
+                                    _L("A %.2f mm nozzle is set up for layer heights between %.2f and %.2f mm. "
+                                       "You are widening that to %.2f mm.\n\n"
+                                       "Outside the supported range the extruder may not keep up, or the layer "
+                                       "may not bond to the one below it. Use %.2f mm anyway?"),
+                                    d, sug_lo, sug_hi, v, v);
+                                MessageDialog dlg(parent(), msg, _L("Layer height limits"), wxICON_WARNING | wxYES_NO);
+                                if (dlg.ShowModal() != wxID_YES) {
+                                    const char *key = is_min ? "min_layer_height" : "max_layer_height";
+                                    std::vector<double> vals =
+                                        static_cast<const ConfigOptionFloats*>(m_config->option(key))->values;
+                                    vals[fos_ix] = is_min ? sug_lo : sug_hi;
+                                    DynamicPrintConfig fos_conf = *m_config;
+                                    fos_conf.set_key_value(key, new ConfigOptionFloats(vals));
+                                    load_config(fos_conf);
+                                }
+                            }
+                        }
+                    }
+                    update_dirty();
+                    on_value_change(opt_key, value);
+                };
 
                 optgroup = page->new_optgroup(L("Position"), L"param_position");
                 optgroup->append_single_option_line("extruder_offset", "", extruder_idx);
