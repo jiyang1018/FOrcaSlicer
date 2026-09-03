@@ -127,6 +127,10 @@ class ParamsPanel : public wxPanel
         // nozzle_diameter via fos_ensure_nozzle_rows() - NOT a fixed 4.
         std::vector<TabPrintNozzle*> m_tab_print_nozzle;
         bool m_fos_mixed_nozzle_mode { false }; // FOS: true when mixed nozzle mode active
+        // FOS 8.6.4: desynced-mode notice above the Nozzle 1 PRP row.
+        // Typed as the wx base, not Label: Widgets/Label.hpp is included by the .cpp only,
+        // and nothing here calls a Label-specific method.
+        wxStaticText* m_fos_prp_lh_notice { nullptr };
 
         wxPanel* m_current_tab { nullptr };
 

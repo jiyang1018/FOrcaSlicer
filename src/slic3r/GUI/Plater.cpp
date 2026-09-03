@@ -3194,6 +3194,20 @@ void Sidebar::update_nozzle_settings_now(bool switch_machine)
                                 tab->update_tab_ui();
                                 tab->load_current_preset();
                             }
+                            // FOS 8.6.4: the per-nozzle PRP rows are re-picked in
+                            // ParamsPanel::update_prp_nozzle_rows, and the ONLY route to that
+                            // function is Sidebar::update_nozzle_settings_now. This mixed branch
+                            // never called it - it refreshed the combos and the printer tab only -
+                            // so a diameter change repainted the panel while N2-N4 stayed pinned to
+                            // the previous diameter's process preset. N1 appeared to follow because
+                            // update_compatible + load_current_preset move the GLOBAL preset, which
+                            // is N1's row; nothing moved the others.
+                            // false = not a machine switch, so no inherits rewrite and no
+                            // verification re-arm. update_nozzle_settings() is the coalescing shim
+                            // (Plater.cpp ~2974): it defers the DestroyChildren rebuild to the next
+                            // event-loop turn, so the nozzle combo that raised this event is not
+                            // destroyed underneath its own handler.
+                            wxGetApp().plater()->sidebar().update_nozzle_settings();
                         }
                     });
                 });

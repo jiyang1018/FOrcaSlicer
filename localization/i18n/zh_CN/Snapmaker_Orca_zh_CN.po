@@ -15811,3 +15811,5 @@ msgstr "然后切换到“%s”"
 msgid "and stay on this profile - there is no stock profile for that diameter"
 msgstr "并保留当前配置 —— 该直径没有对应的内置配置"
 
+msgid "For now, only Nozzle 1's process preset affects layer height."
+msgstr "目前仅挤出口 1 的工艺预设影响层高。"

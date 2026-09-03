@@ -350,6 +350,20 @@ ParamsPanel::ParamsPanel( wxWindow* parent, wxWindowID id, const wxPoint& pos, c
     //m_import_from_file->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { wxGetApp().mainframe->load_config_file(); });
 }
 
+// FOS 8.6.4: per-nozzle rows sit AFTER m_top_panel (the N1 row), which is no longer
+// guaranteed to be at index 0 - the desynced layer-height notice is inserted above it.
+// Derive the base from where m_top_panel actually is, so row order survives anything else
+// being added at the top of the tab's main sizer.
+static int fos_prp_row_base(Tab* tab)
+{
+    auto* sizer = tab ? tab->get_main_sizer() : nullptr;
+    if (!sizer || !tab->get_top_panel()) return 0;
+    for (size_t k = 0; k < sizer->GetItemCount(); ++k)
+        if (sizer->GetItem(k)->GetWindow() == tab->get_top_panel())
+            return (int) k;
+    return 0;
+}
+
 void ParamsPanel::create_layout()
 {
 #ifdef __WINDOWS__
@@ -404,7 +418,8 @@ void ParamsPanel::create_layout()
                     // Re-insert guard: free_sizers() clears ParamsPanel's own sizer only, so a
                     // row already sits in tab_print's main sizer across a panel rebuild.
                     if (!tab_print->get_main_sizer()->GetItem(m_tab_print_nozzle[i]))
-                        tab_print->get_main_sizer()->Insert(i, m_tab_print_nozzle[i], 0, wxEXPAND);
+                        tab_print->get_main_sizer()->Insert(fos_prp_row_base(tab_print) + i,
+                                                           m_tab_print_nozzle[i], 0, wxEXPAND);
                 }
             }
         }
@@ -793,9 +808,58 @@ void ParamsPanel::fos_ensure_nozzle_rows(int count)
             t->Reparent(m_tab_print);
             t->Hide();
             if (!tab_print->get_main_sizer()->GetItem(t))
-                tab_print->get_main_sizer()->Insert(i, t, 0, wxEXPAND);
+                tab_print->get_main_sizer()->Insert(fos_prp_row_base(tab_print) + i, t, 0, wxEXPAND);
         }
     }
+}
+
+// FOS 8.6.4: the diameter token slot `slot` requires in a process preset name.
+static std::string fos_slot_dia_str(int slot)
+{
+    auto* bundle = wxGetApp().preset_bundle;
+    if (!bundle) return std::string();
+    const auto* nd = bundle->printers.get_edited_preset()
+        .config.option<ConfigOptionFloats>("nozzle_diameter");
+    if (!nd || slot < 0 || slot >= (int) nd->values.size()) return std::string();
+    return float_to_string_decimal_point(nd->values[slot], 1);
+}
+
+// FOS 8.6.4: the same diameter test the per-nozzle dropdown filter applies
+// (PresetComboBoxes.cpp ~1755). Kept identical so the list and the auto-pick cannot disagree.
+static bool fos_prp_name_matches_dia(const std::string& name, const std::string& dia)
+{
+    if (dia.empty()) return true;
+    return name.find(dia + " nozzle") != std::string::npos
+        || name.find("(" + dia) != std::string::npos;
+}
+
+// FOS 8.6.4: first process preset matching slot `slot`'s diameter AND this printer model.
+// Empty means this model has no process preset for that diameter - callers must then leave the
+// filter off rather than painting an empty dropdown.
+static std::string fos_pick_prp_for_slot(int slot)
+{
+    auto* bundle = wxGetApp().preset_bundle;
+    const std::string slot_dia = fos_slot_dia_str(slot);
+    if (!bundle || slot_dia.empty()) return std::string();
+    const auto* pm = bundle->printers.get_edited_preset()
+        .config.option<ConfigOptionString>("printer_model");
+    const std::string expected_printer = (pm && !pm->value.empty())
+        ? pm->value + " (" + slot_dia + " nozzle)" : std::string();
+    std::string chosen, fallback;
+    for (const auto& preset : bundle->prints.get_presets()) {
+        if (!preset.is_visible || preset.is_default) continue;
+        if (!fos_prp_name_matches_dia(preset.name, slot_dia)) continue;
+        if (fallback.empty()) fallback = preset.name;
+        if (!expected_printer.empty()) {
+            const auto* cp = preset.config.option<ConfigOptionStrings>("compatible_printers");
+            if (cp && !cp->values.empty()) {
+                for (const auto& p : cp->values)
+                    if (p == expected_printer) { chosen = preset.name; break; }
+            }
+        }
+        if (!chosen.empty()) break;
+    }
+    return !chosen.empty() ? chosen : fallback;
 }
 
 void ParamsPanel::update_prp_nozzle_rows(bool mixed_active)
@@ -806,6 +870,64 @@ void ParamsPanel::update_prp_nozzle_rows(bool mixed_active)
     // null and those slots silently never loaded their PRP.
     const int fos_slot_count = fos_nozzle_slot_count();
     fos_ensure_nozzle_rows(fos_slot_count);
+    // FOS 8.6.4: desynced-mode notice above the Nozzle 1 row. Per-nozzle PRPs drive width and
+    // speed (TabPrint::fos_resolve_nozzle_arrays), but layer height is still ONE global value in
+    // 8.x - the per-nozzle layer-height arrays were MAPS plumbing and were removed, so N2-N4's
+    // PRP cannot move it. Say so on screen rather than letting the rows imply otherwise.
+    // Lives at main-sizer index 0; fos_prp_row_base() keeps the nozzle rows below it.
+    if (auto* fos_notice_tab = dynamic_cast<Tab*>(m_tab_print)) {
+        if (auto* fos_notice_sizer = fos_notice_tab->get_main_sizer()) {
+            if (m_fos_prp_lh_notice == nullptr)
+                m_fos_prp_lh_notice = new Label(m_tab_print, Label::Body_12,
+                    _L("For now, only Nozzle 1's process preset affects layer height."),
+                    LB_AUTO_WRAP);
+            m_fos_prp_lh_notice->SetForegroundColour(wxGetApp().get_label_clr_default());
+            // Re-insert guard, same reason as the rows: a panel rebuild leaves the window
+            // parented and already in this sizer.
+            if (!fos_notice_sizer->GetItem(m_fos_prp_lh_notice))
+                fos_notice_sizer->Insert(0, m_fos_prp_lh_notice, 0,
+                    wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(SidebarProps::ContentMargin()));
+            fos_notice_sizer->Show(m_fos_prp_lh_notice, mixed_active);
+            fos_notice_sizer->Layout();
+        }
+    }
+    // FOS 8.6.4: N1 has no row of its own - its PRP is the MAIN print combo - so the i>=1 loop
+    // below never reached it, and the main combo takes the OTHER filter branch in
+    // TabPresetComboBox::update() (PresetComboBoxes.cpp ~1778), the one governed by
+    // is_compatible. Process presets carry an explicit compatible_printers NAME list, and
+    // is_compatible_with_printer (Preset.cpp:686) matches on active_printer.preset.name with the
+    // inherits() fallback gated on !is_system. A dirtied stock PTP keeps is_system AND its name
+    // (select_preset copies the whole Preset into m_edited_preset), so on a stock PTP no amount
+    // of diameter editing could make another diameter's process presets compatible: N1's list
+    // stayed at the stock diameter until Save-As under a new name made the preset non-system
+    // (Tab.cpp:7571 -> update_nozzle_settings(true) -> the inherits rewrite in Plater.cpp).
+    // Filaments were never affected: update_compatible_internal has a TYPE_FILAMENT-only escape
+    // hatch that rescans nozzle_diameter, which is why FL1 followed the diameter and PRP1 did not.
+    // Fix: give slot 0 the same diameter filter + auto-pick slots 1..N already get. N1's PRP
+    // follows NOZZLE 1's OWN diameter (index 0), not the outer-wall nozzle.
+    if (auto* fos_n1_tab = dynamic_cast<Tab*>(m_tab_print)) {
+        if (auto* fos_n1_combo = fos_n1_tab->get_combo_box()) {
+            const std::string fos_n1_dia  = mixed_active ? fos_slot_dia_str(0) : std::string();
+            const std::string fos_n1_pick = mixed_active ? fos_pick_prp_for_slot(0) : std::string();
+            fos_n1_combo->set_nozzle_slot(fos_n1_pick.empty() ? -1 : 0);
+            fos_n1_combo->update(); // FOS: repaint the list under the new slot filter
+            // Re-pick ONLY when the current N1 preset does not belong to nozzle 1's diameter.
+            // Picking unconditionally would clobber a hand-chosen quality tier on every refresh,
+            // because the pick is "first match" and this function runs on load and on PTP switch.
+            const std::string fos_n1_cur =
+                wxGetApp().preset_bundle->prints.get_edited_preset().name;
+            if (!fos_n1_pick.empty() && !fos_prp_name_matches_dia(fos_n1_cur, fos_n1_dia)) {
+                // select_preset() may raise the unsaved-changes dialog and rebuilds the tab,
+                // which re-enters this function - defer it, and re-test inside so the re-entrant
+                // pass is a no-op.
+                wxGetApp().CallAfter([fos_n1_pick]() {
+                    if (auto* t = wxGetApp().get_tab(Preset::TYPE_PRINT))
+                        if (wxGetApp().preset_bundle->prints.get_edited_preset().name != fos_n1_pick)
+                            t->select_preset(fos_n1_pick);
+                });
+            }
+        }
+    }
     // FOS: i=0=N1, i=1=N2, ... all 0-based; N1 row (i=0) shown in mixed mode alongside m_tab_print
     for (int i = 1; i < (int) m_tab_print_nozzle.size(); ++i) {  // FOS: skip i=0 (N1) - N1 PRP row is m_tab_print itself
         // FOS: a row past the current nozzle count stays hidden regardless of mixed mode
@@ -863,9 +985,29 @@ void ParamsPanel::update_prp_nozzle_rows(bool mixed_active)
                         }
                         if (!chosen.empty()) break;
                     }
-                    // FOS: saved selection wins over both heuristic matches
-                    const std::string& pick = !saved_pick.empty() ? saved_pick
-                                            : (!chosen.empty() ? chosen : fallback);
+                    // FOS 8.6.4: a saved selection wins ONLY while it still belongs to this
+                    // slot's CURRENT diameter. It used to win unconditionally, which is correct
+                    // for a project load but pinned the row forever afterwards: once
+                    // print_filament_presets[i] held a name (written by the per-nozzle selection
+                    // handler, Tab.cpp ~2546, and persisted in the .3mf), changing nozzle i+1's
+                    // diameter could never move its PRP - the heuristic below was unreachable.
+                    // Same rule the N1 re-pick uses: a diameter change invalidates the saved
+                    // selection, nothing else does.
+                    const bool saved_ok = !saved_pick.empty()
+                                       && fos_prp_name_matches_dia(saved_pick, slot_dia);
+                    std::string pick = saved_ok ? saved_pick
+                                     : (!chosen.empty() ? chosen : fallback);
+                    // When the saved name is dropped, correct project_config too - otherwise the
+                    // stale name stays in the project and is written back out to the .3mf even
+                    // though no row is using it any more.
+                    if (!saved_ok && !saved_pick.empty() && !pick.empty()) {
+                        auto* fos_pfp = wxGetApp().preset_bundle->project_config
+                            .option<ConfigOptionStrings>("print_filament_presets", true);
+                        if (fos_pfp) {
+                            while ((int) fos_pfp->values.size() <= i) fos_pfp->values.push_back("");
+                            fos_pfp->values[i] = pick;
+                        }
+                    }
                     if (!pick.empty()) {
                         m_tab_print_nozzle[i]->set_selected_preset_name(pick);
                         combo->set_per_nozzle_selected(pick);
