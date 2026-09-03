@@ -1,18 +1,18 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.2",
+    "version": "8.6.3",
     "release_type": "stable",
     "platform_type": "win",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.2\n\nA patch release. Everything in 8.6.1 applies unchanged; nothing was added.\n\nFixed: on a printer with mixed nozzle sizes, changing the diameter of any nozzle other than the one printing outer walls left the filament list filtered against the previous diameter. The next time that list was rebuilt - opening the filament-to-nozzle map and clicking OK is the usual way - it collapsed to the one preset already selected, and the filaments for the new diameter could not be picked at all.\n\nNothing you saved was changed or lost by this. If you worked around it by deleting your settings folder, that is no longer necessary.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.3\n\nNew: the nozzle verification panel has a \"Verified until restart\" checkbox - tick it, click Verify, and you will not be asked again until you restart. The nozzle panel toggle is now Synced / Desynced, and Desynced lets you use separate process presets per nozzle even when all the diameters match. Entering a nozzle diameter in Printer Settings now fills in that nozzle's layer height limits for you.\n\nFixed: on a custom mixed-nozzle profile, switching the toggle to Synced and choosing Save at the unsaved-changes prompt wrote the synced diameters into your own profile instead of switching to the matching stock profile. Your profile is now left untouched, and the prompt names the profile it will switch to. The Synced / Desynced toggle could also show the wrong state after saving a preset, discarding changes, or editing a diameter. Each nozzle row displayed the globally selected process preset rather than its own; the presets bound to each nozzle were correct and sliced correctly, only the display was wrong.\n\nChinese: the translation catalogue had not been rebuilt since 25 July, so anything translated after that date never reached the application. That is fixed, and 173 new strings ship with this release.",
       "default": {
-        "file_size": 105267661,
-        "file_md5": "6026073343ab3d06431c4b6e5c580f17",
-        "file_sha256": "46cd5bb636610b2bfab20797a22c6f00cc85dcd948bbd2967f11688819350523",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.2/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.2.exe",
+        "file_size": 105295747,
+        "file_md5": "d56878ee99f9eef92ab5bbdbe4987400",
+        "file_sha256": "c08503f91614cbf19c0cf096f15fbafe7ebb619e66fbd9d82d2a4785c434ad2d",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.3/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.3.exe",
         "reserved_1": "",
         "reserved_2": ""
       }
