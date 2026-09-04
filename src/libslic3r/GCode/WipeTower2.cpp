@@ -1,5 +1,7 @@
 // Orca: WipeTower2 for all non bbl printers, support all MMU device and toolchanger.
 #include "WipeTower2.hpp"
+// FOS 8.6.5: fos_effective_nozzle() - filament -> the nozzle that SLICES it.
+#include "../PresetBundle.hpp"
 
 #include <cassert>
 #include <iostream>
@@ -1348,14 +1350,66 @@ WipeTower2::WipeTower2(const PrintConfig&                     config,
     m_bed_bottom_left = m_bed_shape == RectangularBed ? Vec2f(bed_points.front().x(), bed_points.front().y()) : Vec2f::Zero();
 }
 
+// FOS 8.6.5 phase 5: is filament `idx` served by a nozzle the Dynamic tower pool selects?
+// The pool is NOZZLE-indexed; idx is a FILAMENT index - always through fos_effective_nozzle(),
+// never pool.values[idx]. Returns false when the pool selects nothing, so callers can treat an
+// unset pool as "no pool" and keep upstream behaviour.
+static bool fos_tower_pool_any(const PrintConfig &config)
+{
+    for (unsigned char v : config.fos_wipe_tower_nozzle_pool.values)
+        if (v)
+            return true;
+    return false;
+}
+
+static bool fos_tower_pool_has(const PrintConfig &config, size_t idx)
+{
+    const ConfigOptionBools &pool = config.fos_wipe_tower_nozzle_pool;
+    bool any = false;
+    for (unsigned char v : pool.values)
+        if (v) { any = true; break; }
+    if (!any)
+        return false;
+    const size_t nozzle_n = config.fos_physical_nozzle_diameter.values.size();
+    if (nozzle_n == 0)
+        return false;
+    const size_t nz = fos_effective_nozzle(config.fos_filament_nozzle.values, idx, nozzle_n);
+    return nz < pool.values.size() && pool.values[nz] != 0;
+}
+
+// FOS 8.6.5 phase 5: the filament that prints the tower STRUCTURE. Resolved once for the whole
+// print - m_perimeter_width fixes the footprint, box, brim and sparse fill, so this cannot vary
+// per layer. An explicit wipe_tower_filament wins; otherwise the lowest-indexed pool member.
+// FOS: when no pool member is actually used on the plate the UI will prompt (design doc open
+// question 2); the engine takes the lowest member regardless, which is safe because
+// Print::validate has already refused any pool spanning more than one diameter.
+static size_t fos_tower_wall_idx(const PrintConfig &config, size_t num_filaments)
+{
+    const int wt = config.wipe_tower_filament.value;   // 1-based, 0 = Default/Dynamic
+    if (wt > 0)
+        return size_t(wt - 1);
+    for (size_t f = 0; f < num_filaments; ++f)
+        if (fos_tower_pool_has(config, f))
+            return f;
+    return 0;   // no pool at all - upstream fallback
+}
+
 void WipeTower2::set_extruder(size_t idx, const PrintConfig& config)
 {
     // while (m_filpar.size() < idx+1)   // makes sure the required element is in the vector
     m_filpar.push_back(FilamentParameters());
 
     m_filpar[idx].material = config.filament_type.get_at(idx);
-    m_filpar[idx].is_soluble = config.wipe_tower_filament == 0 ? config.filament_soluble.get_at(idx) :
-                               (idx != size_t(config.wipe_tower_filament - 1));
+    // FOS 8.6.5 phase 5: "soluble" is how the tower says "do not print the structure with this".
+    // With an explicit wipe_tower_filament every other filament is marked soluble so
+    // first_toolchange_to_nonsoluble() lands finish_layer on the chosen one. A Dynamic pool wants
+    // the same thing for a SET: everything outside the pool is marked soluble, so the structure
+    // can only land on a pool member. No pool -> upstream behaviour unchanged.
+    m_filpar[idx].is_soluble = config.wipe_tower_filament == 0
+        ? (fos_tower_pool_has(config, idx) ? false
+                                           : (fos_tower_pool_any(config) ? true
+                                                                         : config.filament_soluble.get_at(idx)))
+        : (idx != size_t(config.wipe_tower_filament - 1));
     m_filpar[idx].temperature = config.nozzle_temperature.get_at(idx);
     m_filpar[idx].first_layer_temperature              = config.nozzle_temperature_initial_layer.get_at(idx);
     m_filpar[idx].filament_minimal_purge_on_wipe_tower = config.filament_minimal_purge_on_wipe_tower.get_at(idx);
@@ -1399,8 +1453,14 @@ void WipeTower2::set_extruder(size_t idx, const PrintConfig& config)
     // Per-tool wipe/ramming widths come from m_filpar[tool].nozzle_diameter - see toolchange_Wipe
     // and toolchange_Unload; this scalar is deliberately NOT used for those.
     {
-        const int    wt_filament = config.wipe_tower_filament.value; // 1-based, 0 = unset/default
-        const size_t wall_idx    = wt_filament > 0 ? size_t(wt_filament - 1) : 0;
+        // FOS 8.6.5 phase 5: with wipe_tower_filament == 0 this fell back to filament 0, so the
+        // structure width came from nozzle 1 whatever the user asked for - on a 2/4/4/6 plate that
+        // is 0.25 mm, and the 0.4 and 0.6 nozzles then laid the box, finish layer and sparse fill
+        // at 0.25 mm. Resolve through the pool instead.
+        // num_filaments from the CONFIG, not m_filpar: set_extruder() is called with idx
+        // ascending and m_filpar.size() is only idx+1 here, so an early call would not see a
+        // pool member later in the list and would fall back to 0.
+        const size_t wall_idx = fos_tower_wall_idx(config, config.filament_diameter.values.size());
         // set_extruder() is called with idx ascending, so seeding on idx 0 leaves a sane fallback
         // if wall_idx is never reached (e.g. a stale config naming a filament that is not loaded).
         // FOS 8.5: the structure width is the wall filament's AUTHORED tower width (notebook), same

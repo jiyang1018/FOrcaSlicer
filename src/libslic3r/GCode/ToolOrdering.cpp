@@ -280,6 +280,44 @@ bool ToolOrdering::insert_wipe_tower_extruder()
         return false;
     // In case that wipe_tower_extruder is set to non-zero, we must make sure that the extruder will be in the list.
     bool changed = false;
+    // FOS 8.6.5 phase 5: a Dynamic tower pool needs the same guarantee an explicit
+    // wipe_tower_filament gets - at least one pool member present on every tower layer, so the
+    // structure has a tool it is allowed to use. Ids are 0-BASED here (this runs after the
+    // reindex at the tail of reorder_extruders), which is why the explicit branch subtracts 1
+    // and this one does not. Membership goes through fos_effective_nozzle: the pool is
+    // nozzle-indexed, these are filament ids.
+    std::vector<unsigned int> fos_pool_members;
+    if (m_print_config_ptr->wipe_tower_filament == 0) {
+        const ConfigOptionBools &pool = m_print_config_ptr->fos_wipe_tower_nozzle_pool;
+        bool any = false;
+        for (unsigned char v : pool.values)
+            if (v) { any = true; break; }
+        const size_t nozzle_n = m_print_config_ptr->fos_physical_nozzle_diameter.values.size();
+        const size_t nfil     = m_print_config_ptr->filament_diameter.values.size();
+        if (any && nozzle_n > 0)
+            for (size_t f = 0; f < nfil; ++f) {
+                const size_t nz = fos_effective_nozzle(m_print_config_ptr->fos_filament_nozzle.values,
+                                                       f, nozzle_n);
+                if (nz < pool.values.size() && pool.values[nz])
+                    fos_pool_members.push_back((unsigned int) f);
+            }
+    }
+    if (!fos_pool_members.empty()) {
+        for (LayerTools& lt : m_layer_tools) {
+            if (lt.wipe_tower_partitions == 0)
+                continue;
+            bool have = false;
+            for (unsigned int m : fos_pool_members)
+                if (std::find(lt.extruders.begin(), lt.extruders.end(), m) != lt.extruders.end()) {
+                    have = true; break;
+                }
+            if (!have) {
+                lt.extruders.emplace_back(fos_pool_members.front());
+                sort_remove_duplicates(lt.extruders);
+                changed = true;
+            }
+        }
+    }
     if (m_print_config_ptr->wipe_tower_filament != 0) {
         for (LayerTools& lt : m_layer_tools) {
             if (lt.wipe_tower_partitions > 0) {
