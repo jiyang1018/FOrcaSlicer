@@ -328,6 +328,9 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
             // steps as wipe_tower_filament. NOT posSlice: the tower is regenerated, object
             // geometry is untouched.
             || opt_key == "fos_nozzle_tower_line_widths"
+            // FOS 8.6.5: the dynamic tower nozzle pool decides which tool prints the tower
+            // structure, so it invalidates the same steps as wipe_tower_filament.
+            || opt_key == "fos_wipe_tower_nozzle_pool"
             || opt_key == "wiping_volumes_extruders"
             || opt_key == "enable_filament_ramming"
             || opt_key == "purge_in_prime_tower"

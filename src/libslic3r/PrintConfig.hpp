@@ -892,10 +892,16 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               support_bottom_z_distance))
     ((ConfigOptionInt,                 enforce_support_layers))
     ((ConfigOptionInt,                 support_filament))
+    // FOS 8.6.5: nozzle pool for a dynamic Support/raft base. One flag per nozzle; used
+    // only when support_filament == 0. All members must share a diameter - enforced in
+    // the UI and again in Print::validate.
+    ((ConfigOptionBools,               fos_support_nozzle_pool))
     ((ConfigOptionFloatOrPercent,      support_line_width))
     ((ConfigOptionBool,                support_interface_not_for_body))
     ((ConfigOptionBool,                support_interface_loop_pattern))
     ((ConfigOptionInt,                 support_interface_filament))
+    // FOS 8.6.5: nozzle pool for a dynamic Support/raft interface. See above.
+    ((ConfigOptionBools,               fos_support_interface_nozzle_pool))
     ((ConfigOptionInt,                 support_interface_top_layers))
     ((ConfigOptionInt,                 support_interface_bottom_layers))
     // Spacing between interface lines (the hatching distance). Set zero to get a solid interface.
@@ -1514,6 +1520,10 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionFloat,              wipe_tower_rib_width))
     ((ConfigOptionBool,               wipe_tower_fillet_wall))
     ((ConfigOptionInt,                wipe_tower_filament))
+    // FOS 8.6.5: nozzle pool for a dynamic prime tower. Print scope, not object scope -
+    // m_perimeter_width is one value for the whole tower, so the structure tool resolves
+    // once per print. Used only when wipe_tower_filament == 0.
+    ((ConfigOptionBools,              fos_wipe_tower_nozzle_pool))
     ((ConfigOptionFloats,             wiping_volumes_extruders))
     ((ConfigOptionInts,       idle_temperature))
 

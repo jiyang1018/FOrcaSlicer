@@ -1253,7 +1253,11 @@ bool PrintObject::invalidate_state_by_config_options(
         } else if (
                opt_key == "flush_into_infill"
             || opt_key == "flush_into_objects"
-            || opt_key == "flush_into_support") {
+            || opt_key == "flush_into_support"
+            // FOS 8.6.5: the dynamic support nozzle pools change which TOOL prints support,
+            // never the support geometry - same invalidation class as flush_into_*.
+            || opt_key == "fos_support_nozzle_pool"
+            || opt_key == "fos_support_interface_nozzle_pool") {
             invalidated |= m_print->invalidate_step(psWipeTower);
             invalidated |= m_print->invalidate_step(psGCodeExport);
         } else {
