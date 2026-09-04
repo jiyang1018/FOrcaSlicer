@@ -15813,3 +15813,68 @@ msgstr "并保留当前配置 —— 该直径没有对应的内置配置"
 
 msgid "For now, only Nozzle 1's process preset affects layer height."
 msgstr "目前仅挤出口 1 的工艺预设影响层高。"
+
+msgid "Wipe tower wall"
+msgstr "擦塔外墙"
+
+msgid "Wipe tower wall nozzles"
+msgstr "擦塔外墙挤出口"
+
+msgid "Support/raft base nozzles"
+msgstr "支撑/筏层主体挤出口"
+
+msgid "Support/raft interface nozzles"
+msgstr "支撑/筏层界面挤出口"
+
+msgid "Base nozzles"
+msgstr "主体挤出口"
+
+msgid "Interface nozzles"
+msgstr "界面挤出口"
+
+msgid "Pick here"
+msgstr "点击选择"
+
+#, c-format
+msgid "Nozzle %d (%.1f)"
+msgstr "挤出口 %d (%.1f)"
+
+msgid "Custom (select nozzles)"
+msgstr "自定义（选择挤出口）"
+
+msgid "Custom (1 nozzle)"
+msgstr "自定义（1 个挤出口）"
+
+#, c-format
+msgid "Custom (%d nozzles)"
+msgstr "自定义（%d 个挤出口）"
+
+msgid "Which nozzles may print the support base when Support/raft base is set to Custom. All selected nozzles must have the same diameter."
+msgstr "当“支撑/筏层主体”设为“自定义”时，可用于打印支撑主体的挤出口。所选挤出口的直径必须相同。"
+
+msgid "Which nozzles may print the support interface when Support/raft interface is set to Custom. All selected nozzles must have the same diameter."
+msgstr "当“支撑/筏层界面”设为“自定义”时，可用于打印支撑界面的挤出口。所选挤出口的直径必须相同。"
+
+msgid "Which nozzles may print the prime tower wall when Wipe tower wall is set to Custom. All selected nozzles must have the same diameter."
+msgstr "当“擦塔外墙”设为“自定义”时，可用于打印擦拭塔外墙的挤出口。所选挤出口的直径必须相同。"
+
+msgid "Mixed nozzle sizes are in use, so support cannot be printed by whichever filament happens to be loaded. Select a filament for Support/raft base, or select the nozzles it may use."
+msgstr "当前使用混合挤出口尺寸，支撑不能交由恰好装载的耗材打印。请为“支撑/筏层主体”选择一种耗材，或选择它可以使用的挤出口。"
+
+msgid "Mixed nozzle sizes are in use, so support cannot be printed by whichever filament happens to be loaded. Select a filament for Support/raft interface, or select the nozzles it may use."
+msgstr "当前使用混合挤出口尺寸，支撑不能交由恰好装载的耗材打印。请为“支撑/筏层界面”选择一种耗材，或选择它可以使用的挤出口。"
+
+msgid "Mixed nozzle sizes are in use, so the prime tower wall cannot be printed by whichever filament happens to be loaded. Select a filament for Wipe tower wall, or select the nozzles it may use."
+msgstr "当前使用混合挤出口尺寸，擦拭塔外墙不能交由恰好装载的耗材打印。请为“擦塔外墙”选择一种耗材，或选择它可以使用的挤出口。"
+
+#, boost-format
+msgid "The nozzles selected for Support/raft base have different diameters (%1% mm and %2% mm). Support is generated with one flow before the tool is chosen, so every nozzle in the set must have the same diameter."
+msgstr "为“支撑/筏层主体”选择的挤出口直径不同（%1% mm 和 %2% mm）。支撑在选定工具之前就以单一流量生成，因此该组中的每个挤出口必须具有相同的直径。"
+
+#, boost-format
+msgid "The nozzles selected for Support/raft interface have different diameters (%1% mm and %2% mm). Support is generated with one flow before the tool is chosen, so every nozzle in the set must have the same diameter."
+msgstr "为“支撑/筏层界面”选择的挤出口直径不同（%1% mm 和 %2% mm）。支撑在选定工具之前就以单一流量生成，因此该组中的每个挤出口必须具有相同的直径。"
+
+#, boost-format
+msgid "The nozzles selected for Wipe tower wall have different diameters (%1% mm and %2% mm). The tower structure is printed at one width for the whole print, so every nozzle in the set must have the same diameter."
+msgstr "为“擦塔外墙”选择的挤出口直径不同（%1% mm 和 %2% mm）。擦拭塔结构在整个打印过程中以单一宽度打印，因此该组中的每个挤出口必须具有相同的直径。"

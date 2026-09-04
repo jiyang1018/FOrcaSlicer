@@ -16,6 +16,7 @@
 //	       - Single preset item: name, file is default or external.
 
 #include <wx/panel.h>
+#include <wx/weakref.h>
 #include <wx/notebook.h>
 #include <wx/listbook.h>
 #include <wx/scrolwin.h>
@@ -406,14 +407,48 @@ public:
     PresetCollection *  get_presets() { return m_presets; }
     TabPresetComboBox *  get_combo_box() { return m_presets_choice; }
 
-    // FOS 8.6.5 phase 6b: the Dynamic nozzle-pool tickbox grid shown under the three gated
-    // pickers. One row of boxes per pool key; the first box ticked locks the pool's diameter and
-    // greys out every nozzle of a different one, because Print::validate refuses a pool that
-    // spans more than one diameter and the UI should not let it be built in the first place.
+    // FOS 8.6.5 phase 6b/6g: the Custom nozzle-pool control shown under the three gated pickers.
+    // The line holds ONE combo-width button in the field column; the tickboxes live in a
+    // transient popup it opens. The first box ticked locks the pool's diameter and greys out
+    // every nozzle of a different one, because Print::validate refuses a pool that spans more
+    // than one diameter and the UI should not let it be built in the first place.
+    // Phase 6g replaced an inline row of boxes. OG_CustomCtrl freezes each line's height from
+    // the LABEL text extent in init_ctrl_lines() and lays widget children out by hand in one
+    // horizontal run (correct_widgets_position, which ignores the sizer entirely), so an inline
+    // grid could neither wrap nor grow past one text line. A single button sidesteps both and
+    // matches the neighbouring combo width exactly (Field::def_width_wider()).
     wxSizer* fos_nozzle_pool_widget(wxWindow *parent, const std::string &pool_key, const wxString &label);
     void     fos_pool_apply_lock(const std::string &pool_key);
     void     fos_pool_write(const std::string &pool_key);
-    std::map<std::string, std::vector<::CheckBox*>> m_fos_pool_boxes;
+    void     fos_pool_show_popup(const std::string &pool_key);
+    // False when the matching picker names a specific filament - the pool is ignored then.
+    bool     fos_pool_is_active(const std::string &pool_key) const;
+    // May nozzle idx be ticked right now? Evaluated from the LIVE box states, not from the
+    // cached `locked` flag: that flag is only as fresh as the last fos_pool_apply_lock, and a
+    // click can land inside the window between a pool change and the next lock pass.
+    bool     fos_pool_may_pick(const std::string &pool_key, int idx);
+    wxString fos_pool_summary(const std::string &pool_key) const;
+    void     fos_pool_update_button(const std::string &pool_key);
+    // The button is built once at optgroup-activate time, so it must be REFRESHED in place when
+    // the config or the printer changes - otherwise it keeps the summary from whenever it
+    // happened to be built.
+    void     fos_pool_reload_all();
+    // wxWeakRef, NOT raw pointers: these widgets belong to the optgroup and are DESTROYED when
+    // the page is rebuilt, but reload_config() can run against the stale map first (it does, on
+    // a printer preset switch: select_preset -> load_current_preset -> reload_config). Raw
+    // pointers crash there. wxEvtHandler derives from wxTrackable, so a weak ref nulls itself.
+    // `locked` is the authority, NOT wxWindow::IsEnabled(). The popup is a child of the pool
+    // button, so any Enable(true) that walks the params page - toggle_options / update_changed_ui
+    // after a config write - re-enables the popup's checkboxes underneath us and the greyed-out
+    // nozzles become clickable again. That is the "all 5 can be checked, exclusion works after
+    // reloading the PTP" case: the lock was computed correctly every time (proven by
+    // [[FOS_POOL_LOCK]]) and then silently undone by wx.
+    struct FosPoolBox { wxWeakRef<::CheckBox> box; wxWeakRef<wxStaticText> label; bool locked {false}; };
+    // Boxes exist only while a popup is open; the button map is the durable one.
+    std::map<std::string, std::vector<FosPoolBox>> m_fos_pool_boxes;
+    std::map<std::string, wxWeakRef<wxWindow>>     m_fos_pool_btns;
+    wxWindow                                      *m_fos_pool_popup {nullptr};
+    std::string                                    m_fos_pool_popup_key;
 
 	virtual void    on_value_change(const std::string& opt_key, const boost::any& value);
 

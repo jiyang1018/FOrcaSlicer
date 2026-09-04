@@ -5466,7 +5466,7 @@ def = this->add("outer_wall_layer_height_max", coFloat);
     def = this->add("fos_support_nozzle_pool", coBools);
     def->label = L("Support/raft base nozzles");
     def->category = L("Support");
-    def->tooltip = L("Which nozzles may print the support base when Support/raft base is set to Dynamic. All selected nozzles must have the same diameter.");
+    def->tooltip = L("Which nozzles may print the support base when Support/raft base is set to Custom. All selected nozzles must have the same diameter.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBools{ false });
 
@@ -5511,7 +5511,7 @@ def = this->add("outer_wall_layer_height_max", coFloat);
     def = this->add("fos_support_interface_nozzle_pool", coBools);
     def->label = L("Support/raft interface nozzles");
     def->category = L("Support");
-    def->tooltip = L("Which nozzles may print the support interface when Support/raft interface is set to Dynamic. All selected nozzles must have the same diameter.");
+    def->tooltip = L("Which nozzles may print the support interface when Support/raft interface is set to Custom. All selected nozzles must have the same diameter.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBools{ false });
 
@@ -6242,7 +6242,7 @@ def = this->add("outer_wall_layer_height_max", coFloat);
 
     def = this->add("wipe_tower_filament", coInt);
     def->gui_type = ConfigOptionDef::GUIType::i_enum_open;
-    def->label = L("Wipe tower");
+    def->label = L("Wipe tower wall");
     def->category = L("Extruders");
     def->tooltip = L("The extruder to use when printing perimeter of the wipe tower. "
                      "Set to 0 to use the one that is available (non-soluble would be preferred).");
@@ -6252,9 +6252,9 @@ def = this->add("outer_wall_layer_height_max", coFloat);
 
     // FOS 8.6.5: dynamic prime tower nozzle pool. Read only when wipe_tower_filament == 0.
     def = this->add("fos_wipe_tower_nozzle_pool", coBools);
-    def->label = L("Wipe tower nozzles");
+    def->label = L("Wipe tower wall nozzles");
     def->category = L("Extruders");
-    def->tooltip = L("Which nozzles may print the prime tower when Wipe tower is set to Dynamic. All selected nozzles must have the same diameter.");
+    def->tooltip = L("Which nozzles may print the prime tower wall when Wipe tower wall is set to Custom. All selected nozzles must have the same diameter.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBools{ false });
 

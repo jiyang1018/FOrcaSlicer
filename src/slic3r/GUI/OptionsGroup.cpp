@@ -285,7 +285,13 @@ void OptionsGroup::activate_line(Line& line)
     }
 
 	auto option_set = line.get_options();
-	bool is_legend_line = option_set.front().opt.gui_type == ConfigOptionDef::GUIType::legend;
+	// FOS 8.6.5: a LABELLED WIDGET line carries no options. Upstream only ever created
+	// option-less lines as full_width, which returns above, so this dereferenced an empty vector
+	// and crashed. Guarding it makes a widget line a real table row: OG_CustomCtrl paints its
+	// label in the label column and positions line.widget_sizer in the field column
+	// (init_ctrl_lines already short-circuits safely on a non-empty label). A full_width widget
+	// line starts AT the field column and cannot reach the label column at all - measured, s35.
+	bool is_legend_line = !option_set.empty() && option_set.front().opt.gui_type == ConfigOptionDef::GUIType::legend;
 
     if (!custom_ctrl && m_use_custom_ctrl) {
         custom_ctrl = new OG_CustomCtrl(is_legend_line || !staticbox ? this->parent() : static_cast<wxWindow*>(this->stb), this);

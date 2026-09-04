@@ -1190,10 +1190,10 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
             const bool spans = fos_pool_spans(m_config.fos_wipe_tower_nozzle_pool, fos_n, fos_d0, fos_d1);
             if (fos_n == 0)
                 return {L("Mixed nozzle sizes are in use, so the prime tower wall cannot be printed by "
-                          "whichever filament happens to be loaded. Select a filament for Wipe tower, or "
+                          "whichever filament happens to be loaded. Select a filament for Wipe tower wall, or "
                           "select the nozzles it may use.")};
             if (spans)
-                return {(boost::format(L("The nozzles selected for Wipe tower have different diameters "
+                return {(boost::format(L("The nozzles selected for Wipe tower wall have different diameters "
                                          "(%1% mm and %2% mm). The tower structure is printed at one width "
                                          "for the whole print, so every nozzle in the set must have the same "
                                          "diameter.")) % fos_d0 % fos_d1).str()};

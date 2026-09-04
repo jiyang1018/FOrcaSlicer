@@ -3,6 +3,7 @@
 #include "slic3r/Utils/MultiACE.hpp"
 #include "Widgets/CustomNotebook.hpp"
 #include "Tab.hpp"
+#include <boost/nowide/cstdio.hpp>
 #include "PresetHints.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -48,6 +49,9 @@
 
 #include "Widgets/Label.hpp"
 #include "Widgets/CheckBox.hpp"
+#include "Widgets/Button.hpp"        // FOS 8.6.5 phase 6g: nozzle-pool dropdown trigger
+#include "Widgets/PopupWindow.hpp"   // FOS 8.6.5 phase 6g: nozzle-pool tickbox popup
+#include "Widgets/StateColor.hpp"    // FOS 8.6.5 phase 6g: dark-mode popup background
 
 // FOS: window ids for the per-toolhead supply-unit row. Fixed so toggle_options() can find the
 // controls without holding pointers across a page rebuild. Checkbox h is BASE + 1 + h, its
@@ -2424,31 +2428,86 @@ static const ConfigOptionFloats* fos_pool_nozzles(PresetBundle *bundle)
                   : nullptr;
 }
 
+bool Tab::fos_pool_may_pick(const std::string &pool_key, int idx)
+{
+    auto it = m_fos_pool_boxes.find(pool_key);
+    const auto *nd = fos_pool_nozzles(m_preset_bundle);
+    // FOS: fail CLOSED. A missing, empty or wrong-generation box map means the one-diameter rule
+    // cannot be evaluated, and "cannot evaluate" must not mean "allow anything" - that is exactly
+    // how four nozzles of three diameters got ticked at once.
+    if (it == m_fos_pool_boxes.end() || nd == nullptr || it->second.empty() ||
+        it->second.size() != nd->values.size() || idx < 0 || idx >= (int) nd->values.size())
+        return false;
+    for (size_t j = 0; j < it->second.size(); ++j)
+        if ((int) j != idx && it->second[j].box && it->second[j].box->GetValue())
+            return std::abs(nd->values[j] - nd->values[idx]) < 1e-4;
+    return true;   // nothing else is ticked, so any diameter is free to become the pool's
+}
+
 void Tab::fos_pool_apply_lock(const std::string &pool_key)
 {
     auto it = m_fos_pool_boxes.find(pool_key);
     const auto *nd = fos_pool_nozzles(m_preset_bundle);
     if (it == m_fos_pool_boxes.end() || nd == nullptr)
         return;
+    // A box map built for a DIFFERENT printer. Proven live: the [[FOS_POOL_LOCK]] probe caught
+    // "boxes=4 nd=5" right after a U1 -> Prusa XL switch and "boxes=5 nd=4" going back, because
+    // wxPopupTransientWindow::Dismiss() only HIDES the popup, so its boxes stayed in the map.
+    // Walking min(boxes, nd) there silently evaluates the wrong rows and never reaches the
+    // extra nozzle at all. Drop the generation instead of half-using it.
+    if (!it->second.empty() && it->second.size() != nd->values.size()) {
+        // Say so. An early return that says nothing is how this hid in the first place.
+        BOOST_LOG_TRIVIAL(warning) << "FOS pool: dropped a stale box map for " << pool_key
+                                   << " (boxes=" << it->second.size()
+                                   << " nozzles=" << nd->values.size() << ")";
+        it->second.clear();
+        return;
+    }
     double lock = 0.;   // 0 = nothing ticked yet, so every nozzle stays available
     for (size_t i = 0; i < it->second.size() && i < nd->values.size(); ++i)
-        if (it->second[i]->GetValue()) { lock = nd->values[i]; break; }
-    for (size_t i = 0; i < it->second.size() && i < nd->values.size(); ++i)
-        it->second[i]->Enable(lock == 0. || std::abs(nd->values[i] - lock) < 1e-4);
+        if (it->second[i].box && it->second[i].box->GetValue()) { lock = nd->values[i]; break; }
+    for (size_t i = 0; i < it->second.size() && i < nd->values.size(); ++i) {
+        if (!it->second[i].box)
+            continue;
+        const bool en = (lock == 0. || std::abs(nd->values[i] - lock) < 1e-4);
+        it->second[i].locked = !en;   // the authority - see FosPoolBox in Tab.hpp
+        // Re-assert the bitmap from the live value: SetValue() is the only public entry that
+        // calls CheckBox::update(), so this repaints a box whose picture drifted from its state.
+        it->second[i].box->SetValue(it->second[i].box->GetValue());
+        it->second[i].box->Enable(en);
+        // A wxBitmapToggleButton inside a wxPopupTransientWindow does not always repaint on
+        // Enable() alone - the U1 case only looked right because the gated-picker refresh that
+        // follows a pool write forced the popup to redraw, and that path does not run on a
+        // non-Snapmaker printer.
+        it->second[i].box->Refresh();
+        if (it->second[i].label) {
+            it->second[i].label->Enable(en);
+            it->second[i].label->SetForegroundColour(
+                StateColor::darkModeColorFor(en ? wxColour(0x36, 0x36, 0x36) : wxColour(0xAC, 0xAC, 0xAC)));
+            it->second[i].label->Refresh();
+        }
+    }
+    if (m_fos_pool_popup && m_fos_pool_popup_key == pool_key)
+        m_fos_pool_popup->Refresh();
 }
 
 void Tab::fos_pool_write(const std::string &pool_key)
 {
     auto it = m_fos_pool_boxes.find(pool_key);
-    if (it == m_fos_pool_boxes.end() || m_config == nullptr)
-        return;
+    if (it == m_fos_pool_boxes.end() || it->second.empty() || m_config == nullptr)
+        return;   // FOS 8.6.5 phase 6g: an empty map here would write an EMPTY pool over a good one
+    // A destroyed grid would write a wrong pool, not just crash - bail instead.
+    for (const auto &cb : it->second)
+        if (!cb.box)
+            return;
     auto *opt = new ConfigOptionBools();
-    for (auto *cb : it->second)
-        opt->values.push_back(cb->GetValue() ? (unsigned char) 1 : (unsigned char) 0);
+    for (const auto &cb : it->second)
+        opt->values.push_back(cb.box->GetValue() ? (unsigned char) 1 : (unsigned char) 0);
     DynamicPrintConfig cfg = *m_config;
     cfg.set_key_value(pool_key, opt);
     load_config(cfg);
     update_dirty();
+    fos_pool_update_button(pool_key);   // FOS 8.6.5 phase 6g
     // The row-0 label of the gated pickers is computed when the combo is POPULATED, not on
     // every config change, so a pool edit would not show up there until the page was rebuilt.
     // This is the one call that re-runs DynamicFilamentListGated::apply_on for all three.
@@ -2456,40 +2515,301 @@ void Tab::fos_pool_write(const std::string &pool_key)
         wxGetApp().plater()->sidebar().update_dynamic_filament_list();
 }
 
-// The Line carries full_width = 1 so OptionsGroup::activate_line takes its widget branch;
-// without that it falls through to option_set.front() on an empty option list and crashes
-// (OptionsGroup.cpp:288). That branch never draws the Line label either, so the label is
-// drawn here, inside the widget.
+// FOS 8.6.5 phase 6g: the button caption. Reads the CONFIG, not the boxes, because the boxes
+// only exist while the popup is open.
+wxString Tab::fos_pool_summary(const std::string &pool_key) const
+{
+    const auto *cur = m_config ? m_config->option<ConfigOptionBools>(pool_key) : nullptr;
+    const auto *nd  = m_preset_bundle
+                    ? m_preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter")
+                    : nullptr;
+    if (cur == nullptr || nd == nullptr)
+        return _L("Pick here");
+    wxString  picked;
+    double    dia = 0.;
+    int       n   = 0;
+    for (size_t i = 0; i < cur->values.size() && i < nd->values.size(); ++i)
+        if (cur->values[i] != 0) {
+            if (n > 0) picked += ", ";
+            picked += wxString::Format("%d", (int) i + 1);
+            dia = nd->values[i];
+            ++n;
+        }
+    if (n == 0)
+        return _L("Pick here");
+    return wxString::Format("%s (%.1f)", picked, dia);
+}
+
+// FOS 8.6.5 phase 6h: the picker each pool qualifies. Row 0 of these three combos is the
+// "resolve the tool later" row and the only value the pool means anything for; any value > 0 is
+// an explicit filament, which the engine uses verbatim (Print.cpp validation: "> 0 unchanged").
+static const char* fos_pool_picker_key(const std::string &pool_key)
+{
+    if (pool_key == "fos_support_nozzle_pool")           return "support_filament";
+    if (pool_key == "fos_support_interface_nozzle_pool") return "support_interface_filament";
+    if (pool_key == "fos_wipe_tower_nozzle_pool")        return "wipe_tower_filament";
+    return nullptr;
+}
+
+bool Tab::fos_pool_is_active(const std::string &pool_key) const
+{
+    const char *pick = fos_pool_picker_key(pool_key);
+    if (pick == nullptr || m_config == nullptr || !m_config->has(pick))
+        return true;
+    return m_config->opt_int(pick) == 0;
+}
+
+void Tab::fos_pool_update_button(const std::string &pool_key)
+{
+    auto it = m_fos_pool_btns.find(pool_key);
+    if (it == m_fos_pool_btns.end() || !it->second)
+        return;
+    auto *btn = static_cast<Button *>(it->second.get());
+    btn->SetLabel(fos_pool_summary(pool_key));
+    // A specific filament in the picker overrides the pool outright, so the pool control has
+    // nothing to say - grey it out rather than let it be edited into a setting that is ignored.
+    const bool active = fos_pool_is_active(pool_key);
+    if (btn->IsEnabled() != active) {
+        btn->Enable(active);
+        if (!active && m_fos_pool_popup != nullptr && m_fos_pool_popup_key == pool_key) {
+            m_fos_pool_boxes[pool_key].clear();
+            m_fos_pool_popup->Destroy();
+            m_fos_pool_popup = nullptr;
+        }
+    }
+}
+
+// FOS 8.6.5 phase 6g: the tickboxes live in a transient popup, one row per physical nozzle, so
+// nozzle count is bounded only by screen height - the inline row was bounded by a frozen
+// single-text-line height it could not grow past.
+void Tab::fos_pool_show_popup(const std::string &pool_key)
+{
+    auto bit = m_fos_pool_btns.find(pool_key);
+    if (bit == m_fos_pool_btns.end() || !bit->second)
+        return;
+    wxWindow *btn = bit->second.get();
+    if (!fos_pool_is_active(pool_key))
+        return;
+    const auto *nd = fos_pool_nozzles(m_preset_bundle);
+    const int   n  = nd ? (int) nd->values.size() : 0;
+    if (n == 0)
+        return;
+
+    // One popup at a time. A stale one would keep stale boxes in m_fos_pool_boxes.
+    // Clicking the button of an OPEN popup closes it, the way a combo does - wxPopupTransientWindow
+    // only hides itself on an outside click, so without this the click would land here and
+    // immediately reopen what it just dismissed.
+    if (m_fos_pool_popup) {
+        const bool same_and_open = m_fos_pool_popup_key == pool_key && m_fos_pool_popup->IsShown();
+        m_fos_pool_boxes[m_fos_pool_popup_key].clear();
+        m_fos_pool_popup->Destroy();
+        m_fos_pool_popup = nullptr;
+        if (same_and_open)
+            return;
+    }
+    // wxPU_CONTAINS_CONTROLS is what DropDown::Create passes: without it the popup keeps the
+    // mouse capture to itself and the child checkboxes never see a click on MSW.
+    auto *pop = new PopupWindow(btn, wxPU_CONTAINS_CONTROLS);
+    m_fos_pool_popup     = pop;
+    m_fos_pool_popup_key = pool_key;
+    pop->Bind(wxEVT_DESTROY, [this, pop, pool_key](wxWindowDestroyEvent &evt) {
+        // wxWindowDestroyEvent propagates up, so every child checkbox reaches this handler too.
+        // FOS: compare the POPUP, not the key. Destroy() is deferred to idle on MSW, so a
+        // reopen builds generation N+1 and registers its boxes BEFORE generation N is actually
+        // destroyed - and both generations carry the same pool_key. Keying this on pool_key let
+        // the dead popup's destroy wipe the live popup's box map and null m_fos_pool_popup,
+        // leaving a visible list of checkboxes with no state behind it: every click then read an
+        // empty map, may_pick allowed it, apply_lock greyed nothing and write bailed on the
+        // empty guard. Proven live: [[FOS_POOL_CLICK]] pre= with boxes=0 nd=4 after three opens.
+        if (evt.GetEventObject() == pop && m_fos_pool_popup == pop) {
+            m_fos_pool_popup = nullptr;
+            m_fos_pool_boxes[pool_key].clear();
+        }
+        evt.Skip();
+    });
+    // Dismiss() only HIDES a wxPopupTransientWindow. Without this the boxes outlived the popup
+    // and a later printer switch ran reload/lock against a map built for the old nozzle count.
+    pop->Bind(wxEVT_SHOW, [this, pop, pool_key](wxShowEvent &evt) {
+        if (!evt.IsShown() && m_fos_pool_popup == pop)
+            m_fos_pool_boxes[pool_key].clear();
+        evt.Skip();
+    });
+
+    // DropDown's palette, so this reads as one of Orca's own dropdowns: 1px 0xDBDBDB frame
+    // (painted as the popup's own background behind a 1px inset body), white list, 0x363636
+    // text, 0xBFE1DE row highlight. DropDown paints all of this in one OnPaint over a text
+    // vector; a multi-check list needs real child controls, so the same look is assembled
+    // from panels instead.
+    const wxColour clr_frame = StateColor::darkModeColorFor(wxColour(0xDB, 0xDB, 0xDB));
+    const wxColour clr_body  = StateColor::darkModeColorFor(*wxWHITE);
+    const wxColour clr_hover = StateColor::darkModeColorFor(wxColour(0xBF, 0xE1, 0xDE));
+    const wxColour clr_text  = StateColor::darkModeColorFor(wxColour(0x36, 0x36, 0x36));
+    pop->SetBackgroundColour(clr_frame);
+
+    auto *frame = new wxBoxSizer(wxVERTICAL);
+    auto *body  = new wxPanel(pop);
+    body->SetBackgroundColour(clr_body);
+    frame->Add(body, 1, wxEXPAND | wxALL, FromDIP(1));
+
+    auto *rows = new wxBoxSizer(wxVERTICAL);
+    m_fos_pool_boxes[pool_key].clear();
+    const auto *cur = m_config ? m_config->option<ConfigOptionBools>(pool_key) : nullptr;
+    const int   row_h = FromDIP(30);
+    for (int i = 0; i < n; ++i) {
+        auto *row = new wxPanel(body);
+        row->SetBackgroundColour(clr_body);
+        auto *rs = new wxBoxSizer(wxHORIZONTAL);
+        auto *cb = new ::CheckBox(row);
+        cb->SetValue(cur != nullptr && i < (int) cur->values.size() && cur->values[i] != 0);
+        auto *lbl = new wxStaticText(row, wxID_ANY,
+                                     wxString::Format(_L("Nozzle %d (%.1f)"), i + 1, nd->values[i]));
+        lbl->SetFont(Label::Body_14);
+        lbl->SetForegroundColour(clr_text);
+        rs->Add(cb,  0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+        rs->Add(lbl, 1, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(8));
+        row->SetSizer(rs);
+        row->SetMinSize(wxSize(-1, row_h));
+        rows->Add(row, 0, wxEXPAND);
+
+        auto on_toggle = [this, pool_key, cb, i]() {
+            if (cb->GetValue() && !fos_pool_may_pick(pool_key, i)) {
+                cb->SetValue(false);           // wx may have re-enabled it; the rule still says no
+                fos_pool_apply_lock(pool_key); // repaint the greying that let the click through
+                return;
+            }
+            fos_pool_apply_lock(pool_key);
+            fos_pool_write(pool_key);
+        };
+        // The whole row is the hit target, the way a dropdown item is - clipping an 18px box is
+        // not what anyone expects from a list like this.
+        auto row_click = [cb, on_toggle](wxMouseEvent &evt) {
+            cb->SetValue(!cb->GetValue());
+            on_toggle();
+            evt.Skip();
+        };
+        row->Bind(wxEVT_LEFT_DOWN, row_click);
+        lbl->Bind(wxEVT_LEFT_DOWN, row_click);
+        // The box itself is driven the SAME way - the click is swallowed (no evt.Skip) so MSW
+        // never runs its own toggle. ::CheckBox paints from bitmaps that only CheckBox::update()
+        // refreshes, and update() only runs from SetValue() and from the wxEVT_TOGGLEBUTTON
+        // handler bound in its constructor. A native toggle that this code then refuses - which
+        // is every click on a locked nozzle - left the button showing check_on (solid #009688,
+        // white tick) while GetValue() was already false again: exactly the four "ticked" boxes
+        // over a "Pick here" caption, and the greyed-but-ticked row before it. Every
+        // [[FOS_POOL_LOCK]] line agreeing on box=0 was the giveaway that only the paint was wrong.
+        cb->Bind(wxEVT_LEFT_DOWN, [cb, on_toggle](wxMouseEvent &) {
+            cb->SetValue(!cb->GetValue());
+            on_toggle();
+        });
+        // Children eat enter/leave, so every one of them repaints the row.
+        auto hover = [row, clr_hover, clr_body](bool on) {
+            row->SetBackgroundColour(on ? clr_hover : clr_body);
+            row->Refresh();
+        };
+        for (wxWindow *w : { (wxWindow *) row, (wxWindow *) cb, (wxWindow *) lbl }) {
+            w->Bind(wxEVT_ENTER_WINDOW, [hover](wxMouseEvent &e) { hover(true);  e.Skip(); });
+            w->Bind(wxEVT_LEAVE_WINDOW, [hover](wxMouseEvent &e) { hover(false); e.Skip(); });
+        }
+        m_fos_pool_boxes[pool_key].push_back({ cb, lbl });
+    }
+    // FOS 8.6.5 phase 6g: enforce the one-diameter rule on the SEED, not just on toggle. Until
+    // now the only thing that could untick a wrong-diameter nozzle was fos_pool_apply_lock, and
+    // that greys boxes - it never clears one that arrived already ticked from the config. So a
+    // pool array carried into a printer with a different nozzle layout (nothing resizes or
+    // revalidates these on a printer switch) rendered as several ticked nozzles of different
+    // diameters, which is exactly the pool Print::validate refuses. Fix it here and write the
+    // corrected array back, so the displayed state and the saved state cannot disagree.
+    {
+        double  seed_dia   = 0.;
+        bool    seed_fixed = cur == nullptr || (int) cur->values.size() != n;
+        for (int i = 0; i < n; ++i) {
+            auto *cb = m_fos_pool_boxes[pool_key][i].box.get();
+            if (cb == nullptr || !cb->GetValue())
+                continue;
+            if (seed_dia == 0.)
+                seed_dia = nd->values[i];
+            else if (std::abs(nd->values[i] - seed_dia) > 1e-4) {
+                cb->SetValue(false);
+                seed_fixed = true;
+            }
+        }
+        if (seed_fixed)
+            fos_pool_write(pool_key);   // also normalises a pool array of the wrong length
+    }
+    body->SetSizer(rows);
+    pop->SetSizerAndFit(frame);
+    // DropDown::messureSize() takes max(content, parent width) - it widens to the ComboBox but
+    // never below its own text. Forcing the button width outright clipped " (0.4)" off every
+    // caption, which is why the rows read "Nozzle 1" with no diameter.
+    pop->SetSize(wxSize(std::max(pop->GetSize().x, btn->GetSize().x), pop->GetSize().y));
+    pop->Layout();   // settle the rows at the final width BEFORE the window is ever shown
+    fos_pool_apply_lock(pool_key);
+
+    // DropDown::autoPosition() verbatim: anchor 6px ABOVE the field's top-left and hand
+    // Position() a zero-width anchor 12px taller than the field, so the list overlaps the field
+    // the way Orca's own dropdowns do. Passing the field's real width as the anchor size (which
+    // is what this did) feeds wxPopupWindowBase::Position's right-edge branch
+    // "x = ptOrigin.x + size.x - sizeSelf.x" and pushes the list sideways off the field.
+    pop->Position(btn->ClientToScreen(wxPoint(0, -6)), wxSize(0, btn->GetSize().y + 12));
+    pop->Popup();
+}
+
+// FOS 8.6.5 phase 6d: re-seed every pool control from the CURRENT config and printer. The widget
+// lambda only runs on optgroup activate, so without this a project load leaves the summary
+// showing whatever was there when the page was last built - switching tabs and back was the
+// only way to correct it. Boxes are refreshed too, for the case where a popup is open.
+// In-place only: a change in nozzle COUNT still needs the page rebuilt, same freeze that
+// fos_sync_nozzle_notebooks() exists to solve.
+void Tab::fos_pool_reload_all()
+{
+    const auto *nd = fos_pool_nozzles(m_preset_bundle);
+    if (nd == nullptr || m_config == nullptr)
+        return;
+    for (auto &entry : m_fos_pool_btns)
+        fos_pool_update_button(entry.first);
+    for (auto &entry : m_fos_pool_boxes) {
+        if (!entry.second.empty() && entry.second.size() != nd->values.size()) {
+            entry.second.clear();   // FOS 8.6.5 phase 6g: boxes from another printer, see apply_lock
+            continue;
+        }
+        const auto *cur = m_config->option<ConfigOptionBools>(entry.first);
+        for (size_t i = 0; i < entry.second.size(); ++i) {
+            if (entry.second[i].label && i < nd->values.size())
+                entry.second[i].label->SetLabel(wxString::Format(_L("Nozzle %d (%.1f)"), (int) i + 1, nd->values[i]));
+            // SetValue is programmatic and fires no event, so this cannot re-enter fos_pool_write.
+            if (entry.second[i].box)
+                entry.second[i].box->SetValue(cur != nullptr && i < cur->values.size() && cur->values[i] != 0);
+        }
+        fos_pool_apply_lock(entry.first);
+    }
+}
+
 wxSizer* Tab::fos_nozzle_pool_widget(wxWindow *parent, const std::string &pool_key, const wxString &label)
 {
     auto *sizer = new wxBoxSizer(wxHORIZONTAL);
-    auto *cap   = new wxStaticText(parent, wxID_ANY, label);
-    cap->SetFont(Label::Body_14);
-    sizer->Add(cap, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(10));
-    const auto *nd = fos_pool_nozzles(m_preset_bundle);
-    const int   n  = nd ? (int) nd->values.size() : 0;
+    // No caption here: the Line carries the label and OG_CustomCtrl paints it in the label
+    // column, the same as every option row. That only works because the line is NOT full_width
+    // - a full_width widget line is skipped by init_ctrl_lines and starts at the field column.
+    (void) label;
     // The widget lambda re-runs on every optgroup activate, so drop the previous generation of
     // pointers rather than accumulating dangling ones.
     m_fos_pool_boxes[pool_key].clear();
-    if (n == 0)
-        return sizer;
-    const auto *cur = m_config ? m_config->option<ConfigOptionBools>(pool_key) : nullptr;
-    for (int i = 0; i < n; ++i) {
-        auto *cb = new ::CheckBox(parent);
-        cb->SetValue(cur != nullptr && i < (int) cur->values.size() && cur->values[i] != 0);
-        cb->Bind(wxEVT_TOGGLEBUTTON, [this, pool_key](wxCommandEvent &evt) {
-            fos_pool_apply_lock(pool_key);
-            fos_pool_write(pool_key);
-            evt.Skip();
-        });
-        auto *lbl = new wxStaticText(parent, wxID_ANY,
-                                     wxString::Format("%d (%.1f)", i + 1, nd->values[i]));
-        lbl->SetFont(Label::Body_12);
-        sizer->Add(cb,  0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(i == 0 ? 0 : 10));
-        sizer->Add(lbl, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(3));
-        m_fos_pool_boxes[pool_key].push_back(cb);
-    }
-    fos_pool_apply_lock(pool_key);   // restore the lock for a pool loaded from a project
+    m_fos_pool_btns.erase(pool_key);
+
+    // Combo-width, combo-height, left-aligned text plus a drop arrow: this sits in the field
+    // column directly under a real ComboBox and has to read as one. def_width_wider() is what
+    // Field.cpp gives every choice field.
+    auto *btn = new Button(parent, fos_pool_summary(pool_key), "drop_down", 0, FromDIP(14));
+    btn->SetStyle(ButtonStyle::Regular, ButtonType::Parameter);
+    btn->SetCenter(false);
+    btn->SetMinSize(wxSize(Field::def_width_wider() * m_em_unit, -1));
+    btn->Bind(wxEVT_BUTTON, [this, pool_key](wxCommandEvent &evt) {
+        fos_pool_show_popup(pool_key);
+        evt.Skip();
+    });
+    m_fos_pool_btns[pool_key] = btn;
+    fos_pool_update_button(pool_key);   // FOS 8.6.5 phase 6h: grey it if the picker names a filament
+    sizer->Add(btn, 0, wxALIGN_CENTER_VERTICAL);
     return sizer;
 }
 
@@ -3228,19 +3548,22 @@ void TabPrint::build()
         optgroup = page->new_optgroup(L("Support filament"), L"param_support_filament");
         optgroup->append_single_option_line("support_filament", "support_settings_filament#base");
         {   // FOS 8.6.5 phase 6b: Dynamic pool for the support base
-            Line fos_l = Line{ "", "" };
-            fos_l.full_width = 1;
+            Line fos_l = Line{ _L("Base nozzles"), "" };
+            fos_l.fos_no_widget_gap = true;   // FOS 8.6.5 phase 6g: sit on the field column
             fos_l.append_widget([this](wxWindow *parent) {
-                return fos_nozzle_pool_widget(parent, "fos_support_nozzle_pool", _L("Base nozzles"));
+                return fos_nozzle_pool_widget(parent, "fos_support_nozzle_pool", wxString());
             });
             optgroup->append_line(fos_l);
         }
+        // FOS 8.6.5 phase 6f: the pool lines are no longer full_width, so they are ordinary
+        // OG_CustomCtrl rows and can sit between two option lines of the same group. The
+        // second, untitled optgroup that phase 6e needed is gone - it was adding a group gap.
         optgroup->append_single_option_line("support_interface_filament", "support_settings_filament#interface");
-        {   // FOS 8.6.5 phase 6b: Dynamic pool for the support interface
-            Line fos_l = Line{ "", "" };
-            fos_l.full_width = 1;
+        {   // FOS 8.6.5 phase 6b: Custom pool for the support interface
+            Line fos_l = Line{ _L("Interface nozzles"), "" };
+            fos_l.fos_no_widget_gap = true;   // FOS 8.6.5 phase 6g: sit on the field column
             fos_l.append_widget([this](wxWindow *parent) {
-                return fos_nozzle_pool_widget(parent, "fos_support_interface_nozzle_pool", _L("Interface nozzles"));
+                return fos_nozzle_pool_widget(parent, "fos_support_interface_nozzle_pool", wxString());
             });
             optgroup->append_line(fos_l);
         }
@@ -3319,10 +3642,10 @@ void TabPrint::build()
         optgroup->append_single_option_line("solid_infill_filament", "multimaterial_settings_filament_for_features#solid-infill");
         optgroup->append_single_option_line("wipe_tower_filament", "multimaterial_settings_filament_for_features#wipe-tower");
         {   // FOS 8.6.5 phase 6b: Dynamic pool for the prime tower structure
-            Line fos_l = Line{ "", "" };
-            fos_l.full_width = 1;
+            Line fos_l = Line{ _L("Wipe tower wall nozzles"), "" };
+            fos_l.fos_no_widget_gap = true;   // FOS 8.6.5 phase 6g: sit on the field column
             fos_l.append_widget([this](wxWindow *parent) {
-                return fos_nozzle_pool_widget(parent, "fos_wipe_tower_nozzle_pool", _L("Wipe tower nozzles"));
+                return fos_nozzle_pool_widget(parent, "fos_wipe_tower_nozzle_pool", wxString());
             });
             optgroup->append_line(fos_l);
         }
@@ -3442,6 +3765,7 @@ optgroup->append_single_option_line("skirt_loops", "others_settings_skirt#loops"
 // Reload current config (aka presets->edited_preset->config) into the UI fields.
 void TabPrint::reload_config()
 {
+    fos_pool_reload_all();   // FOS 8.6.5 phase 6d
 
 this->compatible_widget_reload(m_compatible_printers);
     // FOS: ensure inner_wall_filament is set - defaults to wall_filament value
@@ -3486,6 +3810,12 @@ void TabPrint::toggle_options()
     }
 
 	m_config_manipulation.toggle_print_fff_options(m_config, m_type < Preset::TYPE_COUNT);
+
+    // FOS 8.6.5 phase 6h: the pool buttons follow their picker. This is the path a combo change
+    // takes - reload_config() does not run for it, so refreshing only there left the pool control
+    // live under a picker that had just overridden it.
+    for (auto &entry : m_fos_pool_btns)
+        fos_pool_update_button(entry.first);
 
     // Mixed nozzle: always show our new fields regardless of toggle_print_fff_options
     toggle_option("outer_wall_loops", true);
@@ -3628,6 +3958,15 @@ void TabPrint::clear_pages()
         }
         slot_grps.clear();
     }
+    // FOS 8.6.5: the pool controls live in those pages too, and are destroyed with them. Same
+    // reason slot_grps is cleared here - a stale entry is a dangling widget. The popup is
+    // parented to a button on one of those pages, so it has to go first.
+    if (m_fos_pool_popup) {
+        m_fos_pool_popup->Destroy();
+        m_fos_pool_popup = nullptr;
+    }
+    m_fos_pool_boxes.clear();
+    m_fos_pool_btns.clear();
     Tab::clear_pages();
     m_recommended_thin_wall_thickness_description_line = nullptr;
     m_top_bottom_shell_thickness_explanation = nullptr;

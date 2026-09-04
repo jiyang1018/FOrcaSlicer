@@ -550,8 +550,8 @@ void OG_CustomCtrl::correct_widgets_position(wxSizer* widget, const Line& line, 
             wxPoint pos = line_pos;
             wxSize  sz = child->GetWindow()->GetSize();
             pos.y += std::max(0, int(0.5 * (line_height - sz.y)));
-            if (line.extra_widget_sizer && widget == line.extra_widget_sizer)
-                pos.x += m_h_gap;
+            if (line.extra_widget_sizer && widget == line.extra_widget_sizer && !line.fos_no_widget_gap)
+                pos.x += m_h_gap;   // FOS 8.6.5 phase 6g: opt-out for field-column widgets
             child->GetWindow()->SetPosition(pos);
             line_pos.x += sz.x + m_h_gap;
         }
@@ -718,7 +718,10 @@ void OG_CustomCtrl::CtrlLine::update_visibility(ConfigOptionMode mode)
         return;
     const std::vector<Option>& option_set = og_line.get_options();
 
-    const ConfigOptionMode& line_mode = option_set.front().opt.mode;
+    // FOS 8.6.5: an option-less widget line has no option to take a mode from. comSimple keeps
+    // it visible in every mode, which is what the pool rows want - they belong to a comSimple
+    // picker and must not outlive it.
+    const ConfigOptionMode line_mode = option_set.empty() ? comSimple : option_set.front().opt.mode;
     is_visible = og_line.toggle_visible && line_mode <= mode;
 
     if (draw_just_act_buttons)
@@ -768,7 +771,12 @@ void OG_CustomCtrl::CtrlLine::render(wxDC& dc, wxCoord h_pos, wxCoord v_pos)
         return;
     }
 
-    Field* field = ctrl->opt_group->get_field(og_line.get_options().front().opt_id);
+    // FOS 8.6.5: a labelled WIDGET line carries no options (the nozzle pool rows). Everything
+    // below already tolerates a null field, and the widget branch returns right after the label
+    // is drawn, so the only hazard was this unguarded front().
+    Field* field = og_line.get_options().empty()
+                       ? nullptr
+                       : ctrl->opt_group->get_field(og_line.get_options().front().opt_id);
 
     bool suppress_hyperlinks = false;
     if (draw_just_act_buttons) {
@@ -807,6 +815,12 @@ void OG_CustomCtrl::CtrlLine::render(wxDC& dc, wxCoord h_pos, wxCoord v_pos)
     }
 
     // If there's a widget, build it and set result to the correct position.
+    // FOS 8.6.5: DISABLE_BLINKING is defined at the top of this file, so the guarded return
+    // below is compiled OUT and a widget line falls through into the option machinery. That is
+    // fine while the line also carries options, but the nozzle pool rows carry none - their
+    // label is drawn above and there is nothing else here for them. Return explicitly.
+    if (og_line.widget != nullptr && option_set.empty())
+        return;
 #ifndef DISABLE_BLINKING
     if (og_line.widget != nullptr) {
         draw_blinking_bmp(dc, wxPoint(h_pos, v_pos), og_line.blink);

@@ -64,6 +64,11 @@ public:
 	wxWindow*	near_label_widget_win {nullptr};
     wxSizer*	widget_sizer {nullptr};
     wxSizer*	extra_widget_sizer {nullptr};
+    // FOS 8.6.5 phase 6g: OG_CustomCtrl::correct_widgets_position offsets an extra_widget_sizer
+    // by m_h_gap (lround(0.2 * em) = 2px at em 10), which is what put the nozzle-pool control
+    // 2px right of the field column that the ComboBox above it starts at. Set this on a line
+    // whose extra widget IS the field, so it lines up with a real one.
+    bool		fos_no_widget_gap {false};
     //BBS: export the extra colume widget
     wxWindow*	extra_widget_win {nullptr};
     //BBS: add api to get the first option's key

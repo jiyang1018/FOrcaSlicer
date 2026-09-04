@@ -878,10 +878,12 @@ void ParamsPanel::update_prp_nozzle_rows(bool mixed_active)
     if (auto* fos_notice_tab = dynamic_cast<Tab*>(m_tab_print)) {
         if (auto* fos_notice_sizer = fos_notice_tab->get_main_sizer()) {
             if (m_fos_prp_lh_notice == nullptr)
-                m_fos_prp_lh_notice = new Label(m_tab_print, Label::Body_12,
+                m_fos_prp_lh_notice = new Label(m_tab_print, Label::Head_14,
                     _L("For now, only Nozzle 1's process preset affects layer height."),
                     LB_AUTO_WRAP);
-            m_fos_prp_lh_notice->SetForegroundColour(wxGetApp().get_label_clr_default());
+            // Head_14 is Body_14's size in bold, matching the "Nozzle 1" row label, and red
+            // because this is a limitation the per-nozzle rows otherwise imply is not there.
+            m_fos_prp_lh_notice->SetForegroundColour(wxColour(0xC5, 0x1B, 0x1B));
             // Re-insert guard, same reason as the rows: a panel rebuild leaves the window
             // parented and already in this sizer.
             if (!fos_notice_sizer->GetItem(m_fos_prp_lh_notice))
