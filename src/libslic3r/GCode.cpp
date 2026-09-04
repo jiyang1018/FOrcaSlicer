@@ -2,6 +2,9 @@
 #include "Config.hpp"
 #include "Polygon.hpp"
 #include "PrintConfig.hpp"
+// FOS 8.6.5: fos_effective_nozzle() - filament -> the nozzle that SLICES it. The nozzle
+// pools are nozzle-indexed; layer_tools.extruders holds 0-based FILAMENT ids.
+#include "PresetBundle.hpp"
 #include "libslic3r.h"
 #include "I18N.hpp"
 #include "GCode.hpp"
@@ -4039,6 +4042,28 @@ LayerResult GCode::process_layer(const Print& print,
     std::map<unsigned int, std::vector<ObjectByExtruder>> by_extruder;
     bool is_anything_overridden = const_cast<LayerTools&>(layer_tools).wiping_extrusions().is_anything_overridden();
     for (const LayerToPrint& layer_to_print : layers) {
+        // [[FOS_IDXBASE]] TEMPORARY PROBE - remove before phase 3 ships. Unconditional: the
+        // first placement sat inside the support gate and never fired, so this one also reports
+        // whether that gate is the reason. Settles whether layer_tools.extruders is 0- or
+        // 1-based - collect_extruders pushes 1-based with 0=dontcare (ToolOrdering.cpp:645) and
+        // reorder_extruders reads get_at(extruders[i]-1) (:698), but GCode.cpp reads
+        // get_at(extruder_id) with no -1 and insert_wipe_tower_extruder pushes -1 (:282).
+        {
+            FILE *fos_f = boost::nowide::fopen("E:\\FOrcaSlicer\\temp\\fos_debug.txt", "a");
+            if (fos_f != nullptr) {
+                fprintf(fos_f, "[[FOS_IDXBASE]] z=%.3f nfil=%d extruders=[",
+                        layer_tools.print_z, (int) print.config().filament_colour.size());
+                for (size_t fos_k = 0; fos_k < layer_tools.extruders.size(); ++fos_k)
+                    fprintf(fos_f, "%s%u", fos_k ? "," : "", layer_tools.extruders[fos_k]);
+                fprintf(fos_f, "] first=%u obj_layer=%d sup_layer=%d sup_entities=%d\n",
+                        first_extruder_id,
+                        layer_to_print.object_layer != nullptr ? 1 : 0,
+                        layer_to_print.support_layer != nullptr ? 1 : 0,
+                        layer_to_print.support_layer != nullptr
+                            ? (int) layer_to_print.support_layer->support_fills.entities.size() : -1);
+                fclose(fos_f);
+            }
+        }
         if (layer_to_print.support_layer != nullptr) {
             const SupportLayer& support_layer = *layer_to_print.support_layer;
             const PrintObject&  object        = *layer_to_print.original_object;
@@ -4073,9 +4098,38 @@ LayerResult GCode::process_layer(const Print& print,
                     }
                 }
 
+                // FOS 8.6.5 phase 3a: a Dynamic support role may only use filaments served by a
+                // nozzle the pool selects. The pool is NOZZLE-indexed and layer_tools.extruders
+                // holds 0-based FILAMENT ids (ToolOrdering.cpp:709 reindexes them at the tail of
+                // reorder_extruders), so every membership test goes through fos_effective_nozzle -
+                // never pool.values[extruder_id]. On this printer filament 5 is unassigned and
+                // resolves to nozzle 0, which a direct index would read off the end of a 4-entry
+                // pool instead.
+                // A pool with no member selected is not a Dynamic pool at all: unconstrained, so
+                // every path below degrades to upstream behaviour.
+                auto fos_in_pool = [&print](const ConfigOptionBools &pool, unsigned int filament_idx) {
+                    bool any = false;
+                    for (unsigned char v : pool.values)
+                        if (v) { any = true; break; }
+                    if (!any)
+                        return true;
+                    const size_t nozzle_n = print.config().fos_physical_nozzle_diameter.values.size();
+                    if (nozzle_n == 0)
+                        return true;
+                    const size_t nz = fos_effective_nozzle(print.config().fos_filament_nozzle.values,
+                                                           (size_t) filament_idx, nozzle_n);
+                    return nz < pool.values.size() && pool.values[nz] != 0;
+                };
+                const ConfigOptionBools &fos_sup_pool   = object.config().fos_support_nozzle_pool;
+                const ConfigOptionBools &fos_iface_pool = object.config().fos_support_interface_nozzle_pool;
+
                 // BBS: try to print support base with a filament other than interface filament
                 if (support_dontcare && !interface_dontcare) {
                     unsigned int dontcare_extruder = first_extruder_id;
+                    // FOS: the layer's starting tool is only a valid answer if the pool allows it.
+                    // Upstream seeded with it unconditionally, which is what made support follow
+                    // whatever tool happened to open the layer.
+                    bool fos_seed_ok = fos_in_pool(fos_sup_pool, dontcare_extruder);
                     for (unsigned int extruder_id : layer_tools.extruders) {
                         if (print.config().filament_soluble.get_at(extruder_id))
                             continue;
@@ -4084,9 +4138,23 @@ LayerResult GCode::process_layer(const Print& print,
                         if (extruder_id == interface_extruder)
                             continue;
 
+                        if (!fos_in_pool(fos_sup_pool, extruder_id))
+                            continue;
+
                         dontcare_extruder = extruder_id;
+                        fos_seed_ok = true;
                         break;
                     }
+                    // FOS: no non-soluble pool member on this layer - take a soluble one rather
+                    // than silently leaving the pool. The pool is an explicit user choice and
+                    // outranks the soluble preference, which is only a heuristic.
+                    if (!fos_seed_ok)
+                        for (unsigned int extruder_id : layer_tools.extruders)
+                            if (fos_in_pool(fos_sup_pool, extruder_id)) {
+                                dontcare_extruder = extruder_id;
+                                fos_seed_ok = true;
+                                break;
+                            }
 #if 0
                     //BBS: not found a suitable extruder in current layer ,dontcare_extruider==first_extruder_id==interface_extruder
                     if (dontcare_extruder == interface_extruder && (object.config().support_interface_not_for_body && object.config().support_interface_filament.value!=0)) {
@@ -4101,20 +4169,32 @@ LayerResult GCode::process_layer(const Print& print,
                 } else if (support_dontcare || interface_dontcare) {
                     // Some support will be printed with "don't care" material, preferably non-soluble.
                     // Is the current extruder assigned a soluble filament?
-                    unsigned int dontcare_extruder = first_extruder_id;
-                    if (print.config().filament_soluble.get_at(dontcare_extruder)) {
-                        // The last extruder printed on the previous layer extrudes soluble filament.
-                        // Try to find a non-soluble extruder on the same layer.
-                        for (unsigned int extruder_id : layer_tools.extruders)
-                            if (!print.config().filament_soluble.get_at(extruder_id)) {
-                                dontcare_extruder = extruder_id;
-                                break;
-                            }
-                    }
+                    //
+                    // FOS 8.6.5 phase 3a: upstream resolves ONE tool here and gives it to both base
+                    // and interface. The two pools are separate keys, so resolve per role instead
+                    // and only fall back to the shared answer when a role has no pool.
+                    auto fos_dontcare_for = [&](const ConfigOptionBools &pool) {
+                        unsigned int pick = first_extruder_id;
+                        const bool seed_ok = fos_in_pool(pool, pick) &&
+                                             !print.config().filament_soluble.get_at(pick);
+                        if (!seed_ok) {
+                            bool found = false;
+                            for (unsigned int extruder_id : layer_tools.extruders)
+                                if (!print.config().filament_soluble.get_at(extruder_id) &&
+                                    fos_in_pool(pool, extruder_id)) {
+                                    pick = extruder_id; found = true; break;
+                                }
+                            // Pool beats the soluble preference - see the base branch above.
+                            if (!found && !fos_in_pool(pool, pick))
+                                for (unsigned int extruder_id : layer_tools.extruders)
+                                    if (fos_in_pool(pool, extruder_id)) { pick = extruder_id; break; }
+                        }
+                        return pick;
+                    };
                     if (support_dontcare)
-                        support_extruder = dontcare_extruder;
+                        support_extruder = fos_dontcare_for(fos_sup_pool);
                     if (interface_dontcare)
-                        interface_extruder = dontcare_extruder;
+                        interface_extruder = fos_dontcare_for(fos_iface_pool);
                 }
                 // Both the support and the support interface are printed with the same extruder, therefore
                 // the interface may be interleaved with the support base.
