@@ -1,18 +1,18 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.3",
+    "version": "8.6.4",
     "release_type": "stable",
     "platform_type": "win",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.3\n\nNew: the nozzle verification panel has a \"Verified until restart\" checkbox - tick it, click Verify, and you will not be asked again until you restart. The nozzle panel toggle is now Synced / Desynced, and Desynced lets you use separate process presets per nozzle even when all the diameters match. Entering a nozzle diameter in Printer Settings now fills in that nozzle's layer height limits for you.\n\nFixed: on a custom mixed-nozzle profile, switching the toggle to Synced and choosing Save at the unsaved-changes prompt wrote the synced diameters into your own profile instead of switching to the matching stock profile. Your profile is now left untouched, and the prompt names the profile it will switch to. The Synced / Desynced toggle could also show the wrong state after saving a preset, discarding changes, or editing a diameter. Each nozzle row displayed the globally selected process preset rather than its own; the presets bound to each nozzle were correct and sliced correctly, only the display was wrong.\n\nChinese: the translation catalogue had not been rebuilt since 25 July, so anything translated after that date never reached the application. That is fixed, and 173 new strings ship with this release.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.4\n\nNew: you can now choose which nozzles print support and the prime tower wall. Support/raft base, Support/raft interface and Wipe tower wall each have a Custom option; choosing it enables a nozzle list underneath where you tick the nozzles that job may use. All nozzles in one selection must share a diameter, so ticking one greys out the others. A nozzle you choose is used for that job on every layer, first layer included, and the prime tower is printed with a chosen nozzle even if nothing else on the plate uses it. The Wipe tower setting is now called Wipe tower wall.\n\nFixed: with Desynced on, changing a nozzle's diameter updated the filament list but left that nozzle's process preset on the old diameter until a printer preset was saved. Every nozzle, including Nozzle 1, now re-picks a matching process preset as soon as its diameter changes, and a previously saved per-nozzle choice no longer overrides the diameter.\n\nChinese: 20 new strings covering the nozzle selection controls and the slicing messages that go with them.",
       "default": {
-        "file_size": 105295747,
-        "file_md5": "d56878ee99f9eef92ab5bbdbe4987400",
-        "file_sha256": "c08503f91614cbf19c0cf096f15fbafe7ebb619e66fbd9d82d2a4785c434ad2d",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.3/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.3.exe",
+        "file_size": 105305867,
+        "file_md5": "8c1fcf7783dc849d5d00a2148bf2170f",
+        "file_sha256": "16859ad555466673726666b5f672bc2faa71e83e214bdc2edbcb848e81acb9e8",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.4/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.4.exe",
         "reserved_1": "",
         "reserved_2": ""
       }
