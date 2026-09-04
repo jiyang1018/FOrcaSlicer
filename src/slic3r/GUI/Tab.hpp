@@ -406,6 +406,15 @@ public:
     PresetCollection *  get_presets() { return m_presets; }
     TabPresetComboBox *  get_combo_box() { return m_presets_choice; }
 
+    // FOS 8.6.5 phase 6b: the Dynamic nozzle-pool tickbox grid shown under the three gated
+    // pickers. One row of boxes per pool key; the first box ticked locks the pool's diameter and
+    // greys out every nozzle of a different one, because Print::validate refuses a pool that
+    // spans more than one diameter and the UI should not let it be built in the first place.
+    wxSizer* fos_nozzle_pool_widget(wxWindow *parent, const std::string &pool_key, const wxString &label);
+    void     fos_pool_apply_lock(const std::string &pool_key);
+    void     fos_pool_write(const std::string &pool_key);
+    std::map<std::string, std::vector<::CheckBox*>> m_fos_pool_boxes;
+
 	virtual void    on_value_change(const std::string& opt_key, const boost::any& value);
 
     void            update_wiping_button_visibility();

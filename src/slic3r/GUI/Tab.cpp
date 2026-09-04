@@ -2415,6 +2415,79 @@ void Tab::build_preset_description_line(ConfigOptionsGroup* optgroup)
     optgroup->append_line(line);
 }
 
+// FOS 8.6.5 phase 6b: nozzle diameters for the pool grid come from the PRINTER preset, where
+// nozzle_diameter is still one entry per PHYSICAL nozzle. Do NOT use the Print config copy - by
+// the time that reaches the engine full_fff_config() has re-indexed it by filament.
+static const ConfigOptionFloats* fos_pool_nozzles(PresetBundle *bundle)
+{
+    return bundle ? bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("nozzle_diameter")
+                  : nullptr;
+}
+
+void Tab::fos_pool_apply_lock(const std::string &pool_key)
+{
+    auto it = m_fos_pool_boxes.find(pool_key);
+    const auto *nd = fos_pool_nozzles(m_preset_bundle);
+    if (it == m_fos_pool_boxes.end() || nd == nullptr)
+        return;
+    double lock = 0.;   // 0 = nothing ticked yet, so every nozzle stays available
+    for (size_t i = 0; i < it->second.size() && i < nd->values.size(); ++i)
+        if (it->second[i]->GetValue()) { lock = nd->values[i]; break; }
+    for (size_t i = 0; i < it->second.size() && i < nd->values.size(); ++i)
+        it->second[i]->Enable(lock == 0. || std::abs(nd->values[i] - lock) < 1e-4);
+}
+
+void Tab::fos_pool_write(const std::string &pool_key)
+{
+    auto it = m_fos_pool_boxes.find(pool_key);
+    if (it == m_fos_pool_boxes.end() || m_config == nullptr)
+        return;
+    auto *opt = new ConfigOptionBools();
+    for (auto *cb : it->second)
+        opt->values.push_back(cb->GetValue() ? (unsigned char) 1 : (unsigned char) 0);
+    DynamicPrintConfig cfg = *m_config;
+    cfg.set_key_value(pool_key, opt);
+    load_config(cfg);
+    update_dirty();
+}
+
+// The Line carries full_width = 1 so OptionsGroup::activate_line takes its widget branch;
+// without that it falls through to option_set.front() on an empty option list and crashes
+// (OptionsGroup.cpp:288). That branch never draws the Line label either, so the label is
+// drawn here, inside the widget.
+wxSizer* Tab::fos_nozzle_pool_widget(wxWindow *parent, const std::string &pool_key, const wxString &label)
+{
+    auto *sizer = new wxBoxSizer(wxHORIZONTAL);
+    auto *cap   = new wxStaticText(parent, wxID_ANY, label);
+    cap->SetFont(Label::Body_14);
+    sizer->Add(cap, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(10));
+    const auto *nd = fos_pool_nozzles(m_preset_bundle);
+    const int   n  = nd ? (int) nd->values.size() : 0;
+    // The widget lambda re-runs on every optgroup activate, so drop the previous generation of
+    // pointers rather than accumulating dangling ones.
+    m_fos_pool_boxes[pool_key].clear();
+    if (n == 0)
+        return sizer;
+    const auto *cur = m_config ? m_config->option<ConfigOptionBools>(pool_key) : nullptr;
+    for (int i = 0; i < n; ++i) {
+        auto *cb = new ::CheckBox(parent);
+        cb->SetValue(cur != nullptr && i < (int) cur->values.size() && cur->values[i] != 0);
+        cb->Bind(wxEVT_TOGGLEBUTTON, [this, pool_key](wxCommandEvent &evt) {
+            fos_pool_apply_lock(pool_key);
+            fos_pool_write(pool_key);
+            evt.Skip();
+        });
+        auto *lbl = new wxStaticText(parent, wxID_ANY,
+                                     wxString::Format("%d (%.1f)", i + 1, nd->values[i]));
+        lbl->SetFont(Label::Body_12);
+        sizer->Add(cb,  0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(i == 0 ? 0 : 10));
+        sizer->Add(lbl, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(3));
+        m_fos_pool_boxes[pool_key].push_back(cb);
+    }
+    fos_pool_apply_lock(pool_key);   // restore the lock for a pool loaded from a project
+    return sizer;
+}
+
 void Tab::update_preset_description_line()
 {
     const Preset* parent = m_presets->get_selected_preset_parent();
@@ -3149,7 +3222,23 @@ void TabPrint::build()
 
         optgroup = page->new_optgroup(L("Support filament"), L"param_support_filament");
         optgroup->append_single_option_line("support_filament", "support_settings_filament#base");
+        {   // FOS 8.6.5 phase 6b: Dynamic pool for the support base
+            Line fos_l = Line{ "", "" };
+            fos_l.full_width = 1;
+            fos_l.append_widget([this](wxWindow *parent) {
+                return fos_nozzle_pool_widget(parent, "fos_support_nozzle_pool", _L("Base nozzles"));
+            });
+            optgroup->append_line(fos_l);
+        }
         optgroup->append_single_option_line("support_interface_filament", "support_settings_filament#interface");
+        {   // FOS 8.6.5 phase 6b: Dynamic pool for the support interface
+            Line fos_l = Line{ "", "" };
+            fos_l.full_width = 1;
+            fos_l.append_widget([this](wxWindow *parent) {
+                return fos_nozzle_pool_widget(parent, "fos_support_interface_nozzle_pool", _L("Interface nozzles"));
+            });
+            optgroup->append_line(fos_l);
+        }
         optgroup->append_single_option_line("support_interface_not_for_body", "support_settings_filament#avoid-interface-filament-for-base");
 
         optgroup = page->new_optgroup(L("Support ironing"), L"param_ironing");
@@ -3224,6 +3313,14 @@ void TabPrint::build()
         optgroup->append_single_option_line("sparse_infill_filament", "multimaterial_settings_filament_for_features#infill");
         optgroup->append_single_option_line("solid_infill_filament", "multimaterial_settings_filament_for_features#solid-infill");
         optgroup->append_single_option_line("wipe_tower_filament", "multimaterial_settings_filament_for_features#wipe-tower");
+        {   // FOS 8.6.5 phase 6b: Dynamic pool for the prime tower structure
+            Line fos_l = Line{ "", "" };
+            fos_l.full_width = 1;
+            fos_l.append_widget([this](wxWindow *parent) {
+                return fos_nozzle_pool_widget(parent, "fos_wipe_tower_nozzle_pool", _L("Wipe tower nozzles"));
+            });
+            optgroup->append_line(fos_l);
+        }
 
         optgroup = page->new_optgroup(L("Mixed Nozzle"), L"param_wall");
         optgroup->append_single_option_line("outer_wall_loops");
