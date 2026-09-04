@@ -190,6 +190,10 @@ public:
 private:
     void				initialize_layers(std::vector<coordf_t> &zs);
     void 				collect_extruders(const PrintObject &object, const std::vector<std::pair<double, unsigned int>> &per_layer_extruder_switches);
+    // FOS 8.6.5 phase 3b: ensure every support layer carries a filament served by a nozzle
+    // the Dynamic pool selects. Runs after ALL objects are collected, so the
+    // already-present test sees the complete layer.
+    void                fos_force_support_pools(const PrintObject &object);
     void				reorder_extruders(unsigned int last_extruder_id);
     // BBS
     void                reorder_extruders(std::vector<unsigned int> tool_order_layer0);

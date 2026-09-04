@@ -4,6 +4,9 @@
 #include "Layer.hpp"
 #include "ClipperUtils.hpp"
 #include "ParameterUtils.hpp"
+// FOS 8.6.5: fos_effective_nozzle() - filament -> the nozzle that SLICES it. The pools are
+// nozzle-indexed; extruder ids here are filament ids.
+#include "../PresetBundle.hpp"
 
 // #define SLIC3R_DEBUG
 
@@ -249,6 +252,7 @@ ToolOrdering::ToolOrdering(const PrintObject &object, unsigned int first_extrude
 
     // Collect extruders reuqired to print the layers.
     this->collect_extruders(object, std::vector<std::pair<double, unsigned int>>());
+    this->fos_force_support_pools(object);   // FOS 8.6.5 phase 3b
 
     // BBS
     // Reorder the extruders to minimize tool switches.
@@ -338,6 +342,11 @@ ToolOrdering::ToolOrdering(const Print &print, unsigned int first_extruder, bool
     // Collect extruders reuqired to print the layers.
     for (auto object : print.objects())
         this->collect_extruders(*object, per_layer_extruder_switches);
+
+    // FOS 8.6.5 phase 3b: separate pass, after EVERY object - the already-present test
+    // must see the complete layer or it forces a tool another object had already brought.
+    for (auto object : print.objects())
+        this->fos_force_support_pools(*object);
 
     // Reorder the extruders to minimize tool switches.
     std::vector<unsigned int> first_layer_tool_order;
@@ -643,6 +652,72 @@ void ToolOrdering::collect_extruders(const PrintObject &object, const std::vecto
         // make sure that there are some tools for each object layer (e.g. tall wiping object will result in empty extruders vector)
         if (layer.extruders.empty() && layer.has_object)
             layer.extruders.emplace_back(0); // 0="dontcare" extruder - it will be taken care of in reorder_extruders
+    }
+}
+
+// FOS 8.6.5 phase 3b: a nozzle chosen for support is USED for support. Where a support layer
+// carries no filament served by a pool nozzle, the phase 3a resolver in GCode.cpp has nothing to
+// pick and falls back to the layer's own tool, silently leaving the pool. Push a member in -
+// which is exactly what an explicit support_filament already does in collect_extruders() above,
+// the water-soluble support case: it forces a toolchange on every support layer and that is
+// normal accepted behaviour. Per Alex (s35) the user's choice outranks toolchange efficiency as
+// long as it is safe, first layer included.
+//
+// Values here are still 1-BASED (0 = dontcare); the reindex to 0-based happens at the tail of
+// reorder_extruders. Push f+1, never f.
+void ToolOrdering::fos_force_support_pools(const PrintObject &object)
+{
+    const PrintConfig *cfg = m_print_config_ptr;
+    if (cfg == nullptr)
+        return;
+    const size_t            nozzle_n      = cfg->fos_physical_nozzle_diameter.values.size();
+    const size_t            num_filaments = cfg->filament_diameter.values.size();
+    const std::vector<int> &map           = cfg->fos_filament_nozzle.values;
+    if (nozzle_n == 0 || num_filaments == 0)
+        return;
+
+    // 1-based filament ids served by a nozzle this pool selects. Empty when the pool selects
+    // nothing, which means "not Dynamic" - no forcing, upstream behaviour.
+    auto pool_members = [&](const ConfigOptionBools &pool) {
+        std::vector<unsigned int> out;
+        bool any = false;
+        for (unsigned char v : pool.values)
+            if (v) { any = true; break; }
+        if (!any)
+            return out;
+        for (size_t f = 0; f < num_filaments; ++f) {
+            const size_t nz = fos_effective_nozzle(map, f, nozzle_n);
+            if (nz < pool.values.size() && pool.values[nz])
+                out.push_back((unsigned int) (f + 1));
+        }
+        return out;
+    };
+
+    const std::vector<unsigned int> sup_members =
+        object.config().support_filament.value == 0
+            ? pool_members(object.config().fos_support_nozzle_pool) : std::vector<unsigned int>();
+    const std::vector<unsigned int> iface_members =
+        object.config().support_interface_filament.value == 0
+            ? pool_members(object.config().fos_support_interface_nozzle_pool) : std::vector<unsigned int>();
+    if (sup_members.empty() && iface_members.empty())
+        return;
+
+    auto ensure = [](LayerTools &lt, const std::vector<unsigned int> &members) {
+        if (members.empty())
+            return;
+        for (unsigned int m : members)
+            if (std::find(lt.extruders.begin(), lt.extruders.end(), m) != lt.extruders.end())
+                return;   // a member is already on this layer - add no toolchange
+        lt.extruders.push_back(members.front());
+    };
+
+    for (auto support_layer : object.support_layers()) {
+        LayerTools  &lt   = this->tools_for_layer(support_layer->print_z);
+        ExtrusionRole role = support_layer->support_fills.role();
+        if (role == erMixed || role == erSupportMaterial || role == erSupportTransition)
+            ensure(lt, sup_members);
+        if (role == erMixed || role == erSupportMaterialInterface)
+            ensure(lt, iface_members);
     }
 }
 
