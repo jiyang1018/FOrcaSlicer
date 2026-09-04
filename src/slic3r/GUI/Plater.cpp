@@ -805,6 +805,35 @@ if (fp) fp->get_filament_type(type);
 // Note we keep the 0-based index mapping of the base class rather than dropping the row and going
 // 1-based. Dropping it leaves the combobox with no selection at all for a stored 0, which renders
 // as a bare "0" and cannot be styled - a labelled row is both clearer and less fragile.
+// FOS 8.6.5 phase 6: the nozzle pool that qualifies each gated key. Row 0 of these three combos
+// is the "resolve the tool later" row, and a pool changes what that resolution is allowed to
+// pick - so the label has to say which of the three states the user is in.
+static wxString fos_gated_row0_label(const t_config_option_key &opt_key)
+{
+    const char *pool_key = nullptr;
+    if      (opt_key == "support_filament")           pool_key = "fos_support_nozzle_pool";
+    else if (opt_key == "support_interface_filament") pool_key = "fos_support_interface_nozzle_pool";
+    else if (opt_key == "wipe_tower_filament")        pool_key = "fos_wipe_tower_nozzle_pool";
+
+    int n_sel = 0;
+    if (pool_key != nullptr && wxGetApp().preset_bundle != nullptr) {
+        // The pools are print-scope, so they live in the edited PRINT preset - including the two
+        // support ones, which are PrintObjectConfig and therefore still print-preset keys.
+        const DynamicPrintConfig &cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
+        if (const auto *pool = cfg.option<ConfigOptionBools>(pool_key))
+            for (unsigned char v : pool->values)
+                if (v)
+                    ++n_sel;
+    }
+    if (n_sel == 1)
+        return _L("Dynamic (1 nozzle)");
+    if (n_sel > 1)
+        return wxString::Format(_L("Dynamic (%d nozzles)"), n_sel);
+    // No pool selected. Under mixed nozzles a 0 is "not chosen yet" and Print::validate refuses;
+    // on a uniform machine it keeps upstream's "whichever filament is mounted".
+    return has_mixed_nozzle_sizes() ? _L("Empty") : _L("Default");
+}
+
 struct DynamicFilamentListGated : DynamicFilamentList
 {
     void apply_on(Choice *c) override
@@ -814,7 +843,7 @@ struct DynamicFilamentListGated : DynamicFilamentList
         auto cb = dynamic_cast<ComboBox *>(c->window);
         auto n  = cb->GetSelection();
         cb->Clear();
-        cb->Append(has_mixed_nozzle_sizes() ? _L("Empty") : _L("Default"));
+        cb->Append(fos_gated_row0_label(c->m_opt_id));
         for (auto i : items) {
             cb->Append(i.first, *i.second);
         }
