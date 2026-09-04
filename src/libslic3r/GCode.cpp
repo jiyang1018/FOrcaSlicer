@@ -4042,28 +4042,6 @@ LayerResult GCode::process_layer(const Print& print,
     std::map<unsigned int, std::vector<ObjectByExtruder>> by_extruder;
     bool is_anything_overridden = const_cast<LayerTools&>(layer_tools).wiping_extrusions().is_anything_overridden();
     for (const LayerToPrint& layer_to_print : layers) {
-        // [[FOS_IDXBASE]] TEMPORARY PROBE - remove before phase 3 ships. Unconditional: the
-        // first placement sat inside the support gate and never fired, so this one also reports
-        // whether that gate is the reason. Settles whether layer_tools.extruders is 0- or
-        // 1-based - collect_extruders pushes 1-based with 0=dontcare (ToolOrdering.cpp:645) and
-        // reorder_extruders reads get_at(extruders[i]-1) (:698), but GCode.cpp reads
-        // get_at(extruder_id) with no -1 and insert_wipe_tower_extruder pushes -1 (:282).
-        {
-            FILE *fos_f = boost::nowide::fopen("E:\\FOrcaSlicer\\temp\\fos_debug.txt", "a");
-            if (fos_f != nullptr) {
-                fprintf(fos_f, "[[FOS_IDXBASE]] z=%.3f nfil=%d extruders=[",
-                        layer_tools.print_z, (int) print.config().filament_colour.size());
-                for (size_t fos_k = 0; fos_k < layer_tools.extruders.size(); ++fos_k)
-                    fprintf(fos_f, "%s%u", fos_k ? "," : "", layer_tools.extruders[fos_k]);
-                fprintf(fos_f, "] first=%u obj_layer=%d sup_layer=%d sup_entities=%d\n",
-                        first_extruder_id,
-                        layer_to_print.object_layer != nullptr ? 1 : 0,
-                        layer_to_print.support_layer != nullptr ? 1 : 0,
-                        layer_to_print.support_layer != nullptr
-                            ? (int) layer_to_print.support_layer->support_fills.entities.size() : -1);
-                fclose(fos_f);
-            }
-        }
         if (layer_to_print.support_layer != nullptr) {
             const SupportLayer& support_layer = *layer_to_print.support_layer;
             const PrintObject&  object        = *layer_to_print.original_object;
