@@ -829,9 +829,11 @@ static wxString fos_gated_row0_label(const t_config_option_key &opt_key)
         return _L("Dynamic (1 nozzle)");
     if (n_sel > 1)
         return wxString::Format(_L("Dynamic (%d nozzles)"), n_sel);
-    // No pool selected. Under mixed nozzles a 0 is "not chosen yet" and Print::validate refuses;
-    // on a uniform machine it keeps upstream's "whichever filament is mounted".
-    return has_mixed_nozzle_sizes() ? _L("Empty") : _L("Default");
+    // No pool selected. Under mixed nozzles a 0 is "not chosen yet" and Print::validate refuses,
+    // so the row has to ADVERTISE that Dynamic is the way out - "Empty" said only that something
+    // was wrong, never that a nozzle set was the fix. On a uniform machine 0 keeps upstream's
+    // "whichever filament is mounted", which is a legitimate resting state, so it stays Default.
+    return has_mixed_nozzle_sizes() ? _L("Dynamic (select nozzles)") : _L("Default");
 }
 
 struct DynamicFilamentListGated : DynamicFilamentList

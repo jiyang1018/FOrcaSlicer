@@ -2449,6 +2449,11 @@ void Tab::fos_pool_write(const std::string &pool_key)
     cfg.set_key_value(pool_key, opt);
     load_config(cfg);
     update_dirty();
+    // The row-0 label of the gated pickers is computed when the combo is POPULATED, not on
+    // every config change, so a pool edit would not show up there until the page was rebuilt.
+    // This is the one call that re-runs DynamicFilamentListGated::apply_on for all three.
+    if (wxGetApp().plater() != nullptr)
+        wxGetApp().plater()->sidebar().update_dynamic_filament_list();
 }
 
 // The Line carries full_width = 1 so OptionsGroup::activate_line takes its widget branch;
