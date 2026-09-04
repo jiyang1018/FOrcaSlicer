@@ -1112,26 +1112,85 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
     // FOS: with mixed nozzle sizes, support has no valid "Default" filament. Support paths are
     // generated once at slicing time with a single flow and the tool is not chosen until G-code
     // export, so a path built for one nozzle could be handed to a nozzle of a different diameter.
-    // The dropdown offers no "Default" row; a 0 here means the user has not chosen yet. Refuse to
-    // slice rather than silently falling back to nozzle 1.
+    // A 0 here means "resolve the tool later"; refuse rather than silently falling back to nozzle 1.
+    //
+    // FOS 8.6.5 phase 2: a "Dynamic" NOZZLE POOL re-enables the 0 sentinel. The single committed
+    // flow is what forced the old blanket refusal - support flow comes from
+    // nozzle_diameter.get_at(support_filament - 1) (Flow.cpp), and the tower structure is one
+    // m_perimeter_width for the whole print - so a pool is safe exactly when every nozzle in it
+    // shares one diameter. Enforced here as well as in the UI, never in the UI alone.
     if (m_config.has_mixed_nozzle_sizes.value) {
+        // Selected count into `count`, the pool diameter into `d0`, and the first diameter that
+        // disagrees with it into `d1`. Returns true when the set spans more than one diameter.
+        // A pool shorter than nozzle_diameter is read only as far as it goes - phase 1 stores a
+        // default of length 1 and nothing resizes it until the phase 6 UI - so a short pool reads
+        // as its own prefix, never as an out-of-range access.
+        const ConfigOptionFloats &fos_nd = m_config.nozzle_diameter;
+        auto fos_pool_spans = [&fos_nd](const ConfigOptionBools &pool, int &count, double &d0, double &d1) {
+            count = 0; d0 = 0.; d1 = 0.;
+            const size_t n = std::min(pool.values.size(), fos_nd.values.size());
+            for (size_t i = 0; i < n; ++i) {
+                if (!pool.values[i])
+                    continue;
+                const double d = fos_nd.values[i];
+                if (count == 0)
+                    d0 = d;
+                else if (d1 == 0. && std::abs(d - d0) > 1e-4)
+                    d1 = d;   // 0 is not a real nozzle diameter, so it doubles as "no disagreement"
+                ++count;
+            }
+            return d1 != 0.;
+        };
+        int    fos_n  = 0;
+        double fos_d0 = 0., fos_d1 = 0.;
+
         for (PrintObject *object : m_objects) {
             const PrintObjectConfig &cfg = object->config();
             const bool has_support = cfg.enable_support.value || cfg.raft_layers.value > 0;
             if (!has_support)
                 continue;
-            if (cfg.support_filament.value == 0)
-                return {L("Mixed nozzle sizes are in use, so support cannot be printed by whichever "
-                          "filament happens to be loaded. Select a filament for Support/raft base.")};
-            if (cfg.support_interface_filament.value == 0)
-                return {L("Mixed nozzle sizes are in use, so support cannot be printed by whichever "
-                          "filament happens to be loaded. Select a filament for Support/raft interface.")};
+            if (cfg.support_filament.value == 0) {
+                const bool spans = fos_pool_spans(cfg.fos_support_nozzle_pool, fos_n, fos_d0, fos_d1);
+                if (fos_n == 0)
+                    return {L("Mixed nozzle sizes are in use, so support cannot be printed by whichever "
+                              "filament happens to be loaded. Select a filament for Support/raft base, or "
+                              "select the nozzles it may use.")};
+                if (spans)
+                    return {(boost::format(L("The nozzles selected for Support/raft base have different "
+                                             "diameters (%1% mm and %2% mm). Support is generated with one "
+                                             "flow before the tool is chosen, so every nozzle in the set must "
+                                             "have the same diameter.")) % fos_d0 % fos_d1).str()};
+            }
+            if (cfg.support_interface_filament.value == 0) {
+                const bool spans = fos_pool_spans(cfg.fos_support_interface_nozzle_pool, fos_n, fos_d0, fos_d1);
+                if (fos_n == 0)
+                    return {L("Mixed nozzle sizes are in use, so support cannot be printed by whichever "
+                              "filament happens to be loaded. Select a filament for Support/raft interface, or "
+                              "select the nozzles it may use.")};
+                if (spans)
+                    return {(boost::format(L("The nozzles selected for Support/raft interface have different "
+                                             "diameters (%1% mm and %2% mm). Support is generated with one "
+                                             "flow before the tool is chosen, so every nozzle in the set must "
+                                             "have the same diameter.")) % fos_d0 % fos_d1).str()};
+            }
         }
-        // Same reasoning for the prime/wipe tower perimeter and brim: WipeTower2 holds a single
-        // m_perimeter_width, so the wall cannot be left to whichever tool happens to be mounted.
-        if (this->has_wipe_tower() && m_config.wipe_tower_filament.value == 0)
-            return {L("Mixed nozzle sizes are in use, so the prime tower wall cannot be printed by "
-                      "whichever filament happens to be loaded. Select a filament for Wipe tower.")};
+        // Same reasoning for the prime/wipe tower. Note the constraint is narrower than it looks:
+        // FOS 8.5 already gives ramming and wiping each tool's own width (WipeTower2
+        // tool_line_width), so mixed diameters PURGE in the tower safely. What must be one
+        // diameter is the STRUCTURE tool - m_perimeter_width fixes the footprint, box, brim and
+        // sparse fill for the whole print.
+        if (this->has_wipe_tower() && m_config.wipe_tower_filament.value == 0) {
+            const bool spans = fos_pool_spans(m_config.fos_wipe_tower_nozzle_pool, fos_n, fos_d0, fos_d1);
+            if (fos_n == 0)
+                return {L("Mixed nozzle sizes are in use, so the prime tower wall cannot be printed by "
+                          "whichever filament happens to be loaded. Select a filament for Wipe tower, or "
+                          "select the nozzles it may use.")};
+            if (spans)
+                return {(boost::format(L("The nozzles selected for Wipe tower have different diameters "
+                                         "(%1% mm and %2% mm). The tower structure is printed at one width "
+                                         "for the whole print, so every nozzle in the set must have the same "
+                                         "diameter.")) % fos_d0 % fos_d1).str()};
+        }
     }
 
     // FOS: the explicit used-filament set built by the unassigned-but-used guard below,
