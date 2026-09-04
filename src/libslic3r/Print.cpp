@@ -1122,10 +1122,17 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
     if (m_config.has_mixed_nozzle_sizes.value) {
         // Selected count into `count`, the pool diameter into `d0`, and the first diameter that
         // disagrees with it into `d1`. Returns true when the set spans more than one diameter.
-        // A pool shorter than nozzle_diameter is read only as far as it goes - phase 1 stores a
+        // A pool shorter than the nozzle array is read only as far as it goes - phase 1 stores a
         // default of length 1 and nothing resizes it until the phase 6 UI - so a short pool reads
         // as its own prefix, never as an out-of-range access.
-        const ConfigOptionFloats &fos_nd = m_config.nozzle_diameter;
+        //
+        // The pool is NOZZLE-indexed, so it must be read against the PHYSICAL nozzle array.
+        // m_config.nozzle_diameter is FILAMENT-indexed by the time it reaches Print (the stage 1b
+        // re-index in full_fff_config(), PresetBundle.cpp ~2652), and on a non-identity
+        // fos_filament_nozzle map the two disagree entry for entry - pool slot 1 means nozzle 2
+        // while nozzle_diameter[1] is whatever nozzle slices FILAMENT 2. Same snapshot the
+        // map-vs-T guard below uses.
+        const ConfigOptionFloats &fos_nd = m_config.fos_physical_nozzle_diameter;
         auto fos_pool_spans = [&fos_nd](const ConfigOptionBools &pool, int &count, double &d0, double &d1) {
             count = 0; d0 = 0.; d1 = 0.;
             const size_t n = std::min(pool.values.size(), fos_nd.values.size());
