@@ -89,6 +89,17 @@ static std::vector<int> get_extruder_id_for_volumes(const ModelObject &model_obj
     return extruders_idx;
 }
 
+// FOS: resolve the outer-wall filament for a volume the same way ObjectList and the scene do:
+// FOS: volume config -> object config -> global print preset. Returns a 1-based filament number.
+static int fos_resolve_ow_filament(const ModelObject *model_object, const ModelVolume *model_volume)
+{
+    if (model_volume != nullptr && model_volume->config.has("wall_filament"))
+        return model_volume->config.opt_int("wall_filament");
+    if (model_object != nullptr && model_object->config.has("wall_filament"))
+        return model_object->config.opt_int("wall_filament");
+    return wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament");
+}
+
 void GLGizmoMmuSegmentation::init_extruders_data()
 {
     m_extruders_colors      = get_extruders_colors();
@@ -208,12 +219,17 @@ void GLGizmoMmuSegmentation::data_changed(bool is_serializing)
     else if (model_object != nullptr && get_extruder_id_for_volumes(*model_object) != m_volumes_extruder_idxs) {
         this->init_model_triangle_selectors();
     }
-    // FOS: update base color when wall_filament changes
-    const int ow_ext_idx = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament") - 1;
-    const int clamped = (ow_ext_idx >= 0 && ow_ext_idx < (int)m_extruders_colors.size()) ? ow_ext_idx : 0;
-    static int last_ow_ext_idx = -1;
-    if (last_ow_ext_idx != clamped) {
-        last_ow_ext_idx = clamped;
+    // FOS: update base color when the resolved OW filament changes. Resolve per model part so
+    // FOS: a per-object or per-volume wall_filament override retriggers, and compare the whole
+    // FOS: set so switching to a different object is detected too. Held per gizmo instance,
+    // FOS: not in a function static, which was shared across every object.
+    std::vector<int> ow_now;
+    if (model_object != nullptr)
+        for (const ModelVolume *mv : model_object->volumes)
+            if (mv->is_model_part())
+                ow_now.push_back(fos_resolve_ow_filament(model_object, mv));
+    if (m_last_ow_filaments != ow_now) {
+        m_last_ow_filaments = ow_now;
         this->update_triangle_selectors_colors();
     }
 }
@@ -520,8 +536,9 @@ void GLGizmoMmuSegmentation::on_render_input_window(float x, float y, float bott
             }
         }
         ImGui::PopStyleColor();
-        // FOS: Color Patch disabled if selected extruder is the OW extruder
-        const int ow_ext_idx = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament") - 1;
+        // FOS: Color Patch disabled if selected extruder is the OW extruder. Resolve the OW at
+        // FOS: object level (object config -> global) so a per-object OW gates correctly.
+        const int ow_ext_idx = fos_resolve_ow_filament(m_c->selection_info()->model_object(), nullptr) - 1;
         const bool is_ow_extruder = (ext_idx == ow_ext_idx);
         if (is_ow_extruder && m_color_patch_mode_ui)
             m_color_patch_mode_ui = false;
@@ -985,8 +1002,8 @@ void GLGizmoMmuSegmentation::init_model_triangle_selectors()
         if (!mv->is_model_part())
             continue;
 
-        // FOS: use OW extruder color as base for unpainted faces
-        const int ow_ext = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament") - 1;
+        // FOS: use OW extruder color as base for unpainted faces (volume -> object -> global)
+        const int ow_ext = fos_resolve_ow_filament(mo, mv) - 1;
         const int base_idx = (ow_ext >= 0 && ow_ext < (int)m_extruders_colors.size()) ? ow_ext : 
             ((mv->extruder_id() > 0) ? mv->extruder_id() - 1 : 0);
         std::vector<ColorRGBA> ebt_colors;
@@ -1007,11 +1024,19 @@ void GLGizmoMmuSegmentation::init_model_triangle_selectors()
 
 void GLGizmoMmuSegmentation::update_triangle_selectors_colors()
 {
+    // FOS: rebuild the model-part list so each selector resolves its own OW filament
+    const ModelObject *mo = m_c->selection_info()->model_object();
+    std::vector<const ModelVolume*> parts;
+    if (mo != nullptr)
+        for (const ModelVolume *mv : mo->volumes)
+            if (mv->is_model_part())
+                parts.push_back(mv);
+
     for (int i = 0; i < m_triangle_selectors.size(); i++) {
         TriangleSelectorPatch* selector = dynamic_cast<TriangleSelectorPatch*>(m_triangle_selectors[i].get());
         int extruder_idx = m_volumes_extruder_idxs[i];
-        // FOS: base color follows OW extruder for visual sync
-        const int ow_ext = wxGetApp().preset_bundle->prints.get_edited_preset().config.opt_int("wall_filament") - 1;
+        // FOS: base color follows OW extruder for visual sync (volume -> object -> global)
+        const int ow_ext = fos_resolve_ow_filament(mo, (i < (int)parts.size()) ? parts[i] : nullptr) - 1;
         const int base_color_idx = (ow_ext >= 0 && ow_ext < (int)m_extruders_colors.size()) ? ow_ext : std::max(0, extruder_idx - 1);
         std::vector<ColorRGBA> ebt_colors;
         ebt_colors.push_back(m_extruders_colors[base_color_idx]);

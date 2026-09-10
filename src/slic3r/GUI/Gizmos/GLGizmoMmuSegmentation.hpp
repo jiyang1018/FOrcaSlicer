@@ -110,6 +110,9 @@ protected:
     bool                              m_color_patch_initialized = false;
     std::vector<ColorRGBA>            m_extruders_colors;
     std::vector<int>                  m_volumes_extruder_idxs;
+    // FOS: last resolved outer-wall filament per model part, used to detect per-object
+    // FOS: and per-volume OW changes (replaces a function-static keyed off the global OW).
+    std::vector<int>                  m_last_ow_filaments;
 
     // BBS
     wchar_t                           m_current_tool = 0;
