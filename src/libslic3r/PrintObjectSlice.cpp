@@ -880,7 +880,12 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                 bool layer_split = false;
                 for (size_t extruder_id = 0; extruder_id < num_extruders; ++ extruder_id) {
                     ByExtruder &region = by_extruder[extruder_id];
-                    append(region.expolygons, std::move(segmentation[layer_id][extruder_id]));
+                    // FOS: copy, do not move. The color patch block below reads neighbouring
+                    // FOS: layers out of segmentation[], and the rvalue append() frees the
+                    // FOS: source buffer (clear + shrink_to_fit). That raced with those reads
+                    // FOS: across tbb range boundaries (use-after-free in diff_ex) and also
+                    // FOS: made the layer-below check always see an emptied vector.
+                    append(region.expolygons, segmentation[layer_id][extruder_id]);
                     if (! region.expolygons.empty()) {
                         region.bbox = get_extents(region.expolygons);
                         layer_split = true;
@@ -1017,6 +1022,17 @@ static inline void apply_mm_segmentation(PrintObject &print_object, ThrowOnCance
                                     layer.color_patch_regions.resize(ext_idx + 1);
                                 if (layer.color_patch_loops_effective.size() <= ext_idx)
                                     layer.color_patch_loops_effective.resize(ext_idx + 1, 0);
+                                // FOS: record WHICH region owns this color patch. The perimeter side
+                                // FOS: used to identify a CP region by matching its wall_filament
+                                // FOS: against a filament that had a patch somewhere on the layer,
+                                // FOS: which also matched the object ordinary region whenever the
+                                // FOS: outer wall used that same filament - silently forcing the
+                                // FOS: whole object down to color_patch_loops perimeters. Recorded
+                                // FOS: for top/bottom layers too, so is_top_bottom can be gated on
+                                // FOS: identity as well.
+                                if (layer.color_patch_region_ids.size() <= ext_idx)
+                                    layer.color_patch_region_ids.resize(ext_idx + 1, -1);
+                                layer.color_patch_region_ids[ext_idx] = target_region_id;
                                 if (!fos_is_top_bottom) {
                                     // FOS: wall layers - store shell_strip for CL loop generation
                                     append(layer.color_patch_regions[ext_idx], shell_strip);
