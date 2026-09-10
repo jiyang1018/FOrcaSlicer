@@ -163,6 +163,9 @@ public:
     std::vector<ExPolygons> color_patch_regions;
     std::vector<int>        color_patch_loops_effective;
     std::vector<bool>       color_patch_is_top_bottom;  // FOS: per-extruder top/bottom layer flag
+    // FOS: per-extruder PrintObject region id that owns the color patch shell, -1 = none.
+    // FOS: Identity, not filament number - see fos_is_color_patch_region().
+    std::vector<int>        color_patch_region_ids;
     size_t                  region_count() const { return m_regions.size(); }
     const LayerRegion*      get_region(int idx) const { return m_regions[idx]; }
     LayerRegion*            get_region(int idx) { return m_regions[idx]; }

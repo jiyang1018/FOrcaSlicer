@@ -80,6 +80,18 @@ public:
     const std::vector<ExPolygons> *color_patch_regions;       // FOS: per-extruder painted regions for color shell loops
     const std::vector<int>        *color_patch_loops_effective; // FOS: per-extruder effective CL values
     const std::vector<bool>       *color_patch_is_top_bottom;  // FOS: per-extruder top/bottom layer flag
+    const std::vector<int>        *color_patch_region_ids;     // FOS: per-extruder region id owning the CP shell
+    int                            print_object_region_id;     // FOS: id of the region being generated
+
+    // FOS: true only when THIS region is the color patch shell recorded for its own outer-wall
+    // FOS: filament. The old test asked "does a patch exist for my wall filament", which is a
+    // FOS: question about a filament, not a region, and two regions could answer yes.
+    bool fos_is_color_patch_region() const {
+        if (color_patch_region_ids == nullptr || config == nullptr) return false;
+        const int wall_ext = config->wall_filament.value - 1;
+        if (wall_ext < 0 || wall_ext >= (int)color_patch_region_ids->size()) return false;
+        return (*color_patch_region_ids)[wall_ext] == print_object_region_id;
+    }
     // Outputs:
     ExtrusionEntityCollection   *loops;
     ExtrusionEntityCollection   *gap_fill;
@@ -124,6 +136,8 @@ public:
             color_patch_regions(nullptr),
             color_patch_loops_effective(nullptr),
             color_patch_is_top_bottom(nullptr),
+            color_patch_region_ids(nullptr),
+            print_object_region_id(-1),
             m_spiral_vase(spiral_mode),
             m_scaled_resolution(scaled<double>(print_config->resolution.value > EPSILON ? print_config->resolution.value : EPSILON)),
             loops(loops), gap_fill(gap_fill), fill_surfaces(fill_surfaces), fill_no_overlap(fill_no_overlap),

@@ -113,6 +113,8 @@ static ExtrusionEntityCollection traverse_loops(const PerimeterGenerator &perime
         const int outer_wall_loops_count = std::max(1, perimeter_generator.config->outer_wall_loops.value);
         // FOS: color patch loops all treated as outer wall
         const int cp_loops = [&]() -> int {
+            // FOS: identity first - only the region the patch created is a CP region
+            if (!perimeter_generator.fos_is_color_patch_region()) return 0;
             if (perimeter_generator.color_patch_regions == nullptr) return 0;
             const int wall_ext = perimeter_generator.config->wall_filament.value - 1;
             if (wall_ext < 0 || wall_ext >= (int)perimeter_generator.color_patch_regions->size()) return 0;
@@ -1214,7 +1216,7 @@ void PerimeterGenerator::process_classic()
         // detect how many perimeters must be generated for this island
         int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;  // 0-indexed loops
         // FOS: color patch -- if this region is a color patch shell, limit loops to color_patch_loops
-        if (this->color_patch_regions != nullptr) {
+        if (this->color_patch_regions != nullptr && this->fos_is_color_patch_region()) {
             // find which extruder this region belongs to (wall_filament is 1-based)
             const int wall_ext = this->config->wall_filament.value - 1; // 0-based
             if (wall_ext >= 0 && wall_ext < (int)this->color_patch_regions->size() &&
@@ -1243,7 +1245,7 @@ void PerimeterGenerator::process_classic()
         if (loop_number > 0 && config->only_one_wall_top && this->upper_slices == nullptr)
             loop_number = 0;
         // FOS: re-apply color patch loop_number after all adjustments to override alternate_extra_wall etc.
-        if (this->color_patch_regions != nullptr) {
+        if (this->color_patch_regions != nullptr && this->fos_is_color_patch_region()) {
             const int wall_ext_cp = this->config->wall_filament.value - 1;
             if (wall_ext_cp >= 0 && wall_ext_cp < (int)this->color_patch_regions->size() &&
                 !(*this->color_patch_regions)[wall_ext_cp].empty()) {
@@ -1262,7 +1264,7 @@ void PerimeterGenerator::process_classic()
         // FOS: for color patch regions, override last with shell_strip from color_patch_regions
         // This ensures perimeters are generated only over the shell strip depth
         // regardless of what restore_untyped_slices restored
-        if (this->color_patch_regions != nullptr) {
+        if (this->color_patch_regions != nullptr && this->fos_is_color_patch_region()) {
             const int wall_ext = this->config->wall_filament.value - 1;
             if (wall_ext >= 0 && wall_ext < (int)this->color_patch_regions->size() &&
                 !(*this->color_patch_regions)[wall_ext].empty() &&
@@ -1315,6 +1317,7 @@ void PerimeterGenerator::process_classic()
                         coord_t ext_perimeter_smaller_width = this->smaller_ext_perimeter_flow.scaled_width();
                         // FOS: color patch regions use perimeter_spacing/2 inset to handle thin shell strips
                         const bool is_cp_region = [&]() -> bool {
+                            if (!this->fos_is_color_patch_region()) return false;
                             if (this->color_patch_regions == nullptr) return false;
                             const int wall_ext = this->config->wall_filament.value - 1;
                             if (wall_ext < 0 || wall_ext >= (int)this->color_patch_regions->size()) return false;
@@ -1399,6 +1402,7 @@ void PerimeterGenerator::process_classic()
                     // FOS: for color patch regions use simple offset (not offset2) to avoid
                     // collapsing thin wedge ends on partial face odd CL
                     const bool is_cp_simple = [&]() -> bool {
+                        if (!this->fos_is_color_patch_region()) return false;
                         if (this->color_patch_regions == nullptr) return false;
                         const int we = this->config->wall_filament.value - 1;
                         if (we < 0 || we >= (int)this->color_patch_regions->size()) return false;
@@ -1418,6 +1422,7 @@ void PerimeterGenerator::process_classic()
                         // FOS: skip gap detection for color patch regions entirely
                         // to avoid gap fill swallowing middle loops on odd CL
                         const bool is_cp_region_gap = [&]() -> bool {
+                            if (!this->fos_is_color_patch_region()) return false;
                             if (this->color_patch_regions == nullptr) return false;
                             const int wall_ext = this->config->wall_filament.value - 1;
                             if (wall_ext < 0 || wall_ext >= (int)this->color_patch_regions->size()) return false;
@@ -1770,6 +1775,7 @@ void PerimeterGenerator::process_classic()
         }
         // FOS: suppress infill for color patch regions - only CL loops should print, no infill
         const bool is_cp_region = [&]() -> bool {
+            if (!this->fos_is_color_patch_region()) return false;
             if (this->color_patch_regions == nullptr) return false;
             const int wall_ext = this->config->wall_filament.value - 1;
             if (wall_ext < 0 || wall_ext >= (int)this->color_patch_regions->size()) return false;
@@ -1777,6 +1783,9 @@ void PerimeterGenerator::process_classic()
             return (this->color_patch_loops_effective && wall_ext < (int)this->color_patch_loops_effective->size() ? (*this->color_patch_loops_effective)[wall_ext] : this->print_config->color_patch_loops.get_at(wall_ext)) > 0;
         }();
         const bool is_cp_top_bottom = [&]() -> bool {
+            // FOS: identity gate too - this forces the region solid, and the object
+            // FOS: ordinary region must never inherit it.
+            if (!this->fos_is_color_patch_region()) return false;
             if (this->color_patch_is_top_bottom == nullptr) return false;
             const int wall_ext = this->config->wall_filament.value - 1;
             if (wall_ext < 0 || wall_ext >= (int)this->color_patch_is_top_bottom->size()) return false;

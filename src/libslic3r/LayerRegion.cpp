@@ -121,12 +121,17 @@ nullptr : &this->layer()->color_patch_regions;
 this->layer()->color_patch_loops_effective.empty() ? nullptr : &this->layer()->color_patch_loops_effective;
     g.color_patch_is_top_bottom     = this->layer()->color_patch_is_top_bottom.empty() ?
 nullptr : &this->layer()->color_patch_is_top_bottom;
+    // FOS: region identity for the color patch tests - see fos_is_color_patch_region()
+    g.color_patch_region_ids        = this->layer()->color_patch_region_ids.empty() ?
+nullptr : &this->layer()->color_patch_region_ids;
+    g.print_object_region_id        = region_id;
     g.ext_perimeter_flow    = this->flow(frExternalPerimeter);
     g.overhang_flow         = this->bridging_flow(frPerimeter, object_config.thick_bridges);
     g.solid_infill_flow     = this->flow(frSolidInfill);
     
     // FOS: color patch regions always use classic generator for predictable loop count
-    const bool is_cp = g.color_patch_regions != nullptr
+    const bool is_cp = g.fos_is_color_patch_region()
+        && g.color_patch_regions != nullptr
         && g.config->wall_filament.value - 1 >= 0
         && g.config->wall_filament.value - 1 < (int)g.color_patch_regions->size()
         && !(*g.color_patch_regions)[g.config->wall_filament.value - 1].empty()
