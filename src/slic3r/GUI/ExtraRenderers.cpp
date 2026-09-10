@@ -328,18 +328,18 @@ wxWindow* BitmapChoiceRenderer::CreateEditorCtrl(wxWindow* parent, wxRect labelR
     else
         c_editor->SetSelection(atoi(data.GetText().c_str()) - 1);
 
-#ifdef __linux__
+    // FOS: commit the pick as soon as it is made, on EVERY platform. Upstream did this only
+    // FOS: under __linux__ and left Windows and macOS to commit on KILL_FOCUS, so with the
+    // FOS: custom ComboBox popup a picked filament did not apply until the user pressed Enter,
+    // FOS: clicked away or moved the 3D view - the pick looked like it had been ignored.
+    // FOS: FinishEditing grabs the new selection and triggers the config update. wx destroys
+    // FOS: the editor through wxPendingDelete rather than inline, so calling it from the
+    // FOS: editor's own event handler is safe - the Linux path has always done exactly this.
     c_editor->Bind(wxEVT_COMBOBOX, [this](wxCommandEvent& evt) {
         // to avoid event propagation to other sidebar items
         evt.StopPropagation();
-        // FinishEditing grabs new selection and triggers config update. We better call
-        // it explicitly, automatic update on KILL_FOCUS didn't work on Linux.
         this->FinishEditing();
     });
-#else
-    // to avoid event propagation to other sidebar items
-    c_editor->Bind(wxEVT_COMBOBOX, [](wxCommandEvent& evt) { evt.StopPropagation(); });
-#endif
 
     return c_editor;
 }

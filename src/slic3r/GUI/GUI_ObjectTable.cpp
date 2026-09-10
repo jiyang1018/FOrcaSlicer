@@ -1578,6 +1578,13 @@ void ObjectGridTable::SetValue( int row, int col, const wxString& value )
             wxGetApp().obj_list()->unify_object_filaments(*grid_row->config, option_value.value);
             update_volume_values_from_object(row, col);
             wxGetApp().obj_list()->update_filament_values_for_items(m_panel->m_filaments_count);
+            // FOS: the unify above writes all four feature filaments, but the per-object
+            // FOS: Multimaterial tab (a TabPrintModel page) kept showing the previous values
+            // FOS: until the object was reselected. Refresh it here so the panel matches what
+            // FOS: was actually written.
+            if (auto *model_tab = dynamic_cast<TabPrintModel *>(wxGetApp().get_model_tab(grid_row->row_type != row_object)))
+                if (model_tab->has_model_config())
+                    model_tab->update_model_config();
             //m_panel->m_plater->update();
         }
     }

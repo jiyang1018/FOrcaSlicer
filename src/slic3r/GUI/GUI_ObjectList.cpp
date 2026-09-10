@@ -1103,13 +1103,16 @@ void ObjectList::update_filament_in_config(const wxDataViewItem& item)
     take_snapshot("Change Filament");
 
     const int extruder = m_objects_model->GetExtruderNumber(item);
-    // FOS: OW-identity - a Fila-column pick sets the outer-wall filament (the object/part identity),
-    // FOS: matching the right-click menu and the 3D tint. Only layer ranges keep the "extruder" key
-    // FOS: (the layer-range tool is a separate concept).
+    // FOS: OW-identity - a Fila-column pick sets the WHOLE object/part filament group, the same
+    // FOS: as the "Unify Object Filaments" menu and the Object Table dropdown, so the engine, the
+    // FOS: 3D tint, the Fila column and the Multimaterial tab all agree. Writing wall_filament
+    // FOS: alone left the object half-unified: OW on the picked filament, inner wall and infill
+    // FOS: still on the previous one. Only layer ranges keep the "extruder" key (the layer-range
+    // FOS: tool is a separate concept).
     if (item_type & itLayer)
         m_config->set_key_value("extruder", new ConfigOptionInt(extruder));
     else
-        m_config->set_key_value("wall_filament", new ConfigOptionInt(extruder < 1 ? 1 : extruder));
+        unify_object_filaments(*m_config, extruder);
 
     // BBS
     if (item_type & itObject) {
@@ -1118,6 +1121,16 @@ void ObjectList::update_filament_in_config(const wxDataViewItem& item)
             if (mv->config.has("extruder"))
                 mv->config.erase("extruder");
         }
+    }
+
+    // FOS: refresh the per-object settings panel so the Multimaterial tab shows the new
+    // FOS: filament group immediately, instead of only after the object is reselected.
+    {
+        Sidebar &sidebar_panel = wxGetApp().sidebar();
+        sidebar_panel.Freeze();
+        wxGetApp().obj_settings()->UpdateAndShow(true);
+        sidebar_panel.Layout();
+        sidebar_panel.Thaw();
     }
 
     // update scene
