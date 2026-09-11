@@ -1,34 +1,34 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.4",
+    "version": "8.6.5",
     "release_type": "stable",
     "platform_type": "mac",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.4\n\n新增：现在可以指定由哪些挤出口打印支撑和擦塔外墙。支撑/筏层主体、支撑/筏层界面和擦塔外墙都新增了“自定义”选项；选择后，下方会出现挤出口列表，勾选允许承担该任务的挤出口即可。同一处所选的挤出口必须直径相同，因此勾选其中一个后，其余不同直径的会变为不可选。被选中的挤出口会在该任务的每一层使用，包括首层；即使盘面上没有用到该挤出口，擦塔也会用它来打印。原“擦拭塔”设置现更名为“擦塔外墙”。\n\n修复：启用“独立”后，修改挤出口直径只更新了耗材列表，该挤出口的工艺预设仍停留在原直径，直到保存打印机预设才更新。现在包括 1 号挤出口在内，每个挤出口在直径变化时都会立即重新选取匹配的工艺预设，且此前保存的单挤出口选择不再覆盖直径。\n\n中文：新增 20 条翻译，涵盖挤出口选择控件及相关切片提示。",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.5\n\n本版本为问题修复版本，不新增功能。\n\n修复：当物体使用的耗材与全局外墙耗材不同时，涂色工具中会显示为 1 号耗材。物体列表中的耗材下拉框只设置了外墙，内壁和填充仍停留在原耗材上；并且选择后需要点击别处才会生效。多材料页签在重新选中物体之前，一直显示修改前的耗材。\n\n修复：物体带有表面着色时切片可能崩溃。使用物体自身外墙耗材的表面着色会导致内壁消失、稀疏填充变为实心；现在这种着色不会产生任何效果，本该如此。\n\n修复：无需擦拭塔的打印仍被要求指定擦塔外墙挤出口 —— 包括所有挤出口直径相同且开启“独立”的机器，以及只使用一种耗材的盘面。实际未参与打印的耗材也可能出现在盘面耗材列表中，表现为擦拭塔预览中多出一种颜色。挤出口直径确实不同的机器仍会要求您选择。",
       "default": {
-        "file_size": 206947820,
-        "file_md5": "23e0adc70a8cb351e9d62a892204dff4",
-        "file_sha256": "0c879756e90211c5307a5ba2d6f10b1b5808826fd87f4ec0078590774bb58d16",
-        "file_url": "https://fos-wiki.design4paragon.com/zh/releases/",
+        "file_size": 205830910,
+        "file_md5": "8e858d6ed5b0155c6bb723651f9f4196",
+        "file_sha256": "bd7afdc9c43499dbfbf1ad4ecc2815c977859a67f38ccc8dc47b3e68e2e5904e",
+        "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
       },
       "arm": {
-        "file_size": 206947820,
-        "file_md5": "23e0adc70a8cb351e9d62a892204dff4",
-        "file_sha256": "0c879756e90211c5307a5ba2d6f10b1b5808826fd87f4ec0078590774bb58d16",
-        "file_url": "https://fos-wiki.design4paragon.com/zh/releases/",
+        "file_size": 205830910,
+        "file_md5": "8e858d6ed5b0155c6bb723651f9f4196",
+        "file_sha256": "bd7afdc9c43499dbfbf1ad4ecc2815c977859a67f38ccc8dc47b3e68e2e5904e",
+        "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
       },
       "intel": {
-        "file_size": 206947820,
-        "file_md5": "23e0adc70a8cb351e9d62a892204dff4",
-        "file_sha256": "0c879756e90211c5307a5ba2d6f10b1b5808826fd87f4ec0078590774bb58d16",
-        "file_url": "https://fos-wiki.design4paragon.com/zh/releases/",
+        "file_size": 205830910,
+        "file_md5": "8e858d6ed5b0155c6bb723651f9f4196",
+        "file_sha256": "bd7afdc9c43499dbfbf1ad4ecc2815c977859a67f38ccc8dc47b3e68e2e5904e",
+        "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
       }
