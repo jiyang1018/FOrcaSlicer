@@ -3447,11 +3447,20 @@ std::vector<unsigned int> PrintObject::object_extruders() const
 
     const ModelObject* mo = this->model_object();
     for (const ModelVolume* mv : mo->volumes) {
-        std::vector<int> volume_extruders = mv->get_extruders();
-        for (int extruder : volume_extruders) {
-            assert(extruder > 0);
-            extruders.push_back(extruder - 1);
-        }
+        // FOS: painted filaments ONLY - same fix as Print::object_extruders(). The old call,
+        // FOS: ModelVolume::get_extruders(), also reports the legacy per-object "extruder" key
+        // FOS: and synthesises filament 1 when it is absent (Model.cpp: 0 -> 0 + 1), which put
+        // FOS: a filament nothing prints with into the used set. b784784869 retired object
+        // FOS: default filament in favour of wall_filament, and all_regions() above already
+        // FOS: contributes the real feature filaments, painted regions included.
+        // FOS: INDEX BASE: get_extruders_from_multi_material_painting() is 0-BASED, unlike
+        // FOS: get_extruders() which is 1-based and needed the "- 1" this replaces.
+        const ModelVolumeType fos_vt = mv->type();
+        if (fos_vt == ModelVolumeType::INVALID || fos_vt == ModelVolumeType::NEGATIVE_VOLUME ||
+            fos_vt == ModelVolumeType::SUPPORT_BLOCKER || fos_vt == ModelVolumeType::SUPPORT_ENFORCER)
+            continue;
+        for (size_t fos_painted : mv->get_extruders_from_multi_material_painting())
+            extruders.push_back((unsigned int)fos_painted);
     }
     sort_remove_duplicates(extruders);
     return extruders;

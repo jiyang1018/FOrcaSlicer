@@ -1570,7 +1570,17 @@ void ObjectGridTable::SetValue( int row, int col, const wxString& value )
             ConfigOptionInt& option_ori_value = dynamic_cast<ConfigOptionInt&>((*grid_row)[(GridColType)(col + 1)]);
 
             option_value.value = enum_value + 1;
-            update_filament_to_config(grid_row->config, grid_col->key, option_value, option_ori_value, (grid_row->row_type == row_object));
+            // FOS: do NOT write the legacy "extruder" key here. b784784869 retired object
+            // FOS: default filament in favour of wall_filament, but update_filament_to_config()
+            // FOS: re-creates it unconditionally on objects ("always create extruder in object
+            // FOS: config"), leaving a filament in the project that nothing prints with. It
+            // FOS: reached Print::extruders() through ModelVolume::get_extruders() and showed up
+            // FOS: as a phantom colour in the prime tower. The unify below writes the four real
+            // FOS: keys and the displayed value is derived from wall_filament, so nothing needs
+            // FOS: it. Erase instead, so using the picker also cleans it out of older projects.
+            if (grid_row->config->has(grid_col->key))
+                grid_row->config->erase(grid_col->key);
+            grid_row->config->touch();
             // FOS: OW-identity - unify the object/part filaments (outer wall, inner wall, sparse and
             // FOS: solid infill) to the picked filament, same as the "Unify Object Filaments" menu, so
             // FOS: engine + 3D tint + Fila column all follow. update_filament_to_config above keeps the
@@ -1965,6 +1975,13 @@ void ObjectGridTable::construct_object_configs(ObjectGrid *object_grid)
         object_grid->ori_printable.value = object_grid->printable.value;
         //auto extruder_id_ptr = get_object_config_value<ConfigOptionInt>(filament_config, object_grid->config, m_col_data[col_filaments]->key);
         auto extruder_id_ptr = static_cast<const ConfigOptionInt*>(object_grid->config->option(m_col_data[col_filaments]->key));
+        // FOS: REVERTED - removing these write-backs blanked the object row filament swatch.
+        // FOS: model_volume_type is only assigned for VOLUME rows, so the object row renderer
+        // FOS: depends on this branch having run. The write is harmless now that neither
+        // FOS: Print::object_extruders() nor PrintObject::object_extruders() consumes the
+        // FOS: legacy key - it is legacy cruft, not a phantom filament. The writers that
+        // FOS: mattered (picker, reset arrow) are fixed; do not "clean this up" without
+        // FOS: fixing GridCellFilamentsRenderer / object-row model_volume_type first.
         if (extruder_id_ptr) {
             object_grid->filaments = *extruder_id_ptr;
             if (object_grid->filaments.value == 0) {
@@ -2537,7 +2554,16 @@ bool ObjectGridTable::OnCellLeftClick(int row, int col, ConfigOptionType &type)
                 cur_option.set(&orig_option);
                 if (grid_col_2->b_from_config) {
                     if (col == col_filaments_reset) {
-                        update_filament_to_config(grid_row->config, grid_col_2->key, cur_option, orig_option, (grid_row->row_type == row_object));
+                        // FOS: the filament reset arrow must not re-create the legacy
+                        // FOS: "extruder" key either - see SetValue() above. Erase it so a
+                        // FOS: reset clears the retired key rather than writing it back.
+                        // FOS: NOTE: this only clears the legacy key; it does NOT reset the
+                        // FOS: four feature filaments, so on the OW-identity model the arrow
+                        // FOS: is close to a no-op. Left as-is deliberately - deciding what
+                        // FOS: "reset filament" should mean is a separate change.
+                        if (grid_row->config->has(grid_col_2->key))
+                            grid_row->config->erase(grid_col_2->key);
+                        grid_row->config->touch();
                         update_volume_values_from_object(row, col-1);
                     }
                     else
