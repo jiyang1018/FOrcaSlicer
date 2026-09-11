@@ -428,11 +428,28 @@ std::vector<unsigned int> Print::object_extruders() const
     for (const PrintObject* object : m_objects) {
         const ModelObject* mo = object->model_object();
         for (const ModelVolume* mv : mo->volumes) {
-            std::vector<int> volume_extruders = mv->get_extruders();
-            for (int extruder : volume_extruders) {
-                assert(extruder > 0);
-                extruders.push_back(extruder - 1);
-            }
+            // FOS: take ONLY the multi-material painted filaments here. The old call,
+            // FOS: ModelVolume::get_extruders(), also reports the legacy per-object
+            // FOS: "extruder" key and SYNTHESISES filament 1 when neither the volume nor
+            // FOS: its object carries one (Model.cpp: 0 -> 0 + 1). b784784869 retired
+            // FOS: object default filament in favour of wall_filament, so a FOS object
+            // FOS: holds extruder == 0, or a stale leftover from the Object Table path.
+            // FOS: Either way that put a filament NOTHING PRINTS WITH into the used set:
+            // FOS: a phantom second colour in the prime tower, a toolchange that never
+            // FOS: happens, and a wrong count in Print::validate. Verified safe: the key
+            // FOS: appears nowhere in PrintApply.cpp - region configs come from the four
+            // FOS: feature filaments and from painted facet states - so it never decides
+            // FOS: what is printed. The all_regions() loop above already contributes the
+            // FOS: object real feature filaments, painted regions included.
+            // FOS: INDEX BASE: get_extruders_from_multi_material_painting() is 0-BASED
+            // FOS: (state_idx - 1, and Extruder1 == ENFORCER == 1), unlike get_extruders()
+            // FOS: which is 1-based and needed the "- 1" this replaces. Do not add it back.
+            const ModelVolumeType fos_vt = mv->type();
+            if (fos_vt == ModelVolumeType::INVALID || fos_vt == ModelVolumeType::NEGATIVE_VOLUME ||
+                fos_vt == ModelVolumeType::SUPPORT_BLOCKER || fos_vt == ModelVolumeType::SUPPORT_ENFORCER)
+                continue;
+            for (size_t fos_painted : mv->get_extruders_from_multi_material_painting())
+                extruders.push_back((unsigned int)fos_painted);
         }
 
         // layer range
@@ -1119,7 +1136,21 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
     // nozzle_diameter.get_at(support_filament - 1) (Flow.cpp), and the tower structure is one
     // m_perimeter_width for the whole print - so a pool is safe exactly when every nozzle in it
     // shares one diameter. Enforced here as well as in the UI, never in the UI alone.
-    if (m_config.has_mixed_nozzle_sizes.value) {
+    //
+    // FOS 8.6.5: has_mixed_nozzle_sizes means "per-nozzle authoring is active", NOT "the
+    // diameters differ" - normalize_fdm_1 (PrintConfig.cpp) ORs in fos_nozzle_desync, so a
+    // uniform machine with Desynced nozzles sets it too. These guards exist only because
+    // support flow and the tower structure width are committed once, before the tool is
+    // chosen, and that is unsafe only when the diameters actually DIFFER. On a uniform
+    // machine every nozzle gives the same flow and the same structure width, so "Default"
+    // is exactly as safe as it is in synced mode. Test the real diameters, not the flag.
+    const ConfigOptionFloats &fos_nd_phys = m_config.fos_physical_nozzle_diameter;
+    const std::vector<double> &fos_nd_vals = fos_nd_phys.values.empty()
+        ? m_config.nozzle_diameter.values : fos_nd_phys.values;
+    bool fos_diameters_differ = false;
+    for (size_t i = 1; i < fos_nd_vals.size(); ++i)
+        if (std::abs(fos_nd_vals[i] - fos_nd_vals[0]) > 0.001) { fos_diameters_differ = true; break; }
+    if (m_config.has_mixed_nozzle_sizes.value && fos_diameters_differ) {
         // Selected count into `count`, the pool diameter into `d0`, and the first diameter that
         // disagrees with it into `d1`. Returns true when the set spans more than one diameter.
         // A pool shorter than the nozzle array is read only as far as it goes - phase 1 stores a
@@ -1186,7 +1217,13 @@ StringObjectException Print::validate(StringObjectException *warning, Polygons* 
         // tool_line_width), so mixed diameters PURGE in the tower safely. What must be one
         // diameter is the STRUCTURE tool - m_perimeter_width fixes the footprint, box, brim and
         // sparse fill for the whole print.
-        if (this->has_wipe_tower() && m_config.wipe_tower_filament.value == 0) {
+        // FOS: only guard a tower that can actually carry a toolchange. has_wipe_tower()
+        // FOS: counts CONFIGURED filaments (filament_diameter.size() > 1, see :3053), not
+        // FOS: used ones, so on a mixed-nozzle machine it reports true for a single-filament
+        // FOS: plate and this check refused a slice whose tower would purge nothing.
+        // FOS: `extruders` is the deduped set the plate actually uses; Print::extruders()
+        // FOS: itself uses the same size() > 1 test to decide the tower will be generated.
+        if (extruders.size() > 1 && this->has_wipe_tower() && m_config.wipe_tower_filament.value == 0) {
             const bool spans = fos_pool_spans(m_config.fos_wipe_tower_nozzle_pool, fos_n, fos_d0, fos_d1);
             if (fos_n == 0)
                 return {L("Mixed nozzle sizes are in use, so the prime tower wall cannot be printed by "
