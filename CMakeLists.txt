@@ -912,7 +912,7 @@ if(BUILD_TESTS)
 endif()
 
 if (NOT WIN32 AND NOT APPLE)
-    set(SLIC3R_APP_CMD "snapmaker-orca")
+    set(SLIC3R_APP_CMD "FOrcaSlicer") # FOS: match OUTPUT_NAME set in src/CMakeLists.txt; build_appimage.sh.in resolves bin/@SLIC3R_APP_CMD@
     configure_file(${LIBDIR}/dev-utils/platform/unix/build_appimage.sh.in ${CMAKE_CURRENT_BINARY_DIR}/build_appimage.sh USE_SOURCE_PERMISSIONS @ONLY)
 endif()
 
