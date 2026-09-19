@@ -28,6 +28,10 @@ function usage() {
     echo "To build with tests: './${SCRIPT_NAME} -st' or './${SCRIPT_NAME} -dst'"
 }
 
+# FOS: COLORED_OUTPUT is passed to cmake UNQUOTED on purpose. Quoted, it expands to an
+# empty argument when -C is absent, and cmake 3.22 (Ubuntu 22.04) treats that empty
+# positional as the source dir, overriding -S and configuring the top-level project
+# into deps/build. Symptom: "Could NOT find Boost ... 1.83.0" during -d.
 SLIC3R_PRECOMPILED_HEADERS="ON"
 
 unset name
@@ -190,7 +194,7 @@ if [[ -n "${BUILD_DEPS}" ]] ; then
 	      -DSLIC3R_PCH="${SLIC3R_PRECOMPILED_HEADERS}" \
 	      -DDESTDIR="${SCRIPT_PATH}/deps/build/destdir" \
 	      -DDEP_DOWNLOAD_DIR="${SCRIPT_PATH}/deps/DL_CACHE" \
-	      "${COLORED_OUTPUT}" \
+	      ${COLORED_OUTPUT} \
 	      "${BUILD_ARGS[@]}"
 	set +x
         cmake --build deps/build/release
@@ -202,7 +206,7 @@ if [[ -n "${BUILD_DEPS}" ]] ; then
 	  -DSLIC3R_PCH="${SLIC3R_PRECOMPILED_HEADERS}" \
 	  -DDESTDIR="${SCRIPT_PATH}/deps/build/destdir" \
 	  -DDEP_DOWNLOAD_DIR="${SCRIPT_PATH}/deps/DL_CACHE" \
-	  "${COLORED_OUTPUT}" \
+	  ${COLORED_OUTPUT} \
 	  "${BUILD_ARGS[@]}"
     set +x
     cmake --build deps/build
@@ -236,7 +240,7 @@ if [[ -n "${BUILD_ORCA}" ]] ; then
 	  -DCMAKE_PREFIX_PATH="${SCRIPT_PATH}/deps/build/destdir/usr/local" \
 	  -DSLIC3R_STATIC=1 \
 	  -DORCA_TOOLS=ON \
-	  "${COLORED_OUTPUT}" \
+	  ${COLORED_OUTPUT} \
 	  "${BUILD_ARGS[@]}"
     set +x
     echo "done"
