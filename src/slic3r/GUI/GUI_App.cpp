@@ -2414,7 +2414,7 @@ bool GUI_App::on_init_inner()
             RichMessageDialog
                 dlg(nullptr,
                     wxString::Format(_L("%s\nDo you want to continue?"), msg),
-                    "Snapmaker Orca", wxICON_QUESTION | wxYES_NO);
+                    SLIC3R_APP_NAME, wxICON_QUESTION | wxYES_NO); // FOS: was a hardcoded "Snapmaker Orca" caption
             dlg.ShowCheckBox(_L("Remember my choice"));
             if (dlg.ShowModal() != wxID_YES) return false;
 
@@ -5719,14 +5719,14 @@ bool GUI_App::load_language(wxString language, bool initial)
 
     if (! wxLocale::IsAvailable(language_info->Language)) {
     	// Loading the language dictionary failed.
-    	wxString message = "Switching Snapmaker Orca to language " + language_info->CanonicalName + " failed.";
+    	wxString message = "Switching " SLIC3R_APP_NAME " to language " + language_info->CanonicalName + " failed.";
 #if !defined(_WIN32) && !defined(__APPLE__)
         // likely some linux system
         message += "\nYou may need to reconfigure the missing locales, likely by running the \"locale-gen\" and \"dpkg-reconfigure locales\" commands.\n";
 #endif
         if (initial)
         	message + "\n\nApplication will close.";
-        wxMessageBox(message, "Snapmaker Orca - Switching language failed", wxOK | wxICON_ERROR);
+        wxMessageBox(message, SLIC3R_APP_NAME " - Switching language failed", wxOK | wxICON_ERROR);
         if (initial)
 			std::exit(EXIT_FAILURE);
 		else
