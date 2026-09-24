@@ -163,6 +163,8 @@ private:
     void        append_menu_item_clone(wxMenu* menu);
     void        append_menu_item_simplify(wxMenu* menu);
     void        append_menu_item_center(wxMenu* menu);
+    // FOS 8.6.6: Align / Distribute submenus and Nest, multi-object selection only
+    void        append_menu_items_fos_layout(wxMenu* menu);
     void        append_menu_item_drop(wxMenu* menu);
     void        append_menu_item_per_object_process(wxMenu* menu);
     void        append_menu_item_per_object_settings(wxMenu* menu);

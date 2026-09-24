@@ -120,6 +120,13 @@ struct ArrangeParams {
 
     bool allow_rotations = false;
 
+    // FOS 8.6.6: Nest passes real silhouettes instead of convex hulls; this enables the
+    // concave no-fit polygon (Arrange.cpp, fos_nfp_concave). Off = stock behaviour.
+    bool fos_concave_nfp = false;
+    // FOS 8.6.6: Nest "gravity" axis (Deepnest-style objective). 0 = pack against the left
+    // edge first (minimise 2*width + height of the pile), 1 = against the front edge first.
+    int fos_gravity_axis = 0;
+
     bool do_final_align = true;
 
     //BBS: add specific arrange params

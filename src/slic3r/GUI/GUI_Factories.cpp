@@ -1725,6 +1725,8 @@ wxMenu* MenuFactory::multi_selection_menu()
         }
         append_menu_item_center(menu);
         append_menu_item_drop(menu);
+        // FOS 8.6.6
+        append_menu_items_fos_layout(menu);
         append_menu_item_fix_through_netfabb(menu);
         //append_menu_item_simplify(menu);
         append_menu_item_delete(menu);
@@ -1855,6 +1857,66 @@ void MenuFactory::append_menu_item_simplify(wxMenu* menu)
     wxMenuItem* menu_item = append_menu_item(menu, wxID_ANY, _L("Simplify Model"), "",
         [](wxCommandEvent&) { obj_list()->simplify(); }, "", menu,
         []() {return plater()->can_simplify(); }, m_parent);
+}
+
+// FOS 8.6.6: Align / Distribute / Nest for a multi-object selection in the Prepare view.
+void MenuFactory::append_menu_items_fos_layout(wxMenu* menu)
+{
+    // Enabled only in the 3D Prepare canvas, in instance mode, with enough instances selected.
+    auto can_layout = [](int min_count) {
+        if (plater()->canvas3D()->get_canvas_type() != GLCanvas3D::ECanvasType::CanvasView3D)
+            return false;
+        const Selection& selection = plater()->get_view3D_canvas3D()->get_selection();
+        return selection.get_mode() == Selection::Instance && selection.fos_selected_instance_count() >= min_count;
+    };
+    auto align = [](Selection::FosAlign mode) {
+        plater()->get_view3D_canvas3D()->get_selection().fos_align(mode);
+    };
+    auto distribute = [](Selection::FosDistribute mode) {
+        plater()->get_view3D_canvas3D()->get_selection().fos_distribute(mode);
+    };
+    auto can_align      = [can_layout]() { return can_layout(2); };
+    auto can_distribute = [can_layout]() { return can_layout(3); };
+
+    wxMenu* align_menu = new wxMenu();
+    append_menu_item(align_menu, wxID_ANY, _L("Top"), _L("Align back edges to the first selected object"),
+        [align](wxCommandEvent&) { align(Selection::FosAlign::Top); }, "", menu, can_align, m_parent);
+    append_menu_item(align_menu, wxID_ANY, _L("Left"), _L("Align left edges to the first selected object"),
+        [align](wxCommandEvent&) { align(Selection::FosAlign::Left); }, "", menu, can_align, m_parent);
+    append_menu_item(align_menu, wxID_ANY, _L("Bottom"), _L("Align front edges to the first selected object"),
+        [align](wxCommandEvent&) { align(Selection::FosAlign::Bottom); }, "", menu, can_align, m_parent);
+    append_menu_item(align_menu, wxID_ANY, _L("Right"), _L("Align right edges to the first selected object"),
+        [align](wxCommandEvent&) { align(Selection::FosAlign::Right); }, "", menu, can_align, m_parent);
+    append_submenu(menu, align_menu, wxID_ANY, _L("Align to First"), _L("Align the selected objects to the first one selected"), "", can_align, m_parent);
+
+    wxMenu* dist_menu = new wxMenu();
+    append_menu_item(dist_menu, wxID_ANY, _L("Distribute left"), _L("Space the left edges of the selected objects evenly"),
+        [distribute](wxCommandEvent&) { distribute(Selection::FosDistribute::Left); }, "", menu, can_distribute, m_parent);
+    append_menu_item(dist_menu, wxID_ANY, _L("Distribute horizontal center"), _L("Space the horizontal centers of the selected objects evenly"),
+        [distribute](wxCommandEvent&) { distribute(Selection::FosDistribute::HCenter); }, "", menu, can_distribute, m_parent);
+    append_menu_item(dist_menu, wxID_ANY, _L("Distribute right"), _L("Space the right edges of the selected objects evenly"),
+        [distribute](wxCommandEvent&) { distribute(Selection::FosDistribute::Right); }, "", menu, can_distribute, m_parent);
+    append_menu_item(dist_menu, wxID_ANY, _L("Distribute horizontal spacing"), _L("Make the horizontal gaps between the selected objects equal"),
+        [distribute](wxCommandEvent&) { distribute(Selection::FosDistribute::HSpacing); }, "", menu, can_distribute, m_parent);
+    dist_menu->AppendSeparator();
+    append_menu_item(dist_menu, wxID_ANY, _L("Distribute top"), _L("Space the back edges of the selected objects evenly"),
+        [distribute](wxCommandEvent&) { distribute(Selection::FosDistribute::Top); }, "", menu, can_distribute, m_parent);
+    append_menu_item(dist_menu, wxID_ANY, _L("Distribute vertical center"), _L("Space the vertical centers of the selected objects evenly"),
+        [distribute](wxCommandEvent&) { distribute(Selection::FosDistribute::VCenter); }, "", menu, can_distribute, m_parent);
+    append_menu_item(dist_menu, wxID_ANY, _L("Distribute bottom"), _L("Space the front edges of the selected objects evenly"),
+        [distribute](wxCommandEvent&) { distribute(Selection::FosDistribute::Bottom); }, "", menu, can_distribute, m_parent);
+    append_menu_item(dist_menu, wxID_ANY, _L("Distribute vertical spacing"), _L("Make the vertical gaps between the selected objects equal"),
+        [distribute](wxCommandEvent&) { distribute(Selection::FosDistribute::VSpacing); }, "", menu, can_distribute, m_parent);
+    append_submenu(menu, dist_menu, wxID_ANY, _L("Distribute First to Last"), _L("Distribute the selected objects evenly between the first and the last one selected"), "", can_distribute, m_parent);
+
+    // Close = 2 mm between objects, Loose = 3.5 mm (the slicer's preferred object gap).
+    auto can_nest = [can_align]() { return can_align() && plater()->can_arrange(); };
+    wxMenu* nest_menu = new wxMenu();
+    append_menu_item(nest_menu, wxID_ANY, _L("Close (2mm gap)"), _L("Pack the selected objects onto the plate with a 2 mm gap, moving them in X/Y and rotating them around Z"),
+        [](wxCommandEvent&) { plater()->fos_nest_selection(2.0); }, "", menu, can_nest, m_parent);
+    append_menu_item(nest_menu, wxID_ANY, _L("Loose (3.5mm gap)"), _L("Pack the selected objects onto the plate with a 3.5 mm gap, moving them in X/Y and rotating them around Z"),
+        [](wxCommandEvent&) { plater()->fos_nest_selection(3.5); }, "", menu, can_nest, m_parent);
+    append_submenu(menu, nest_menu, wxID_ANY, _L("Nest"), _L("Pack the selected objects onto the plate"), "", can_nest, m_parent);
 }
 
 void MenuFactory::append_menu_item_center(wxMenu* menu)

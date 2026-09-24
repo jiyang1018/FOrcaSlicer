@@ -34,6 +34,14 @@ class ArrangeJob : public Job
     // BBS: add flag for whether on current part plate
     bool only_on_partplate{false};
 
+    // FOS 8.6.6: Nest - only the selected instances move, onto the current plate, rotation on
+    bool m_fos_nest{false};
+    // Object-to-object gap (mm) for Nest, from the Close / Loose menu choice
+    double m_fos_nest_gap_mm{2.};
+    // Objects whose support / brim Nest had to estimate (no current slice of the plate)
+    int m_fos_tree_unsliced{0};
+    void prepare_fos_nest();
+
     // clear m_selected and m_unselected, reserve space for next usage
     void clear_input();
 
@@ -59,7 +67,7 @@ public:
 
     void process(Ctl &ctl) override;
 
-    ArrangeJob();
+    explicit ArrangeJob(bool fos_nest = false, double fos_nest_gap_mm = 2.);
 
     int status_range() const
     {

@@ -529,6 +529,182 @@ void Selection::drop()
     wxGetApp().plater()->get_view3D_canvas3D()->do_move(L("Move Object"));
 }
 
+// FOS 8.6.6: align / distribute helpers.
+// One entry per selected instance: its XY extent over model parts only (modifiers,
+// negative volumes' SLA ids and the wipe tower proxy never decide the layout).
+namespace {
+struct FosInstBox
+{
+    int           obj  = -1;
+    int           inst = -1;
+    BoundingBoxf3 box;
+};
+
+// Returned in PICK order (first picked first); pairs the order somehow lacks go last.
+std::vector<FosInstBox> fos_collect_instance_boxes(const GLVolumePtrs &volumes, const Selection::ObjectIdxsToInstanceIdxsMap &content,
+                                                   const std::vector<std::pair<int, int>> &pick_order)
+{
+    std::vector<std::pair<int, int>> order;
+    for (const auto &p : pick_order) {
+        auto it = content.find(p.first);
+        if (it != content.end() && it->second.count(p.second) > 0)
+            order.push_back(p);
+    }
+    for (const auto &[obj_idx, insts] : content)
+        for (int inst_idx : insts)
+            if (std::find(order.begin(), order.end(), std::make_pair(obj_idx, inst_idx)) == order.end())
+                order.emplace_back(obj_idx, inst_idx);
+
+    std::vector<FosInstBox> out;
+    for (const auto &[obj_idx, inst_idx] : order) {
+        if (obj_idx < 0 || obj_idx >= 1000)
+            continue;
+        FosInstBox ib;
+        ib.obj  = obj_idx;
+        ib.inst = inst_idx;
+        for (const GLVolume *v : volumes)
+            if (v->object_idx() == obj_idx && v->instance_idx() == inst_idx && v->volume_idx() >= 0 && !v->is_modifier && !v->is_wipe_tower)
+                ib.box.merge(v->transformed_convex_hull_bounding_box());
+        if (ib.box.defined)
+            out.emplace_back(ib);
+    }
+    return out;
+}
+
+// FOS: shift every GLVolume of one instance. Deliberately not Selection::translate(obj, inst, d):
+// its second loop re-reads object_idx from each selected volume and so also shifts the
+// unselected volumes of OTHER selected objects that share the instance index.
+void fos_shift_instance(GLVolumePtrs &volumes, int obj_idx, int inst_idx, const Vec3d &d)
+{
+    for (GLVolume *v : volumes)
+        if (v->object_idx() == obj_idx && v->instance_idx() == inst_idx)
+            v->set_instance_offset(v->get_instance_offset() + d);
+}
+} // namespace
+
+int Selection::fos_selected_instance_count() const
+{
+    int n = 0;
+    for (const auto &[obj_idx, insts] : m_cache.content)
+        if (obj_idx >= 0 && obj_idx < 1000)
+            n += int(insts.size());
+    return n;
+}
+
+void Selection::fos_align(FosAlign mode)
+{
+    if (!m_valid || m_mode != Instance)
+        return;
+
+    std::vector<FosInstBox> boxes = fos_collect_instance_boxes(*m_volumes, m_cache.content, m_fos_pick_order);
+    if (boxes.size() < 2)
+        return;
+
+    // The first picked instance is the reference and does not move.
+    const BoundingBoxf3 ref = boxes.front().box;
+
+    bool moved = false;
+    for (size_t i = 1; i < boxes.size(); ++i) {
+        const BoundingBoxf3 &bb = boxes[i].box;
+        Vec3d d = Vec3d::Zero();
+        switch (mode) {
+        case FosAlign::Left:   d.x() = ref.min.x() - bb.min.x(); break;
+        case FosAlign::Right:  d.x() = ref.max.x() - bb.max.x(); break;
+        case FosAlign::Top:    d.y() = ref.max.y() - bb.max.y(); break;
+        case FosAlign::Bottom: d.y() = ref.min.y() - bb.min.y(); break;
+        }
+        if (std::abs(d.x()) > EPSILON || std::abs(d.y()) > EPSILON) {
+            fos_shift_instance(*m_volumes, boxes[i].obj, boxes[i].inst, d);
+            moved = true;
+        }
+    }
+    if (!moved)
+        return;
+
+    this->set_bounding_boxes_dirty();
+    wxGetApp().plater()->get_view3D_canvas3D()->do_move(L("Align Objects"));
+}
+
+void Selection::fos_distribute(FosDistribute mode)
+{
+    if (!m_valid || m_mode != Instance)
+        return;
+
+    std::vector<FosInstBox> boxes = fos_collect_instance_boxes(*m_volumes, m_cache.content, m_fos_pick_order);
+    const size_t n = boxes.size();
+    if (n < 3)
+        return;
+
+    const bool horizontal = mode == FosDistribute::Left || mode == FosDistribute::HCenter ||
+                            mode == FosDistribute::Right || mode == FosDistribute::HSpacing;
+    const int  ax         = horizontal ? 0 : 1;
+
+    // FOS: the first and the last PICKED instances are the fixed bounds. The ones between
+    // them keep their current order along the axis, running from the first toward the last.
+    const FosInstBox first = boxes.front();
+    const FosInstBox last  = boxes.back();
+    std::vector<FosInstBox> mids(boxes.begin() + 1, boxes.end() - 1);
+    const double dir = (last.box.center()(ax) >= first.box.center()(ax)) ? 1. : -1.;
+    std::sort(mids.begin(), mids.end(), [ax, dir](const FosInstBox &a, const FosInstBox &b) {
+        return dir * a.box.center()(ax) < dir * b.box.center()(ax);
+    });
+
+    // Top is the +Y edge (back of the bed).
+    auto key = [mode, ax](const BoundingBoxf3 &bb) -> double {
+        switch (mode) {
+        case FosDistribute::Left:
+        case FosDistribute::Bottom: return bb.min(ax);
+        case FosDistribute::Right:
+        case FosDistribute::Top:    return bb.max(ax);
+        default:                    return 0.5 * (bb.min(ax) + bb.max(ax));
+        }
+    };
+
+    std::vector<double> shift(mids.size(), 0.);
+    if (mode == FosDistribute::HSpacing || mode == FosDistribute::VSpacing) {
+        // Equal gaps in the space between the first and the last instance.
+        double total = 0.;
+        for (const FosInstBox &b : mids)
+            total += b.box.max(ax) - b.box.min(ax);
+        if (dir > 0.) {
+            const double gap = (last.box.min(ax) - first.box.max(ax) - total) / double(n - 1);
+            double       pos = first.box.max(ax) + gap;
+            for (size_t i = 0; i < mids.size(); ++i) {
+                shift[i] = pos - mids[i].box.min(ax);
+                pos += mids[i].box.max(ax) - mids[i].box.min(ax) + gap;
+            }
+        } else {
+            const double gap = (first.box.min(ax) - last.box.max(ax) - total) / double(n - 1);
+            double       pos = first.box.min(ax) - gap;
+            for (size_t i = 0; i < mids.size(); ++i) {
+                shift[i] = pos - mids[i].box.max(ax);
+                pos -= mids[i].box.max(ax) - mids[i].box.min(ax) + gap;
+            }
+        }
+    } else {
+        // Equal steps between the first's and the last's chosen edge (or centre).
+        const double lo   = key(first.box);
+        const double step = (key(last.box) - lo) / double(n - 1);
+        for (size_t i = 0; i < mids.size(); ++i)
+            shift[i] = lo + step * double(i + 1) - key(mids[i].box);
+    }
+
+    bool moved = false;
+    for (size_t i = 0; i < mids.size(); ++i) {
+        if (std::abs(shift[i]) <= EPSILON)
+            continue;
+        Vec3d d = Vec3d::Zero();
+        d(ax)   = shift[i];
+        fos_shift_instance(*m_volumes, mids[i].obj, mids[i].inst, d);
+        moved = true;
+    }
+    if (!moved)
+        return;
+
+    this->set_bounding_boxes_dirty();
+    wxGetApp().plater()->get_view3D_canvas3D()->do_move(L("Distribute Objects"));
+}
+
 void Selection::center_plate(const int plate_idx) {
 
     PartPlate* plate = wxGetApp().plater()->get_partplate_list().get_plate(plate_idx);
@@ -2215,6 +2391,22 @@ void Selection::update_type()
             obj_it = m_cache.content.insert(ObjectIdxsToInstanceIdxsMap::value_type(obj_idx, InstanceIdxsList())).first;
 
         obj_it->second.insert(inst_idx);
+    }
+
+    // FOS 8.6.6: keep pick order. Drop pairs no longer selected, append new ones. An empty
+    // content leaves the order alone (ObjectList re-syncs via remove_all() then add).
+    if (!m_cache.content.empty()) {
+        auto selected = [this](const std::pair<int, int> &p) {
+            auto it = m_cache.content.find(p.first);
+            return it != m_cache.content.end() && it->second.count(p.second) > 0;
+        };
+        m_fos_pick_order.erase(std::remove_if(m_fos_pick_order.begin(), m_fos_pick_order.end(),
+                                              [&selected](const std::pair<int, int> &p) { return !selected(p); }),
+                               m_fos_pick_order.end());
+        for (const auto &[o, insts] : m_cache.content)
+            for (int i : insts)
+                if (std::find(m_fos_pick_order.begin(), m_fos_pick_order.end(), std::make_pair(o, i)) == m_fos_pick_order.end())
+                    m_fos_pick_order.emplace_back(o, i);
     }
 
     bool requires_disable = false;

@@ -557,6 +557,9 @@ public:
     wxWindow* get_select_machine_dialog();
 
     void arrange();
+    // FOS 8.6.6: arrange only the selected instances onto their plate, rotation forced on
+    // gap_mm: object-to-object gap, Close = 2, Loose = 3.5
+    void fos_nest_selection(double gap_mm);
     void orient();
     void find_new_position(const ModelInstancePtrs  &instances);
     //BBS: add job state related functions

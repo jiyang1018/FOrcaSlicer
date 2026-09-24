@@ -15798,6 +15798,34 @@ void Plater::arrange()
     }
 }
 
+// FOS 8.6.6: Nest. Packs only the selected instances onto one plate, moving them in X/Y and
+// rotating them around Z; everything else on that plate is a fixed obstacle and is not moved.
+// The plate is the one the first selected instance sits on, else the current plate.
+void Plater::fos_nest_selection(double gap_mm)
+{
+    auto &w = get_ui_job_worker();
+    if (!w.is_idle())
+        return;
+
+    const Selection &selection = get_selection();
+    if (selection.is_empty())
+        return;
+
+    PartPlateList &plate_list = get_partplate_list();
+    for (const auto &[obj_idx, insts] : selection.get_content()) {
+        if (obj_idx < 0 || obj_idx >= 1000 || insts.empty())
+            continue;
+        const int plate_idx = plate_list.find_instance_belongs(obj_idx, *insts.begin());
+        if (plate_idx >= 0 && plate_idx != plate_list.get_curr_plate_index())
+            select_plate(plate_idx);
+        break;
+    }
+
+    set_prepare_state(Job::PREPARE_STATE_MENU);
+    p->take_snapshot(_u8L("Nest"));
+    replace_job(w, std::make_unique<ArrangeJob>(true, gap_mm));
+}
+
 void Plater::set_current_canvas_as_dirty()
 {
     p->set_current_canvas_as_dirty();

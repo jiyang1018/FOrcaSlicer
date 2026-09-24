@@ -10,6 +10,7 @@
 #include <libnest2d/utils/rotcalipers.hpp>
 
 #include <numeric>
+#include <atomic>
 #include <ClipperUtils.hpp>
 
 #include <boost/geometry/index/rtree.hpp>
@@ -40,10 +41,67 @@ template<class T> struct _NumTag<boost::rational<T>>
 
 namespace nfp {
 
+// FOS 8.6.6: concave no-fit polygon for Nest. Set for the duration of one arrange() call
+// from ArrangeParams::fos_concave_nfp; only one arrange job runs at a time.
+inline std::atomic<bool> &fos_concave_nfp_flag()
+{
+    static std::atomic<bool> flag{false};
+    return flag;
+}
+
+// NFP of orbiter `other` around stationary `sh`, both CCW, contours only (holes ignored).
+// With r = reference vertex of the orbiter (rightmost-up), the orbiter overlaps `sh` exactly
+// when r lies inside  sh (+) (r - other). That filled Minkowski sum is the union of `sh`
+// with the sum of (r - other) swept along sh's boundary; (r - other) contains the origin,
+// so the union is complete. Enclosed cavities the orbiter fits into survive as holes.
+// The result is already in absolute coordinates, so the returned reference point is exactly
+// the one correctNfpPosition() computes, which makes its correction translation zero.
+inline NfpResult<Slic3r::ExPolygon> fos_nfp_concave(const Slic3r::ExPolygon &sh, const Slic3r::ExPolygon &other)
+{
+    namespace clp = Slic3r::ClipperLib;
+    const Slic3r::Point r = rightmostUpVertex(other);
+
+    clp::Path pattern;
+    pattern.reserve(other.contour.points.size());
+    for (const Slic3r::Point &b : other.contour.points)
+        pattern.emplace_back(Slic3r::Point(r - b));
+
+    clp::Path path(sh.contour.points.begin(), sh.contour.points.end());
+    clp::Paths sweep;
+    clp::MinkowskiSum(pattern, path, sweep, true);
+
+    Slic3r::Polygons polys;
+    polys.reserve(sweep.size() + 1);
+    for (const clp::Path &p : sweep) {
+        Slic3r::Polygon poly;
+        poly.points.assign(p.begin(), p.end());
+        polys.emplace_back(std::move(poly));
+    }
+    polys.emplace_back(sh.contour);
+
+    NfpResult<Slic3r::ExPolygon> res;
+    double best = -1.;
+    for (Slic3r::ExPolygon &e : Slic3r::union_ex(polys, clp::pftNonZero)) {
+        const double a = std::abs(e.contour.area());
+        if (a > best) {
+            best      = a;
+            res.first = std::move(e);
+        }
+    }
+    res.second = rightmostUpVertex(other) + (rightmostUpVertex(sh) - leftmostDownVertex(other));
+    return res;
+}
+
 template<class S> struct NfpImpl<S, NfpLevel::CONVEX_ONLY>
 {
     NfpResult<S> operator()(const S &sh, const S &other)
     {
+        // FOS 8.6.6: stock arrange always feeds convex hulls, so this branch is Nest-only.
+        if constexpr (std::is_same_v<S, Slic3r::ExPolygon>) {
+            if (fos_concave_nfp_flag().load(std::memory_order_relaxed) &&
+                (!Slic3r::polygon_is_convex(sh.contour) || !Slic3r::polygon_is_convex(other.contour)))
+                return fos_nfp_concave(sh, other);
+        }
         return nfpConvexOnly<S, boost::rational<LargeInt>>(sh, other);
     }
 };
@@ -276,8 +334,10 @@ Points get_shrink_bedpts(const DynamicPrintConfig* print_cfg, const ArrangeParam
 template<class PConf>
 void fill_config(PConf& pcfg, const ArrangeParams &params) {
 
-        if (params.is_seq_print) {
+        if (params.is_seq_print || params.fos_concave_nfp) {
             // Start placing the items from the center of the print bed
+            // FOS 8.6.6: Nest too - its gravity objective packs toward the bed's min corner,
+            // so the first item must start there or the pile spans the whole bed.
             pcfg.starting_point = PConf::Alignment::BOTTOM_LEFT;
         }
         else {
@@ -293,7 +353,11 @@ void fill_config(PConf& pcfg, const ArrangeParams &params) {
 
 
     // Try 4 angles (45 degree step) and find the one with min cost
-    if (params.allow_rotations)
+    // FOS 8.6.6: Nest tries the four right angles. The stock 45-degree steps rarely pack
+    // better and left rows of cubes standing on their corners; 180 matters for pockets.
+    if (params.allow_rotations && params.fos_concave_nfp)
+        pcfg.rotations = {0., PI / 2, PI, 3. * PI / 2 };
+    else if (params.allow_rotations)
         pcfg.rotations = {0., PI / 4., PI/2, 3. * PI / 4. };
     else
         pcfg.rotations = {0.};
@@ -455,6 +519,22 @@ protected:
 
         // Calculate the full bounding box of the pile with the candidate item
         auto fullbb = sl::boundingBox(m_pilebb, ibb);
+
+        // FOS 8.6.6: Nest objective, after Deepnest's "gravity" placement type (idea only).
+        // The stock score below pulls small items toward the centre of the big ones, which
+        // staggers equal items into offset columns and wastes a strip at every column seam.
+        // Gravity packs the pile against one bed edge instead: minimise 2*extent along the
+        // gravity axis + extent across it, tie-broken toward the bed's min corner. The stock
+        // colour / height / extruder terms are skipped - Nest only asks for fit and density.
+        if (params.fos_concave_nfp && !params.is_seq_print) {
+            const auto   binbb  = sl::boundingBox(m_bin);
+            const double w      = norm(fullbb.width());
+            const double h      = norm(fullbb.height());
+            const double corner = norm(getX(ibb.minCorner()) - getX(binbb.minCorner())) +
+                                  norm(getY(ibb.minCorner()) - getY(binbb.minCorner()));
+            const double fos_score = (params.fos_gravity_axis == 0 ? 2. * w + h : w + 2. * h) + 0.05 * corner;
+            return std::make_tuple(fos_score, fullbb);
+        }
 
         // The bounding box of the big items (they will accumulate in the center
         // of the pile
@@ -994,13 +1074,21 @@ void _arrange(
     // polygon nesting, a convex hull needs to be calculated.
     if (params.allow_rotations) {
         for (auto &itm : shapes) {
-            itm.rotation(min_area_boundingbox_rotation(itm.transformedShape()));
+            // FOS 8.6.6: rotating calipers need a convex input; Nest shapes may be concave
+            if (params.fos_concave_nfp)
+                itm.rotation(min_area_boundingbox_rotation(shapelike::convexHull(itm.transformedShape())));
+            else
+                itm.rotation(min_area_boundingbox_rotation(itm.transformedShape()));
 
             // If the item is too big, try to find a rotation that makes it fit
             if constexpr (std::is_same_v<BinT, Box>) {
                 auto bb = itm.boundingBox();
-                if (bb.width() >= bin.width() || bb.height() >= bin.height())
-                    itm.rotate(fit_into_box_rotation(itm.transformedShape(), bin));
+                if (bb.width() >= bin.width() || bb.height() >= bin.height()) {
+                    if (params.fos_concave_nfp)
+                        itm.rotate(fit_into_box_rotation(shapelike::convexHull(itm.transformedShape()), bin));
+                    else
+                        itm.rotate(fit_into_box_rotation(itm.transformedShape(), bin));
+                }
             }
         }
     }
@@ -1132,6 +1220,12 @@ void arrange(ArrangePolygons &      arrangables,
         process_arrangeable(fixed, fixeditems);
 
     for (Item &itm : fixeditems) itm.inflate(scaled(-2. * EPSILON));
+
+    // FOS 8.6.6: scope the concave NFP to this call, reset even if _arrange throws
+    struct FosNfpScope {
+        explicit FosNfpScope(bool on) { libnest2d::nfp::fos_concave_nfp_flag().store(on); }
+        ~FosNfpScope() { libnest2d::nfp::fos_concave_nfp_flag().store(false); }
+    } fos_nfp_scope(params.fos_concave_nfp);
 
     _arrange(items, fixeditems, to_nestbin(bed), params, params.progressind, params.stopcondition);
 

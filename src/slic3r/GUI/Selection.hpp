@@ -147,6 +147,10 @@ private:
     bool m_valid;
     EMode m_mode;
     EType m_type;
+    // FOS 8.6.6: (object, instance) in the order the user picked them. Maintained by
+    // update_type(); survives a transient empty selection (remove_all + re-add) so a
+    // rebuild of the same selection keeps its order. Align / Distribute read it.
+    std::vector<std::pair<int, int>> m_fos_pick_order;
     // set of indices to m_volumes
     IndicesList m_list;
     Cache m_cache;
@@ -236,6 +240,14 @@ public:
     void center();
     void drop();
     void center_plate(const int plate_idx);
+
+    // FOS 8.6.6: align / distribute the selected instances on the bed (XY only).
+    // Each instance is treated as one rigid box: the XY extent of its model parts.
+    enum class FosAlign { Left, Right, Top, Bottom };
+    enum class FosDistribute { Left, HCenter, Right, HSpacing, Top, VCenter, Bottom, VSpacing };
+    int  fos_selected_instance_count() const;
+    void fos_align(FosAlign mode);
+    void fos_distribute(FosDistribute mode);
     void set_printable(bool printable);
 
     void add_all();

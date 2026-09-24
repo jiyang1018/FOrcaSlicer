@@ -925,6 +925,9 @@ public:
     //BBS: Function to get m_brimMap;
     std::map<ObjectID, ExtrusionEntityCollection>&
         get_brimMap() { return m_brimMap; }
+    // FOS 8.6.6: Nest reads the support brim too (ArrangeJob.cpp, fos_sliced_brim)
+    std::map<ObjectID, ExtrusionEntityCollection>&
+        get_supportBrimMap() { return m_supportBrimMap; }
 
     // How many of PrintObject::copies() over all print objects are there?
     // If zero, then the print is empty and the print shall not be executed.
