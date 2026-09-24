@@ -1,33 +1,33 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.5",
+    "version": "8.6.6",
     "release_type": "stable",
     "platform_type": "mac",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.5\n\nA bug-fix release; no new features.\n\nFixed: Color Painting showed an object as filament 1 when its filament differed from the global outer wall. The filament picker in the object list set only the outer wall, leaving inner walls and infill on the previous filament, and a pick did not apply until you clicked away. The Multimaterial tab kept showing the previous filament until the object was reselected.\n\nFixed: slicing could crash when an object had a Color Patch. A Color Patch using the object's own outer-wall filament removed the object's inner walls and turned its sparse infill solid; such a patch is now simply invisible, as it should be.\n\nFixed: slicing asked for a prime tower wall nozzle on prints that need no tower - on machines whose nozzles are all one diameter with Desynced on, and on plates using a single filament. A filament that nothing printed with could also appear in the plate's filament list, showing as an extra color in the tower preview. Machines with genuinely different nozzle diameters still ask you to choose.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.6\n\nFOrcaSlicer now runs on Linux: this release adds a Linux AppImage alongside the Windows and macOS packages.\n\nNew: right-click two or more objects in Prepare for Align to First (top, left, bottom, right) and Distribute First to Last (edges, centers or equal spacing). The first object you select is the reference; for Distribute, the first and last stay in place.\n\nNew: Nest > Close (2mm gap) or Loose (3.5mm gap) packs the selected objects onto the plate by their real outline, so pockets in C or U shapes are used, turning them in 90-degree steps. It counts support and brim - exactly after a slice, estimated otherwise - and keeps objects clear of the plate edge.\n\nNew: when the support interface is a different material from the outer wall, top and bottom Z distance are set to 0 automatically and you are told what changed.",
       "default": {
-        "file_size": 205830910,
-        "file_md5": "8e858d6ed5b0155c6bb723651f9f4196",
-        "file_sha256": "bd7afdc9c43499dbfbf1ad4ecc2815c977859a67f38ccc8dc47b3e68e2e5904e",
+        "file_size": 207162515,
+        "file_md5": "8e091fa30d6e5e367a1768c4c6c34be0",
+        "file_sha256": "cfc4fb95d8d47719228283a341a7d058ce35affc2eb8d3271e38466e64b8bff1",
         "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
       },
       "arm": {
-        "file_size": 205830910,
-        "file_md5": "8e858d6ed5b0155c6bb723651f9f4196",
-        "file_sha256": "bd7afdc9c43499dbfbf1ad4ecc2815c977859a67f38ccc8dc47b3e68e2e5904e",
+        "file_size": 207162515,
+        "file_md5": "8e091fa30d6e5e367a1768c4c6c34be0",
+        "file_sha256": "cfc4fb95d8d47719228283a341a7d058ce35affc2eb8d3271e38466e64b8bff1",
         "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
       },
       "intel": {
-        "file_size": 205830910,
-        "file_md5": "8e858d6ed5b0155c6bb723651f9f4196",
-        "file_sha256": "bd7afdc9c43499dbfbf1ad4ecc2815c977859a67f38ccc8dc47b3e68e2e5904e",
+        "file_size": 207162515,
+        "file_md5": "8e091fa30d6e5e367a1768c4c6c34be0",
+        "file_sha256": "cfc4fb95d8d47719228283a341a7d058ce35affc2eb8d3271e38466e64b8bff1",
         "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""

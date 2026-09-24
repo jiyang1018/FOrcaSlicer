@@ -1,34 +1,34 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.5",
+    "version": "8.6.6",
     "release_type": "stable",
     "platform_type": "mac",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.5\n\n本版本为问题修复版本，不新增功能。\n\n修复：当物体使用的耗材与全局外墙耗材不同时，涂色工具中会显示为 1 号耗材。物体列表中的耗材下拉框只设置了外墙，内壁和填充仍停留在原耗材上；并且选择后需要点击别处才会生效。多材料页签在重新选中物体之前，一直显示修改前的耗材。\n\n修复：物体带有表面着色时切片可能崩溃。使用物体自身外墙耗材的表面着色会导致内壁消失、稀疏填充变为实心；现在这种着色不会产生任何效果，本该如此。\n\n修复：无需擦拭塔的打印仍被要求指定擦塔外墙挤出口 —— 包括所有挤出口直径相同且开启“独立”的机器，以及只使用一种耗材的盘面。实际未参与打印的耗材也可能出现在盘面耗材列表中，表现为擦拭塔预览中多出一种颜色。挤出口直径确实不同的机器仍会要求您选择。",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.6\n\nFOrcaSlicer 现已支持 Linux：本版本在 Windows 与 macOS 安装包之外新增 Linux AppImage。\n\n新增：在准备页选中两个或更多对象后右键，可使用“对齐到首个”（上、左、下、右）和“首尾之间均匀分布”（按边、中心或等间距）。最先选中的对象作为基准；均匀分布时最先和最后选中的对象保持不动。\n\n新增：“排样” > “紧密（2mm 间隙）”或“宽松（3.5mm 间隙）”，按对象的真实轮廓把选中对象排入盘面，C 形或 U 形的凹口也会被利用，并以 90 度为单位旋转。排样会计入支撑和加固边沿——切片后为精确值，否则为估算值——并与盘面边缘保持距离。\n\n新增：当支撑面与外墙使用不同材料时，会自动把顶部和底部 Z 距离设为 0，并提示所做的修改。",
       "default": {
-        "file_size": 205830910,
-        "file_md5": "8e858d6ed5b0155c6bb723651f9f4196",
-        "file_sha256": "bd7afdc9c43499dbfbf1ad4ecc2815c977859a67f38ccc8dc47b3e68e2e5904e",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.5/FOrcaSlicer-2.3.2-fos.8.6.5-macos-universal.dmg",
+        "file_size": 207162515,
+        "file_md5": "8e091fa30d6e5e367a1768c4c6c34be0",
+        "file_sha256": "cfc4fb95d8d47719228283a341a7d058ce35affc2eb8d3271e38466e64b8bff1",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.6/FOrcaSlicer-2.3.2-fos.8.6.6-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "arm": {
-        "file_size": 205830910,
-        "file_md5": "8e858d6ed5b0155c6bb723651f9f4196",
-        "file_sha256": "bd7afdc9c43499dbfbf1ad4ecc2815c977859a67f38ccc8dc47b3e68e2e5904e",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.5/FOrcaSlicer-2.3.2-fos.8.6.5-macos-universal.dmg",
+        "file_size": 207162515,
+        "file_md5": "8e091fa30d6e5e367a1768c4c6c34be0",
+        "file_sha256": "cfc4fb95d8d47719228283a341a7d058ce35affc2eb8d3271e38466e64b8bff1",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.6/FOrcaSlicer-2.3.2-fos.8.6.6-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "intel": {
-        "file_size": 205830910,
-        "file_md5": "8e858d6ed5b0155c6bb723651f9f4196",
-        "file_sha256": "bd7afdc9c43499dbfbf1ad4ecc2815c977859a67f38ccc8dc47b3e68e2e5904e",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.5/FOrcaSlicer-2.3.2-fos.8.6.5-macos-universal.dmg",
+        "file_size": 207162515,
+        "file_md5": "8e091fa30d6e5e367a1768c4c6c34be0",
+        "file_sha256": "cfc4fb95d8d47719228283a341a7d058ce35affc2eb8d3271e38466e64b8bff1",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.6/FOrcaSlicer-2.3.2-fos.8.6.6-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       }

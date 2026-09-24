@@ -1,18 +1,18 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.5",
+    "version": "8.6.6",
     "release_type": "stable",
     "platform_type": "win",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.5\n\nA bug-fix release; no new features.\n\nFixed: Color Painting showed an object as filament 1 when its filament differed from the global outer wall. The filament picker in the object list set only the outer wall, leaving inner walls and infill on the previous filament, and a pick did not apply until you clicked away. The Multimaterial tab kept showing the previous filament until the object was reselected.\n\nFixed: slicing could crash when an object had a Color Patch. A Color Patch using the object's own outer-wall filament removed the object's inner walls and turned its sparse infill solid; such a patch is now simply invisible, as it should be.\n\nFixed: slicing asked for a prime tower wall nozzle on prints that need no tower - on machines whose nozzles are all one diameter with Desynced on, and on plates using a single filament. A filament that nothing printed with could also appear in the plate's filament list, showing as an extra color in the tower preview. Machines with genuinely different nozzle diameters still ask you to choose.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.6\n\nFOrcaSlicer now runs on Linux: this release adds a Linux AppImage alongside the Windows and macOS packages.\n\nNew: right-click two or more objects in Prepare for Align to First (top, left, bottom, right) and Distribute First to Last (edges, centers or equal spacing). The first object you select is the reference; for Distribute, the first and last stay in place.\n\nNew: Nest > Close (2mm gap) or Loose (3.5mm gap) packs the selected objects onto the plate by their real outline, so pockets in C or U shapes are used, turning them in 90-degree steps. It counts support and brim - exactly after a slice, estimated otherwise - and keeps objects clear of the plate edge.\n\nNew: when the support interface is a different material from the outer wall, top and bottom Z distance are set to 0 automatically and you are told what changed.",
       "default": {
-        "file_size": 105302114,
-        "file_md5": "aaff79e9e7c85c7a0748a5f8dbcfb4d5",
-        "file_sha256": "1f70e50f30ebb1a30413dc2f0bda6d8cfb561c59797a7f7582e330bc4a197ea6",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.5/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.5.exe",
+        "file_size": 105335708,
+        "file_md5": "6f34cd7796ba0672a6174c34b0b2e90e",
+        "file_sha256": "1aee04e4096e74443f0e45ec9a02b21aac6a81a06963eaa0b42ad99b523a6733",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.6/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.6.exe",
         "reserved_1": "",
         "reserved_2": ""
       }
