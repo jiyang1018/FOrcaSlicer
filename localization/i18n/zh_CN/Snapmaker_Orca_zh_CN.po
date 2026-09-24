@@ -15878,3 +15878,110 @@ msgstr "为“支撑/筏层界面”选择的挤出口直径不同（%1% mm 和 
 #, boost-format
 msgid "The nozzles selected for Wipe tower wall have different diameters (%1% mm and %2% mm). The tower structure is printed at one width for the whole print, so every nozzle in the set must have the same diameter."
 msgstr "为“擦塔外墙”选择的挤出口直径不同（%1% mm 和 %2% mm）。擦拭塔结构在整个打印过程中以单一宽度打印，因此该组中的每个挤出口必须具有相同的直径。"
+
+msgid "Align to First"
+msgstr "对齐到首个"
+
+msgid "Align the selected objects to the first one selected"
+msgstr "将选中的对象对齐到最先选中的对象"
+
+msgid "Align back edges to the first selected object"
+msgstr "将后边缘对齐到最先选中的对象"
+
+msgid "Align left edges to the first selected object"
+msgstr "将左边缘对齐到最先选中的对象"
+
+msgid "Align front edges to the first selected object"
+msgstr "将前边缘对齐到最先选中的对象"
+
+msgid "Align right edges to the first selected object"
+msgstr "将右边缘对齐到最先选中的对象"
+
+msgid "Distribute First to Last"
+msgstr "首尾之间均匀分布"
+
+msgid "Distribute the selected objects evenly between the first and the last one selected"
+msgstr "在最先与最后选中的对象之间均匀分布选中的对象"
+
+msgid "Distribute left"
+msgstr "左边缘均匀分布"
+
+msgid "Distribute horizontal center"
+msgstr "水平中心均匀分布"
+
+msgid "Distribute right"
+msgstr "右边缘均匀分布"
+
+msgid "Distribute horizontal spacing"
+msgstr "水平间距均匀分布"
+
+msgid "Distribute top"
+msgstr "上边缘均匀分布"
+
+msgid "Distribute vertical center"
+msgstr "垂直中心均匀分布"
+
+msgid "Distribute bottom"
+msgstr "下边缘均匀分布"
+
+msgid "Distribute vertical spacing"
+msgstr "垂直间距均匀分布"
+
+msgid "Space the left edges of the selected objects evenly"
+msgstr "使选中对象的左边缘等距排列"
+
+msgid "Space the horizontal centers of the selected objects evenly"
+msgstr "使选中对象的水平中心等距排列"
+
+msgid "Space the right edges of the selected objects evenly"
+msgstr "使选中对象的右边缘等距排列"
+
+msgid "Make the horizontal gaps between the selected objects equal"
+msgstr "使选中对象之间的水平间隙相等"
+
+msgid "Space the back edges of the selected objects evenly"
+msgstr "使选中对象的后边缘等距排列"
+
+msgid "Space the vertical centers of the selected objects evenly"
+msgstr "使选中对象的垂直中心等距排列"
+
+msgid "Space the front edges of the selected objects evenly"
+msgstr "使选中对象的前边缘等距排列"
+
+msgid "Make the vertical gaps between the selected objects equal"
+msgstr "使选中对象之间的垂直间隙相等"
+
+msgid "Nest"
+msgstr "排样"
+
+msgid "Close (2mm gap)"
+msgstr "紧密（2mm 间隙）"
+
+msgid "Loose (3.5mm gap)"
+msgstr "宽松（3.5mm 间隙）"
+
+msgid "Pack the selected objects onto the plate"
+msgstr "将选中的对象紧凑排入盘面"
+
+msgid "Pack the selected objects onto the plate with a 2 mm gap, moving them in X/Y and rotating them around Z"
+msgstr "以 2 mm 间隙将选中的对象紧凑排入盘面，可沿 X/Y 移动并绕 Z 轴旋转"
+
+msgid "Pack the selected objects onto the plate with a 3.5 mm gap, moving them in X/Y and rotating them around Z"
+msgstr "以 3.5 mm 间隙将选中的对象紧凑排入盘面，可沿 X/Y 移动并绕 Z 轴旋转"
+
+#, boost-format
+msgid "Nest estimated the support or brim of %1% object(s) because the plate has not been sliced since they changed. Slice the plate, then Nest again for an exact fit."
+msgstr "盘面自对象更改后尚未切片，排样估算了 %1% 个对象的支撑或加固边沿。请先切片，再重新排样以获得精确结果。"
+
+msgid "Align Objects"
+msgstr "对齐对象"
+
+msgid "Distribute Objects"
+msgstr "分布对象"
+
+msgid "Support Z distance changed"
+msgstr "支撑 Z 距离已更改"
+
+#, c-format
+msgid "The support interface filament (%d, %s) is a different material from the outer wall filament (%d, %s).\n\nSupport > Advanced > Top Z distance and Bottom Z distance have been set to 0 (were %.2f mm and %.2f mm) so the interface prints in contact with the model and separates by material."
+msgstr "支撑面耗材（%d，%s）与外墙耗材（%d，%s）的材料不同。\n\n“支撑 > 高级”中的顶部Z距离和底部Z距离已设为 0（原为 %.2f mm 和 %.2f mm），使支撑面直接接触模型，并依靠材料差异分离。"
