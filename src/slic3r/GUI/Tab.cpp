@@ -1742,6 +1742,20 @@ static wxString pad_combo_value_for_config(const DynamicPrintConfig &config)
     return config.opt_bool("pad_enable") ? (config.opt_bool("pad_around_object") ? _("Around object") : _("Below object")) : _("None");
 }
 
+// FOS 8.6.6: material type ("PLA", "PETG", ...) of a 0-based filament slot, "" if unknown.
+// Read from full_config() so an edited-but-unsaved filament preset is honoured.
+static std::string fos_filament_type_of(int filament_idx)
+{
+    PresetBundle *bundle = wxGetApp().preset_bundle;
+    if (bundle == nullptr || filament_idx < 0)
+        return {};
+    const DynamicPrintConfig  full = bundle->full_config();
+    const ConfigOptionStrings *opt = full.option<ConfigOptionStrings>("filament_type");
+    if (opt == nullptr || filament_idx >= int(opt->values.size()))
+        return {};
+    return opt->values[filament_idx];
+}
+
 void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
 {
     if (wxGetApp().plater() == nullptr) {
@@ -1968,6 +1982,43 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
                 m_config_manipulation.apply(m_config, &new_conf);
             }
             wxGetApp().plater()->update();
+        }
+    }
+
+    // FOS 8.6.6: a support interface in a different MATERIAL from the outer wall is a release
+    // layer (e.g. PETG interface under PLA). It only releases cleanly when it touches the part,
+    // so both Z gaps go to 0 and the user is told. Compared by filament_type, not slot number:
+    // two slots of the same material still need the normal gap. support_interface_filament 0 is
+    // "Default" (no tool change), so it never triggers. wall_filament is resolved from this tab's
+    // config, which for TabPrintModel is already object -> global.
+    if ((opt_key == "support_interface_filament" || opt_key == "wall_filament" || opt_key == "enable_support" ||
+         opt_key == "raft_layers") &&
+        !m_config_manipulation.is_applying() && m_config->has("support_interface_filament") && m_config->has("wall_filament")) {
+        const int  iface_id   = m_config->opt_int("support_interface_filament"); // 1-based, 0 = Default
+        const int  wall_id    = m_config->opt_int("wall_filament");              // 1-based
+        const bool support_on = m_config->opt_bool("enable_support") ||
+                                (m_config->has("raft_layers") && m_config->opt_int("raft_layers") > 0);
+        if (support_on && iface_id > 0 && wall_id > 0) {
+            const std::string iface_type = fos_filament_type_of(iface_id - 1);
+            const std::string wall_type  = fos_filament_type_of(wall_id - 1);
+            const double      top_gap    = m_config->opt_float("support_top_z_distance");
+            const double      bottom_gap = m_config->opt_float("support_bottom_z_distance");
+            if (!iface_type.empty() && !wall_type.empty() && !boost::iequals(iface_type, wall_type) &&
+                (top_gap != 0. || bottom_gap != 0.)) {
+                DynamicPrintConfig new_conf = *m_config;
+                new_conf.set_key_value("support_top_z_distance", new ConfigOptionFloat(0));
+                new_conf.set_key_value("support_bottom_z_distance", new ConfigOptionFloat(0));
+                m_config_manipulation.apply(m_config, &new_conf);
+
+                wxString msg_text = wxString::Format(
+                    _L("The support interface filament (%d, %s) is a different material from the outer wall filament (%d, %s).\n\n"
+                       "Support > Advanced > Top Z distance and Bottom Z distance have been set to 0 (were %.2f mm and %.2f mm) "
+                       "so the interface prints in contact with the model and separates by material."),
+                    iface_id, from_u8(iface_type), wall_id, from_u8(wall_type), top_gap, bottom_gap);
+                MessageDialog dialog(wxGetApp().plater(), msg_text, _L("Support Z distance changed"), wxICON_INFORMATION | wxOK);
+                dialog.ShowModal();
+                wxGetApp().plater()->update();
+            }
         }
     }
 
