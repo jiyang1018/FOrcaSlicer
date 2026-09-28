@@ -1414,6 +1414,24 @@ std::vector<int> PartPlate::get_extruders(bool conside_custom_gcode) const
 		else if (glb_wall_extr != 1)
 			plate_extruders.push_back(glb_wall_extr);
 
+		// FOS: inner_wall_filament is a FOS feature key - stock Orca has one wall filament - so
+		// FOS: this stock list never counted it. A plate whose second filament exists ONLY on the
+		// FOS: inner wall reported ONE extruder: estimate_wipe_tower_size() then forced depth 0, the
+		// FOS: Prepare tower drew as an invisible zero-depth box, and the on-plate clamp in
+		// FOS: GLCanvas3D::reload_scene clamped with that zero depth - so the real tower sliced off
+		// FOS: the bed. Resolution mirrors wall_filament above: the object's key, else the global
+		// FOS: value. Only ids > 1 are pushed: 1 is already present, and 0 means inherit.
+		int obj_inner_wall_extr = 0;
+		const ConfigOption* inner_wall_opt = mo->config.option("inner_wall_filament");
+		if (inner_wall_opt != nullptr)
+			obj_inner_wall_extr = inner_wall_opt->getInt();
+		const ConfigOption* glb_inner_wall_opt = glb_config.option("inner_wall_filament");
+		const int glb_inner_wall_extr = (glb_inner_wall_opt != nullptr) ? glb_inner_wall_opt->getInt() : glb_wall_extr;
+		if (obj_inner_wall_extr > 1)
+			plate_extruders.push_back(obj_inner_wall_extr);
+		else if (glb_inner_wall_extr > 1)
+			plate_extruders.push_back(glb_inner_wall_extr);
+
 		int obj_sparse_infill_extr = 1;
 		const ConfigOption* sparse_infill_opt = mo->config.option("sparse_infill_filament");
 		if (sparse_infill_opt != nullptr)
@@ -1535,6 +1553,24 @@ std::vector<int> PartPlate::get_extruders_under_cli(bool conside_custom_gcode, D
 				plate_extruders.push_back(obj_wall_extr);
 			else if (glb_wall_extr != 1)
 				plate_extruders.push_back(glb_wall_extr);
+
+			// FOS: inner_wall_filament is a FOS feature key - stock Orca has one wall filament - so
+			// FOS: this stock list never counted it. A plate whose second filament exists ONLY on the
+			// FOS: inner wall reported ONE extruder: estimate_wipe_tower_size() then forced depth 0, the
+			// FOS: Prepare tower drew as an invisible zero-depth box, and the on-plate clamp in
+			// FOS: GLCanvas3D::reload_scene clamped with that zero depth - so the real tower sliced off
+			// FOS: the bed. Resolution mirrors wall_filament above: the object's key, else the global
+			// FOS: value. Only ids > 1 are pushed: 1 is already present, and 0 means inherit.
+			int obj_inner_wall_extr = 0;
+			const ConfigOption* inner_wall_opt = object->config.option("inner_wall_filament");
+			if (inner_wall_opt != nullptr)
+				obj_inner_wall_extr = inner_wall_opt->getInt();
+			const ConfigOption* glb_inner_wall_opt = full_config.option("inner_wall_filament");
+			const int glb_inner_wall_extr = (glb_inner_wall_opt != nullptr) ? glb_inner_wall_opt->getInt() : glb_wall_extr;
+			if (obj_inner_wall_extr > 1)
+				plate_extruders.push_back(obj_inner_wall_extr);
+			else if (glb_inner_wall_extr > 1)
+				plate_extruders.push_back(glb_inner_wall_extr);
 
 			int obj_sparse_infill_extr = 1;
 			const ConfigOption* sparse_infill_opt = object->config.option("sparse_infill_filament");
