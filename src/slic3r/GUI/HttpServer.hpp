@@ -103,6 +103,17 @@ public:
         void write_response(std::stringstream& ssOut) override;
     };
 
+    // FOS: small text/plain 200 response for the /fos/ endpoints.
+    class ResponseFosText : public Response
+    {
+        const std::string body;
+
+    public:
+        ResponseFosText(const std::string& b) : body(b) {}
+        ~ResponseFosText() override = default;
+        void write_response(std::stringstream& ssOut) override;
+    };
+
     class ResponseFile : public Response
     {
         std::string file_path;
@@ -168,6 +179,13 @@ public:
     static std::shared_ptr<Response> bbl_auth_handle_request(const std::string& url);
 
     static std::shared_ptr<Response> web_server_handle_request(const std::string& url);
+
+    // FOS: Home "Hide online models" checkbox. Seeded from AppConfig on the main thread before the
+    // FOS: page server starts; written by the page through GET /fos/hide_online_models?v=0|1.
+    static void        fos_set_hide_online_models(bool hide);
+    static bool        fos_hide_online_models();
+    static std::string fos_patch_flutter_main_js(const std::string& js);
+    static std::string fos_patch_flutter_zh_cn(const std::string& json);
 
 private:
     class IOServer

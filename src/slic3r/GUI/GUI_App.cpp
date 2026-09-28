@@ -1111,6 +1111,9 @@ GUI_App::GUI_App()
 
     reset_to_active();
 
+    // FOS: seed the Home "Hide online models" flag before the page server can serve main.dart.js.
+    HttpServer::fos_set_hide_online_models(app_config != nullptr && app_config->get_bool("fos_hide_online_models"));
+
     // test
     m_page_http_server.setPort(PAGE_HTTP_PORT);
     m_page_http_server.set_request_handler(HttpServer::web_server_handle_request);

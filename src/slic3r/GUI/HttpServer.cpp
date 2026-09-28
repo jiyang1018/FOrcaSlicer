@@ -2,6 +2,8 @@
 #include <boost/log/trivial.hpp>
 #include <condition_variable>
 #include "GUI_App.hpp"
+#include "libslic3r/AppConfig.hpp"
+#include <atomic>
 #include "slic3r/Utils/Http.hpp"
 #include "slic3r/Utils/NetworkAgent.hpp"
 #include  "sentry_wrapper/SentryWrapper.hpp"
@@ -709,6 +711,21 @@ std::shared_ptr<HttpServer::Response> HttpServer::web_server_handle_request(cons
 {
     BOOST_LOG_TRIVIAL(info) << "Handling file request for URL: " << url;
 
+    // FOS: settings endpoint of the Home "Hide online models" checkbox (see fos_patch_flutter_main_js).
+    // FOS: Runs on the server thread: the flag is atomic, AppConfig is written on the main thread.
+    if (url.rfind("/fos/hide_online_models", 0) == 0) {
+        const bool hide = url.find("v=1") != std::string::npos;
+        fos_set_hide_online_models(hide);
+        wxGetApp().CallAfter([hide]() {
+            AppConfig* cfg = wxGetApp().app_config;
+            if (cfg != nullptr) {
+                cfg->set_bool("fos_hide_online_models", hide);
+                cfg->save();
+            }
+        });
+        return std::make_shared<ResponseFosText>(hide ? "1" : "0");
+    }
+
     std::string file_path = map_url_to_file_path(url);
 
     if (file_path.empty())
@@ -817,6 +834,22 @@ void HttpServer::ResponseFile::write_response(std::stringstream& ssOut)
     std::ostringstream fileStream;
     fileStream << file.rdbuf();
     std::string fileContent    = fileStream.str();
+
+    // FOS: Home page hooks are applied to the served bytes, so the flutter_web tree on disk stays
+    // FOS: stock and a web resource update from the server replaces it cleanly.
+    bool fos_no_store = false;
+    // FOS: newer Flutter builds name the bundle main.<hash>.js, so match main*.js under flutter_web.
+    const size_t fos_slash = file_path.find_last_of("/\\");
+    const std::string fos_base = (fos_slash == std::string::npos) ? file_path : file_path.substr(fos_slash + 1);
+    const bool fos_is_main_js = file_path.find("flutter_web") != std::string::npos && fos_base.rfind("main.", 0) == 0 &&
+                                ends_with(fos_base, ".js");
+    if (fos_is_main_js) {
+        fileContent  = HttpServer::fos_patch_flutter_main_js(fileContent);
+        fos_no_store = true; // FOS: the flag is baked into this response
+    } else if (ends_with(file_path, "i10n/zh-CN.json") || ends_with(file_path, "i10n\\zh-CN.json")) {
+        fileContent = HttpServer::fos_patch_flutter_zh_cn(fileContent);
+    }
+
     size_t      content_length = fileContent.size(); // 字节长度，非字符数
 
     // 确定Content-Type（保持原有逻辑）
@@ -853,8 +886,140 @@ void HttpServer::ResponseFile::write_response(std::stringstream& ssOut)
     ssOut << "Access-Control-Allow-Origin: *\r\n";           // CORS头
     ssOut << "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n";
     ssOut << "Access-Control-Allow-Headers: Content-Type, Authorization\r\n";
+    if (fos_no_store)
+        ssOut << "Cache-Control: no-store\r\n";
     ssOut << "\r\n";      // 头和主体之间的空行（必须）
     ssOut << fileContent; // 响应体（长度必须与Content-Length一致）
+}
+
+void HttpServer::ResponseFosText::write_response(std::stringstream& ssOut)
+{
+    ssOut << "HTTP/1.1 200 OK\r\n";
+    ssOut << "Content-Type: text/plain\r\n";
+    ssOut << "Content-Length: " << body.size() << "\r\n";
+    ssOut << "Cache-Control: no-store\r\n";
+    ssOut << "Access-Control-Allow-Origin: *\r\n";
+    ssOut << "\r\n";
+    ssOut << body;
+}
+
+// FOS: Home "Recommended for You" -> "Hide online models" checkbox.
+// FOS: The Flutter home page is a prebuilt dart2js bundle that Snapmaker can replace through the
+// FOS: web resource updater, so the hook is applied to the SERVED bytes of main.dart.js instead of
+// FOS: the file on disk. Every anchor must match exactly once or the bundle is served unmodified
+// FOS: (a different Flutter build simply loses the checkbox; it cannot be half-patched).
+// FOS: While the flag is on, the model list loader (mP.xe) returns before any request, so no model
+// FOS: list or thumbnail is fetched at launch, and the grid shows a short notice instead.
+static std::atomic<bool> s_fos_hide_online_models{false};
+
+void HttpServer::fos_set_hide_online_models(bool hide) { s_fos_hide_online_models.store(hide); }
+
+bool HttpServer::fos_hide_online_models() { return s_fos_hide_online_models.load(); }
+
+std::string HttpServer::fos_patch_flutter_main_js(const std::string& js)
+{
+    static const char* const k_pairs[][2] = {
+    { "case 0:if(m.d){s=1" "\n"
+          "break}m.d=!0" "\n"
+          "m.f=null" "\n"
+          "m.a6()" "\n"
+          "p=4" "\n"
+          "if(a){B.b.U(m.c)",
+      "case 0:if(m.d||self.fosHideOnline){s=1" "\n"
+          "break}m.d=!0" "\n"
+          "m.f=null" "\n"
+          "m.a6()" "\n"
+          "p=4" "\n"
+          "if(a){B.b.U(m.c)" },
+    { "case 7:l=c" "\n"
+          "if(l.a!==200&&l.a!==0){",
+      "case 7:l=c" "\n"
+          "if(self.fosHideOnline){n=[1]" "\n"
+          "s=5" "\n"
+          "break}if(l.a!==200&&l.a!==0){" },
+    { "A.aQp.prototype={" "\n"
+          "$3(a,b,c){var s=this.a" "\n"
+          "switch(s.aG6(b).a){",
+      "A.aQp.prototype={" "\n"
+          "$3(a,b,c){var s=this.a" "\n"
+          "if(self.fosHideOnline){var fq=null,fn=A.q(a).p2.r" "\n"
+          "if(fn!=null){var fs=A.q(a).ax,fr=fs.rx" "\n"
+          "fn=fn.f1(fr==null?fs.k3:fr,14,B.b8)}return A.cv(new A.aS(B.yy,A.N(A.E(\"Online models are hidden. Uncheck the box above to show them.\",fq),fq,fq,fq,fq,fn,B.b5,fq),fq),fq,fq)}" "\n"
+          "switch(s.aG6(b).a){" },
+    { "new A.bi2(b),q,q,q,q)],n)" "\n"
+          "if($.dN.ck().a===B.pw){",
+      "new A.bi2(b),q,q,q,q),B.bR,A.eZ(!1,A.b2(12),!0,new A.aS(B.k3,A.N((self.fosHideOnline?\"\\u2611 \":\"\\u2610 \")+A.E(\"Hide online models\",q),q,q,q,q,(function(){var fs=A.q(a).p2.Q" "\n"
+          "return fs==null?q:fs.o5(A.q(a).ax.k3,13)})(),q,q),q),q,!0,q,q,q,q,q,q,q,q,q,(function(x){x.fos=1" "\n"
+          "return x})(new A.bi2(b)),q,q,q,q)],n)" "\n"
+          "if($.dN.ck().a===B.pw){" },
+    { "A.bi2.prototype={" "\n"
+          "$0(){return this.a.Hh(0)},",
+      "A.bi2.prototype={" "\n"
+          "$0(){var m=this.a" "\n"
+          "if(this.fos){var v=!self.fosHideOnline" "\n"
+          "self.fosSetHideOnline(v)" "\n"
+          "if(v){B.b.U(m.c)" "\n"
+          "m.f=null" "\n"
+          "m.e=!1" "\n"
+          "m.a6()" "\n"
+          "return null}}return m.Hh(0)}," },
+    };
+    const bool crlf = js.find("\r\n") != std::string::npos;
+    auto fix = [crlf](const char* text) {
+        std::string s(text);
+        if (!crlf)
+            return s;
+        std::string out;
+        out.reserve(s.size() + 16);
+        for (char ch : s) {
+            if (ch == '\n')
+                out += '\r';
+            out += ch;
+        }
+        return out;
+    };
+    auto count_of = [](const std::string& hay, const std::string& needle) {
+        size_t n = 0;
+        for (size_t p = hay.find(needle); p != std::string::npos; p = hay.find(needle, p + needle.size()))
+            ++n;
+        return n;
+    };
+    const size_t n_pairs = sizeof(k_pairs) / sizeof(k_pairs[0]);
+    for (size_t i = 0; i < n_pairs; ++i) {
+        if (count_of(js, fix(k_pairs[i][0])) != 1) {
+            BOOST_LOG_TRIVIAL(warning) << "FOS: main.dart.js anchor " << i << " not unique, Hide online models checkbox unavailable for this Flutter build";
+            return js;
+        }
+    }
+    std::string out = js;
+    for (size_t i = 0; i < n_pairs; ++i) {
+        const std::string a = fix(k_pairs[i][0]);
+        out.replace(out.find(a), a.size(), fix(k_pairs[i][1]));
+    }
+    std::string prefix = std::string("self.fosHideOnline=") + (fos_hide_online_models() ? "true" : "false") +
+                         ";self.fosSetHideOnline=function(v){self.fosHideOnline=v;"
+                         "try{fetch(\"/fos/hide_online_models?v=\"+(v?1:0),{cache:\"no-store\"})}catch(e){}};" +
+                         (crlf ? "\r\n" : "\n");
+    return prefix + out;
+}
+
+std::string HttpServer::fos_patch_flutter_zh_cn(const std::string& json)
+{
+    // FOS: zh_CN strings for the two texts the main.dart.js hook adds. JSON \u escapes keep this
+    // FOS: source ASCII. Skipped if a future Flutter build ships its own entry.
+    if (json.find("\"Hide online models\"") != std::string::npos)
+        return json;
+    const size_t open = json.find('{');
+    if (open == std::string::npos)
+        return json;
+    const size_t next = json.find_first_not_of(" \t\r\n", open + 1);
+    if (next == std::string::npos || json[next] == '}')
+        return json;
+    return json.substr(0, open + 1) +
+           "\"Hide online models\":\"\\u9690\\u85cf\\u5728\\u7ebf\\u6a21\\u578b\","
+           "\"Online models are hidden. Uncheck the box above to show them.\":"
+           "\"\\u5728\\u7ebf\\u6a21\\u578b\\u5df2\\u9690\\u85cf\\u3002\\u53d6\\u6d88\\u52fe\\u9009\\u5373\\u53ef\\u663e\\u793a\\u3002\"," +
+           json.substr(open + 1);
 }
 
 }} // namespace Slic3r::GUI
