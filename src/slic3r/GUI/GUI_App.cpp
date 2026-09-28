@@ -33,6 +33,8 @@
 #include <cstdlib>
 #include <regex>
 #include <thread>
+#include <fstream> // FOS: profile prefetch
+#include <vector>  // FOS: profile prefetch
 #include <string_view>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string.hpp>
@@ -1088,6 +1090,43 @@ wxDEFINE_EVENT(EVT_SHOW_NO_NEW_VERSION, wxCommandEvent);
 wxDEFINE_EVENT(EVT_SHOW_DIALOG, wxCommandEvent);
 wxDEFINE_EVENT(EVT_CONNECT_LAN_MODE_PRINT, wxCommandEvent);
 IMPLEMENT_APP(GUI_App)
+
+// FOS: cold-start profile prefetch.
+// FOS: load_vendor_configs_from_json reads ~1500 small profile files one at a time. After the
+// FOS: drive has been idle and the files have left the OS cache, some NVMe drives stay in a
+// FOS: low-power state under that single-file load and every read costs 3-8 ms: measured 5.4 s
+// FOS: for the system folder at 1 thread, 29 ms at 16 threads (ADATA LEGEND 860, cache emptied,
+// FOS: drive idle), which made cold launches 8-15 s instead of ~1 s. This reads the same files
+// FOS: with 16 threads right before load_presets, so the loader finds them in the OS file cache.
+// FOS: Pure warm-up: nothing is parsed, results and errors are discarded. It runs synchronously
+// FOS: and after the startup updater on purpose: the updater remove_all()s vendor folders it
+// FOS: reinstalls, and an open read handle would make that delete fail on Windows.
+static void fos_prefetch_profiles()
+{
+    namespace bfs = boost::filesystem;
+    std::vector<bfs::path>    files;
+    boost::system::error_code ec;
+    for (const bfs::path& root : {bfs::path(data_dir()) / "system", bfs::path(data_dir()) / "user"}) {
+        if (!bfs::is_directory(root, ec))
+            continue;
+        for (bfs::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec))
+            if (bfs::is_regular_file(it->path(), ec))
+                files.push_back(it->path());
+        ec.clear();
+    }
+    std::atomic<size_t>      next{0};
+    std::vector<std::thread> workers;
+    for (int i = 0; i < 16; ++i)
+        workers.emplace_back([&files, &next]() {
+            std::vector<char> buf(64 * 1024);
+            for (size_t k = next++; k < files.size(); k = next++) {
+                std::ifstream f(files[k].native(), std::ios::binary);
+                while (f.read(buf.data(), buf.size())) {}
+            }
+        });
+    for (std::thread& w : workers)
+        w.join();
+}
 
 //BBS: remove GCodeViewer as seperate APP logic
 //GUI_App::GUI_App(EAppMode mode)
@@ -2686,6 +2725,8 @@ bool GUI_App::on_init_inner()
     } else {
         enable_user_preset_folder(false);
     }
+
+    fos_prefetch_profiles(); // FOS: warm the profile files for load_presets (see fos_prefetch_profiles)
 
     // BBS if load user preset failed
     //if (loaded_preset_result != 0) {
