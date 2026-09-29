@@ -1,34 +1,34 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.6",
+    "version": "8.6.7",
     "release_type": "stable",
     "platform_type": "mac",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.6\n\nFOrcaSlicer now runs on Linux: this release adds a Linux AppImage alongside the Windows and macOS packages.\n\nNew: right-click two or more objects in Prepare for Align to First (top, left, bottom, right) and Distribute First to Last (edges, centers or equal spacing). The first object you select is the reference; for Distribute, the first and last stay in place.\n\nNew: Nest > Close (2mm gap) or Loose (3.5mm gap) packs the selected objects onto the plate by their real outline, so pockets in C or U shapes are used, turning them in 90-degree steps. It counts support and brim - exactly after a slice, estimated otherwise - and keeps objects clear of the plate edge.\n\nNew: when the support interface is a different material from the outer wall, top and bottom Z distance are set to 0 automatically and you are told what changed.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.7\n\nFixed: when a plate's second filament was used only for the inner wall, the prime tower was not shown in Prepare, so it could not be moved, and it could be sliced partly off the plate.\n\nNew: a Hide online models checkbox next to the refresh button under Recommended for You on the Home page. While it is ticked, the recommended models and their thumbnails are not downloaded. My Devices, Recent Files and sign-in are not affected.\n\nFaster first launch: on some computers the first launch after the machine had been idle took 11 to 18 seconds before the window appeared. The printer profiles are now read in parallel, so a first launch is as fast as a repeat launch.",
       "default": {
-        "file_size": 207162515,
-        "file_md5": "8e091fa30d6e5e367a1768c4c6c34be0",
-        "file_sha256": "cfc4fb95d8d47719228283a341a7d058ce35affc2eb8d3271e38466e64b8bff1",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.6/FOrcaSlicer-2.3.2-fos.8.6.6-macos-universal.dmg",
+        "file_size": 207591183,
+        "file_md5": "aec009654f1c50bdd86008c95334909e",
+        "file_sha256": "3a10fb8538bea0886ca9f208b55ddeaa2a6cc3bd471e8657a764700f4c5fb65c",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.7/FOrcaSlicer-2.3.2-fos.8.6.7-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "arm": {
-        "file_size": 207162515,
-        "file_md5": "8e091fa30d6e5e367a1768c4c6c34be0",
-        "file_sha256": "cfc4fb95d8d47719228283a341a7d058ce35affc2eb8d3271e38466e64b8bff1",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.6/FOrcaSlicer-2.3.2-fos.8.6.6-macos-universal.dmg",
+        "file_size": 207591183,
+        "file_md5": "aec009654f1c50bdd86008c95334909e",
+        "file_sha256": "3a10fb8538bea0886ca9f208b55ddeaa2a6cc3bd471e8657a764700f4c5fb65c",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.7/FOrcaSlicer-2.3.2-fos.8.6.7-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       },
       "intel": {
-        "file_size": 207162515,
-        "file_md5": "8e091fa30d6e5e367a1768c4c6c34be0",
-        "file_sha256": "cfc4fb95d8d47719228283a341a7d058ce35affc2eb8d3271e38466e64b8bff1",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.6/FOrcaSlicer-2.3.2-fos.8.6.6-macos-universal.dmg",
+        "file_size": 207591183,
+        "file_md5": "aec009654f1c50bdd86008c95334909e",
+        "file_sha256": "3a10fb8538bea0886ca9f208b55ddeaa2a6cc3bd471e8657a764700f4c5fb65c",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.7/FOrcaSlicer-2.3.2-fos.8.6.7-macos-universal.dmg",
         "reserved_1": "",
         "reserved_2": ""
       }

@@ -1,17 +1,17 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.6",
+    "version": "8.6.7",
     "release_type": "stable",
     "platform_type": "win",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.6\n\nFOrcaSlicer now runs on Linux: this release adds a Linux AppImage alongside the Windows and macOS packages.\n\nNew: right-click two or more objects in Prepare for Align to First (top, left, bottom, right) and Distribute First to Last (edges, centers or equal spacing). The first object you select is the reference; for Distribute, the first and last stay in place.\n\nNew: Nest > Close (2mm gap) or Loose (3.5mm gap) packs the selected objects onto the plate by their real outline, so pockets in C or U shapes are used, turning them in 90-degree steps. It counts support and brim - exactly after a slice, estimated otherwise - and keeps objects clear of the plate edge.\n\nNew: when the support interface is a different material from the outer wall, top and bottom Z distance are set to 0 automatically and you are told what changed.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.7\n\nFixed: when a plate's second filament was used only for the inner wall, the prime tower was not shown in Prepare, so it could not be moved, and it could be sliced partly off the plate.\n\nNew: a Hide online models checkbox next to the refresh button under Recommended for You on the Home page. While it is ticked, the recommended models and their thumbnails are not downloaded. My Devices, Recent Files and sign-in are not affected.\n\nFaster first launch: on some computers the first launch after the machine had been idle took 11 to 18 seconds before the window appeared. The printer profiles are now read in parallel, so a first launch is as fast as a repeat launch.",
       "default": {
-        "file_size": 105335708,
-        "file_md5": "6f34cd7796ba0672a6174c34b0b2e90e",
-        "file_sha256": "1aee04e4096e74443f0e45ec9a02b21aac6a81a06963eaa0b42ad99b523a6733",
+        "file_size": 105344262,
+        "file_md5": "e1d91a526a849be91fb07e738a9735b2",
+        "file_sha256": "782350db48df0224985b7084969b59f8179306ea4e2fe28b50b923a15298c078",
         "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
