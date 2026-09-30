@@ -9,9 +9,9 @@
     "full": {
       "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.7\n\nLinux AppImage：改为链接 WebKitGTK 4.1，可以在 Ubuntu 24.04 及更新版本上启动；在没有 GStreamer X 视频插件的系统上也不会再启动后立即退出。需要系统提供 glibc 2.35 或更新版本、FUSE 2 和 WebKitGTK 4.1。\n\n修复：当盘面上的第二种耗材只用于内墙时，准备页不显示擦塔，因此无法移动它，切片后擦塔还可能部分超出盘面。\n\n新增：主页“官方推荐”刷新按钮右侧新增“隐藏在线模型”复选框。",
       "default": {
-        "file_size": 123136504,
-        "file_md5": "6076aac210a2647d1bc7d7b8b10773db",
-        "file_sha256": "5cdcb18ce816f32b58c3ba17d321aed1e783740ecd936eb4a036d5b4de471a47",
+        "file_size": 123128312,
+        "file_md5": "a20d045a031d3555bcb525b63dd19d5e",
+        "file_sha256": "48e807f4b716ea692e4c87c8fd5d5cb0ee2e30e11e8c4516c5db36d8fd7b209a",
         "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.7/FOrcaSlicer_Linux_V2.3.2-fos.8.6.7.AppImage",
         "reserved_1": "",
         "reserved_2": ""
