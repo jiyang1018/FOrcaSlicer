@@ -1,0 +1,21 @@
+{
+  "code": 200,
+  "data": {
+    "version": "8.6.7",
+    "release_type": "stable",
+    "platform_type": "linux",
+    "is_full_upgrade": true,
+    "is_force_upgrade": false,
+    "full": {
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.7\n\nLinux AppImage: now linked against WebKitGTK 4.1, so it starts on Ubuntu 24.04 and newer, and it no longer closes right after starting on systems without the GStreamer X video plugins. It needs glibc 2.35 or newer, FUSE 2 and WebKitGTK 4.1 from your system.\n\nFixed: when a plate's second filament was used only for the inner wall, the prime tower was not shown in Prepare, so it could not be moved, and it could be sliced partly off the plate.\n\nNew: a Hide online models checkbox next to the refresh button under Recommended for You on the Home page.",
+      "default": {
+        "file_size": 123136504,
+        "file_md5": "6076aac210a2647d1bc7d7b8b10773db",
+        "file_sha256": "5cdcb18ce816f32b58c3ba17d321aed1e783740ecd936eb4a036d5b4de471a47",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.7/FOrcaSlicer_Linux_V2.3.2-fos.8.6.7.AppImage",
+        "reserved_1": "",
+        "reserved_2": ""
+      }
+    }
+  }
+}
