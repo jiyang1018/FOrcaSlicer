@@ -4910,7 +4910,9 @@ void GUI_App::check_new_version_sf(bool show_tips, bool by_user, int fos_attempt
             auto intelObj   = fullObj.value("intel", json::object());
             version_info.description = fullObj.value("file_describe", "");
 
-            if (platformType == "win") {
+            // FOS: Linux reads the same single "default" entry as Windows (one AppImage per
+            // release); the update dialog only opens file_url in the browser.
+            if (platformType == "win" || platformType == "linux") {
                 fileSize   = defaultObj.value("file_size", 0);
                 fileMd5    = defaultObj.value("file_md5", "");
                 fileSha256 = defaultObj.value("file_sha256", "");            
