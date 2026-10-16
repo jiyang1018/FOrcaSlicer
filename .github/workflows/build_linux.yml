@@ -1,0 +1,133 @@
+name: Build Linux AppImage
+
+# FOS: RELEASE build - x86_64 AppImage, version-named from FOS_VERSION in
+# common_func.hpp. Replaces the WSL build host (LINUX_REMOTE_BUILD_RUNBOOK.md)
+# when that box is not reachable. Same stages as the runbook:
+#   ./build_linux.sh -u          apt system deps
+#   ./build_linux.sh -d          dep tree (cached here)
+#   ./build_linux.sh -s -i       slicer + AppImage
+#
+# ubuntu-22.04 on purpose: matches the old build host and keeps the AppImage's
+# glibc floor low enough to start on older distros. webkit2gtk-4.1 is preferred
+# by scripts/linux.d/debian, so the binary also starts on 24.04+.
+
+on:
+  workflow_dispatch:
+  # FOS: MANUAL ONLY - no push trigger, same as build_macos.yml. Run from the
+  # Actions tab or: gh workflow run build_linux.yml --ref <branch>
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # FOS: CMake 4.x removed compatibility with cmake_minimum_required(<3.5) and
+  # the runner image may ship 4.x. Same pin as build_macos.yml.
+  CMAKE_PIN: "3.31.6"
+  # FOS: the runner has no FUSE. appimagetool is itself an AppImage, and this
+  # makes its runtime extract-and-run instead of mounting.
+  APPIMAGE_EXTRACT_AND_RUN: "1"
+
+jobs:
+  build:
+    name: build AppImage (x86_64)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+
+    steps:
+      # FOS: the hosted runner has ~14 GB free; deps + slicer + AppImage need
+      # more than that. Drop preinstalled toolchains this build never uses.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # FOS: hash the dep recipes ONCE on the clean checkout and reuse it, for
+      # the same reason as build_macos.yml: hashFiles() re-reads the live tree,
+      # and a restored prefix drops *.cmake files under deps/build/**.
+      - name: Compute dep cache key
+        id: depkey
+        run: echo "hash=${{ hashFiles('deps/**/CMakeLists.txt', 'deps/**/*.cmake', 'deps/**/*.patch', '!deps/build/**') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned CMake ${{ env.CMAKE_PIN }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cmake.tar.gz" \
+            "https://cmake.org/files/v3.31/cmake-${CMAKE_PIN}-linux-x86_64.tar.gz"
+          tar -xzf "$RUNNER_TEMP/cmake.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/cmake-${CMAKE_PIN}-linux-x86_64/bin" >> "$GITHUB_PATH"
+
+      # FOS: -u installs the apt packages from scripts/linux.d/debian (sudo is
+      # passwordless on the runner). Needed on every run, cache hit or not.
+      - name: Install system dependencies
+        run: |
+          chmod +x ./build_linux.sh ./scripts/run_gettext.sh || true
+          ./build_linux.sh -u
+          sudo apt-get install -y binutils libfuse2 || true
+          which cmake && cmake --version
+
+      - name: Cache dependency install prefix
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: deps/build/destdir
+          key: fosdeps-linux-ubuntu2204-${{ steps.depkey.outputs.hash }}
+
+      # FOS: -r skips build_linux.sh's 10 GB free-RAM / 10 GB free-disk gate;
+      # the runner has 16 GB total and the check reads "available", which can
+      # dip under the floor. -C only adds colour; it is no longer a workaround
+      # (empty-argument bug fixed in 08384b9c71).
+      - name: Build dependencies
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: ./build_linux.sh -d -r -C -j "$(nproc)"
+
+      - name: Report dependency prefix size
+        run: du -sh deps/build/destdir || true
+
+      - name: Build slicer and AppImage
+        run: ./build_linux.sh -s -i -r -C -j "$(nproc)"
+
+      - name: Compute version
+        id: ver
+        run: |
+          FOS_VER=$(sed -n 's/.*FOS_VERSION "\(.*\)".*/\1/p' src/common_func/common_func.hpp)
+          test -n "$FOS_VER" || { echo "::error::could not read FOS_VERSION"; exit 1; }
+          echo "ver=$FOS_VER"                      >> "$GITHUB_OUTPUT"
+          echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "building $FOS_VER ($(git rev-parse --short HEAD))"
+
+      # FOS: verify the PAYLOAD, never the filename. Same check as
+      # build-linux-fos8.ps1: extract and read the version out of the binary.
+      # build_linux.sh has exited 0 without producing an AppImage before
+      # (runbook 6.2), so a missing file is an error, not a skip.
+      - name: Verify payload and rename
+        run: |
+          SRC=$(ls -t build/*.AppImage 2>/dev/null | head -1)
+          test -n "$SRC" || { echo "::error::no AppImage in build/"; ls -la build; exit 1; }
+          echo "built: $SRC"
+          rm -rf "$RUNNER_TEMP/fosverify" && mkdir -p "$RUNNER_TEMP/fosverify"
+          ( cd "$RUNNER_TEMP/fosverify" && "$GITHUB_WORKSPACE/$SRC" --appimage-extract > /dev/null 2>&1 )
+          PAYLOAD=$(strings -a "$RUNNER_TEMP/fosverify/squashfs-root/bin/FOrcaSlicer" \
+                    | grep -m1 -oE '[0-9]+\.[0-9]+\.[0-9]+-fos\.[0-9A-Za-z.-]+' || true)
+          echo "payload: '$PAYLOAD'   expected: '${{ steps.ver.outputs.ver }}'"
+          test "$PAYLOAD" = "${{ steps.ver.outputs.ver }}" || { echo "::error::PAYLOAD MISMATCH"; exit 1; }
+          NAME="FOrcaSlicer_Linux_V${{ steps.ver.outputs.ver }}.AppImage"
+          mkdir -p dist
+          cp "$SRC" "dist/$NAME"
+          chmod +x "dist/$NAME"
+          ( cd dist && sha256sum "$NAME" > "$NAME.sha256" && cat "$NAME.sha256" )
+          ls -lh dist
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: FOrcaSlicer_Linux_V${{ steps.ver.outputs.ver }}
+          path: |
+            dist/*.AppImage
+            dist/*.AppImage.sha256
+          if-no-files-found: error
+          retention-days: 30
