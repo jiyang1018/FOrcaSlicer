@@ -66,6 +66,11 @@ jobs:
       - name: Install system dependencies
         run: |
           chmod +x ./build_linux.sh ./scripts/run_gettext.sh || true
+          # FOS: the runner image preinstalls libunwind-14-dev, which conflicts with
+          # libunwind-dev that libgstreamer1.0-dev depends on (apt exit 100, "held
+          # broken packages"). Remove it first; nothing in this build uses it.
+          sudo apt-get update
+          sudo apt-get remove -y libunwind-14-dev || true
           ./build_linux.sh -u
           sudo apt-get install -y binutils libfuse2 || true
           which cmake && cmake --version
