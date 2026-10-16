@@ -5369,6 +5369,43 @@ void read_binary_stl(const std::string& filename, std::string& model_id, std::st
 }
 
 // BBS: backup & restore
+// FOS: foreign-file color import. Bambu / Orca / SOS 3mf (and OBJ/AMF color import) assign a
+// FOS: filament per object or part through the "extruder" key. Under OW-identity FOS ignores that
+// FOS: key in both slicing (apply_to_print_region_config skips it) and the 3D tint (reads
+// FOS: wall_filament), so such files loaded as all filament 1. Translate the key into the feature
+// FOS: filament group on the same scope, filling only keys that scope does not set itself (or sets
+// FOS: to 0 = default), so an explicit feature override in the file still wins, as in OrcaSlicer.
+// FOS: Not applied to FOS-written 3mfs: there "extruder" is a meaningless leftover (GUI add-part
+// FOS: writes 1), and converting it would override the global Filament-for-Features.
+static int fos_import_extruder_as_feature_filaments(Model &model)
+{
+    static const char *const keys[] = {"wall_filament", "inner_wall_filament", "sparse_infill_filament", "solid_infill_filament"};
+    int converted = 0;
+    auto convert = [&converted](ModelConfig &cfg) {
+        const ConfigOptionInt *ext = dynamic_cast<const ConfigOptionInt *>(cfg.option("extruder"));
+        if (ext == nullptr || ext->value < 1)
+            return;
+        const int filament = ext->value;
+        bool touched = false;
+        for (const char *key : keys) {
+            const ConfigOption *opt = cfg.option(key);
+            if (opt == nullptr || opt->getInt() < 1) {
+                cfg.set_key_value(key, new ConfigOptionInt(filament));
+                touched = true;
+            }
+        }
+        if (touched)
+            ++converted;
+    };
+    for (ModelObject *mo : model.objects) {
+        convert(mo->config);
+        for (ModelVolume *mv : mo->volumes)
+            if (mv->is_model_part() || mv->is_modifier())
+                convert(mv->config);
+    }
+    return converted;
+}
+
 std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_files, LoadStrategy strategy, bool ask_multi)
 {
     std::vector<size_t> empty_result;
@@ -5479,6 +5516,7 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
         }
         if (load_config) strategy = strategy | LoadStrategy::CheckVersion;
         bool is_project_file = false;
+        bool fos_native_3mf  = false; // FOS: 3mf written by FOS (carries fos_ project keys)
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": is_project_file %1%, type_3mf %2%") % is_project_file % type_3mf;
         try {
             if (type_3mf) {
@@ -5552,6 +5590,8 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
                         wxGetApp().get_tab(Preset::TYPE_PRINT)->update();
                     }
 
+                    // FOS: only FOS writes fos_filament_nozzle into the project config.
+                    fos_native_3mf = config_loaded.has("fos_filament_nozzle");
                     std::string import_project_action = wxGetApp().app_config->get("import_project_action");
                     LoadType load_type;
                     if (import_project_action.empty())
@@ -6144,6 +6184,12 @@ std::vector<size_t> Plater::priv::load_files(const std::vector<fs::path>& input_
         if (!dlg_cont) {
             q->skip_thumbnail_invalid = false;
             return empty_result;
+        }
+
+        // FOS: carry foreign per-object/part filament ("extruder") into the feature filament group.
+        if (!fos_native_3mf) {
+            const int fos_conv = fos_import_extruder_as_feature_filaments(model);
+            BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": FOS extruder->feature filaments converted %1% configs") % fos_conv;
         }
 
         int model_idx = 0;
