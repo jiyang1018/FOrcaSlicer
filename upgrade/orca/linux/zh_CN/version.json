@@ -1,18 +1,18 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.7",
+    "version": "8.6.8",
     "release_type": "stable",
     "platform_type": "linux",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.7\n\nLinux AppImage：改为链接 WebKitGTK 4.1，可以在 Ubuntu 24.04 及更新版本上启动；在没有 GStreamer X 视频插件的系统上也不会再启动后立即退出。需要系统提供 glibc 2.35 或更新版本、FUSE 2 和 WebKitGTK 4.1。\n\n修复：当盘面上的第二种耗材只用于内墙时，准备页不显示擦塔，因此无法移动它，切片后擦塔还可能部分超出盘面。\n\n新增：主页“官方推荐”刷新按钮右侧新增“隐藏在线模型”复选框。",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.8\n\n修复：在 Bambu Studio、OrcaSlicer 或 Snapmaker Orca 中为每个零件或对象单独指定耗材的项目（MakerWorld 上很常见），打开后所有零件都变成耗材 1，切片结果也是如此。现在每个零件都保留自己的耗材，3D 视图和切片结果均正确。\n\n直接涂色在模型表面的颜色不受影响，FOrcaSlicer 自己保存的项目打开方式与之前相同。\n\nLinux AppImage：需要系统提供 glibc 2.35 或更新版本、FUSE 2 和 WebKitGTK 4.1。",
       "default": {
-        "file_size": 123128312,
-        "file_md5": "a20d045a031d3555bcb525b63dd19d5e",
-        "file_sha256": "48e807f4b716ea692e4c87c8fd5d5cb0ee2e30e11e8c4516c5db36d8fd7b209a",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.7/FOrcaSlicer_Linux_V2.3.2-fos.8.6.7.AppImage",
+        "file_size": 123132408,
+        "file_md5": "d51e50e9d9a2ef71283a4f427fc58cbd",
+        "file_sha256": "713686b0b9b9101a9cbdb39dd3f57d99b09fde9eafc0da394b5482e7d2471477",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.8/FOrcaSlicer_Linux_V2.3.2-fos.8.6.8.AppImage",
         "reserved_1": "",
         "reserved_2": ""
       }

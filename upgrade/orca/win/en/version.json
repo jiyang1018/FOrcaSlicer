@@ -1,18 +1,18 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.7",
+    "version": "8.6.8",
     "release_type": "stable",
     "platform_type": "win",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.7\n\nFixed: when a plate's second filament was used only for the inner wall, the prime tower was not shown in Prepare, so it could not be moved, and it could be sliced partly off the plate.\n\nNew: a Hide online models checkbox next to the refresh button under Recommended for You on the Home page. While it is ticked, the recommended models and their thumbnails are not downloaded. My Devices, Recent Files and sign-in are not affected.\n\nFaster first launch: on some computers the first launch after the machine had been idle took 11 to 18 seconds before the window appeared. The printer profiles are now read in parallel, so a first launch is as fast as a repeat launch.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.8\n\nFixed: projects from Bambu Studio, OrcaSlicer or Snapmaker Orca that give each part or object its own filament, as many MakerWorld models do, opened with every part in filament 1 and were sliced that way. Each part now keeps its filament, in the 3D view and in the sliced result.\n\nColors painted directly onto the model were not affected, and projects saved by FOrcaSlicer open as before.",
       "default": {
-        "file_size": 105344262,
-        "file_md5": "e1d91a526a849be91fb07e738a9735b2",
-        "file_sha256": "782350db48df0224985b7084969b59f8179306ea4e2fe28b50b923a15298c078",
-        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.7/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.7.exe",
+        "file_size": 105198502,
+        "file_md5": "7fb7badb3a455a47f9929d9afb629555",
+        "file_sha256": "5d4abaf8777b44e298121a5c5467b906b7ec15dcf2ee9d7af7af464c3afbf2f8",
+        "file_url": "https://github.com/jiyang1018/FOrcaSlicer/releases/download/v2.3.2-fos.8.6.8/FOrcaSlicer_Windows_Installer_V2.3.2-fos.8.6.8.exe",
         "reserved_1": "",
         "reserved_2": ""
       }

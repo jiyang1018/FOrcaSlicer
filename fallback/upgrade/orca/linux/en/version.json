@@ -1,17 +1,17 @@
 {
   "code": 200,
   "data": {
-    "version": "8.6.7",
+    "version": "8.6.8",
     "release_type": "stable",
     "platform_type": "linux",
     "is_full_upgrade": true,
     "is_force_upgrade": false,
     "full": {
-      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.7\n\nLinux AppImage: now linked against WebKitGTK 4.1, so it starts on Ubuntu 24.04 and newer, and it no longer closes right after starting on systems without the GStreamer X video plugins. It needs glibc 2.35 or newer, FUSE 2 and WebKitGTK 4.1 from your system.\n\nFixed: when a plate's second filament was used only for the inner wall, the prime tower was not shown in Prepare, so it could not be moved, and it could be sliced partly off the plate.\n\nNew: a Hide online models checkbox next to the refresh button under Recommended for You on the Home page.",
+      "file_describe": "FOrcaSlicer 2.3.2-fos.8.6.8\n\nFixed: projects from Bambu Studio, OrcaSlicer or Snapmaker Orca that give each part or object its own filament, as many MakerWorld models do, opened with every part in filament 1 and were sliced that way. Each part now keeps its filament, in the 3D view and in the sliced result.\n\nColors painted directly onto the model were not affected, and projects saved by FOrcaSlicer open as before.\n\nLinux AppImage: needs glibc 2.35 or newer, FUSE 2 and WebKitGTK 4.1 from your system.",
       "default": {
-        "file_size": 123128312,
-        "file_md5": "a20d045a031d3555bcb525b63dd19d5e",
-        "file_sha256": "48e807f4b716ea692e4c87c8fd5d5cb0ee2e30e11e8c4516c5db36d8fd7b209a",
+        "file_size": 123132408,
+        "file_md5": "d51e50e9d9a2ef71283a4f427fc58cbd",
+        "file_sha256": "713686b0b9b9101a9cbdb39dd3f57d99b09fde9eafc0da394b5482e7d2471477",
         "file_url": "https://fos-wiki.design4paragon.com/releases/",
         "reserved_1": "",
         "reserved_2": ""
