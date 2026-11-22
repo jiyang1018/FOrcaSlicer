@@ -83,6 +83,9 @@ public:
     // Frame the whole graph. Safe to call any time - no-ops until the canvas has a
     // real client size, which it does NOT have during construction.
     void zoom_to_fit();
+    // Client size the WHOLE graph needs at zoom 1, unassigned nodes included. Used by the
+    // dialog to pick its opening size, so nothing starts off-screen.
+    wxSize content_size() const;
     // Restore the pre-mapping default: filament i -> nozzle i while nozzles last.
     void reset_to_identity();
     // True when at least one filament has no nozzle. Drives the dialog warning.

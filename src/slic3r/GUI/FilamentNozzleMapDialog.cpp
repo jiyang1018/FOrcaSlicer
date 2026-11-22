@@ -7,6 +7,7 @@
 #include <string>
 
 #include <wx/dcbuffer.h>
+#include <wx/display.h>
 #include <wx/geometry.h>
 #include <wx/menu.h>
 #include <wx/settings.h>
@@ -585,11 +586,16 @@ void FilamentNozzleMapCanvas::zoom_to_fit()
     bool any_assigned = false;
     for (size_t i = 0; i < m_filaments.size(); ++i)
         if (m_nozzle_of[i] >= 0) { any_assigned = true; break; }
+    // FOS: ...but when everything fits at zoom 1 there is nothing to trade off, so frame it
+    // all. Otherwise centring on the working set pushes the unassigned columns past the
+    // right edge of a canvas that was big enough to show them.
+    const wxSize all       = content_size();
+    const bool   frame_all = !any_assigned || (all.x <= cs.x && all.y <= cs.y);
 
     for (const auto &n : m_nozzles)
         acc(n.x, n.y, m_node_w, m_nozzle_h);
     for (size_t i = 0; i < m_filaments.size(); ++i)
-        if (!any_assigned || m_nozzle_of[i] >= 0)
+        if (frame_all || m_nozzle_of[i] >= 0)
             acc(m_filaments[i].x, m_filaments[i].y, m_node_w, m_filament_h);
 
     const double content_w = std::max(1.0, (max_x - min_x) + 2.0 * m_margin);
@@ -604,6 +610,26 @@ void FilamentNozzleMapCanvas::zoom_to_fit()
     // framed against a canvas that no longer existed. The flag is cleared the moment the user
     // pans, zooms or drags - see on_mouse_down / on_mouse_wheel.
     Refresh();
+}
+
+wxSize FilamentNozzleMapCanvas::content_size() const
+{
+    if (m_nozzles.empty() && m_filaments.empty())
+        return wxSize(0, 0);
+    double min_x = 0, min_y = 0, max_x = 0, max_y = 0;
+    bool   first = true;
+    auto   acc   = [&](double x, double y, double w, double h) {
+        if (first) { min_x = x; min_y = y; max_x = x + w; max_y = y + h; first = false; return; }
+        min_x = std::min(min_x, x); min_y = std::min(min_y, y);
+        max_x = std::max(max_x, x + w); max_y = std::max(max_y, y + h);
+    };
+    for (const auto &n : m_nozzles)
+        acc(n.x, n.y, m_node_w, m_nozzle_h);
+    for (const auto &f : m_filaments)
+        acc(f.x, f.y, m_node_w, m_filament_h);
+    // Same margins zoom_to_fit() frames with, so a canvas of this size fits at zoom 1.
+    return wxSize(int(std::ceil(max_x - min_x)) + 2 * m_margin,
+                  int(std::ceil(max_y - min_y)) + 2 * m_margin);
 }
 
 // Node positions are a view preference, so they live in app_config rather than the 3mf.
@@ -1409,6 +1435,21 @@ FilamentNozzleMapDialog::FilamentNozzleMapDialog(wxWindow *parent)
     main->SetSizeHints(this);
     Layout();
     Fit();
+
+    // FOS: the canvas min size is a floor, not the content. With more than one filament
+    // column the graph is wider than that, and the dialog opened with the right-hand columns
+    // cut off. Grow to the whole graph at zoom 1, capped at 90% of the work area of the
+    // monitor the main window is on; past that zoom_to_fit() shrinks and pan reaches the rest.
+    {
+        const int     disp   = wxDisplay::GetFromWindow(GetParent());
+        const wxRect  area   = wxDisplay(disp != wxNOT_FOUND ? unsigned(disp) : 0u).GetClientArea();
+        const wxSize  chrome = GetSize() - m_canvas->GetClientSize();
+        wxSize        want   = m_canvas->content_size() + chrome;
+        want.IncTo(GetSize());
+        want.DecTo(wxSize(area.width * 9 / 10, area.height * 9 / 10));
+        SetSize(want);
+    }
+    // Centre AFTER the final size is set, otherwise the grown dialog hangs off to one side.
     CentreOnParent();
     wxGetApp().UpdateDlgDarkUI(this);
 }
